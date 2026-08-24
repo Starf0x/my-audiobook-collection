@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c2c8d4"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="108" fill="#12141a"/>
+
+  <!-- headphones -->
+  <path d="M158 258 V214 a98 98 0 0 1 196 0 v44" fill="none" stroke="url(#accent)"
+        stroke-width="34" stroke-linecap="round"/>
+  <rect x="130" y="238" width="56" height="94" rx="28" fill="url(#accent)"/>
+  <rect x="326" y="238" width="56" height="94" rx="28" fill="url(#accent)"/>
+
+  <!-- open book -->
+  <path d="M74 344 C136 316 194 316 250 348 L250 452 C194 420 136 420 74 442 Z" fill="url(#page)"/>
+  <path d="M438 344 C376 316 318 316 262 348 L262 452 C318 420 376 420 438 442 Z" fill="url(#page)" opacity=".8"/>
+  <path d="M256 348 V452" stroke="#12141a" stroke-width="12" stroke-linecap="round"/>
+</svg>
