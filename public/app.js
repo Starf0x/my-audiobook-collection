@@ -8,13 +8,16 @@ const api = async (url, opts) => {
 const post = (url, body) => api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const toast = (msg) => { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2600); };
 const hms = (s) => !s ? '' : `${Math.floor(s / 3600)}h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}m`;
+// folder names and Google descriptions land in markup; a quote or < would break the card
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const state = { user: localStorage.user || '', genre: null, author: null, book: null, track: 0 };
 
 // --- users -------------------------------------------------------------
 async function loadUsers() {
   const users = await api('/api/users');
-  $('#user').innerHTML = users.map((u) => `<option${u === state.user ? ' selected' : ''}>${u}</option>`).join('')
+  $('#user').innerHTML = users.map((u) => `<option${u === state.user ? ' selected' : ''}>${esc(u)}</option>`).join('')
     || '<option value="">(no user)</option>';
   state.user = $('#user').value || '';
   localStorage.user = state.user;
@@ -39,7 +42,7 @@ async function loadStats() {
 async function loadGenres() {
   const list = await api('/api/genres');
   $('#genres ul').innerHTML = list.map((g) =>
-    `<li data-name="${g.name}"><span>${g.name}</span><span class="count">${g.books}</span></li>`).join('')
+    `<li data-name="${esc(g.name)}"><span>${esc(g.name)}</span><span class="count">${g.books}</span></li>`).join('')
     || '<li class="empty">No genres — add a library folder in Settings and scan.</li>';
   $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => { li.onclick = () => selectGenre(li.dataset.name, li); });
 }
@@ -50,7 +53,7 @@ async function selectGenre(genre, li) {
   if (li) li.classList.add('active');
   const list = await api('/api/authors?genre=' + encodeURIComponent(genre));
   $('#authors ul').innerHTML = list.map((a) =>
-    `<li data-name="${a.name}"><span>${a.name}</span><span class="count">${a.books}</span></li>`).join('');
+    `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
   $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
   $('#books .list').innerHTML = '<div class="empty">Select an author.</div>';
 }
@@ -66,7 +69,7 @@ async function selectAuthor(author, li) {
   for (const b of books) {
     if (b.series !== series) {
       series = b.series;
-      if (series) html += `<div class="series-head">Series · ${series}</div>`;
+      if (series) html += `<div class="series-head">Series · ${esc(series)}</div>`;
     }
     html += `<div class="card" data-started="${b.started ? 1 : 0}">
       <div class="cover">
@@ -78,14 +81,14 @@ async function selectAuthor(author, li) {
       <div>
         <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
               title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
-          ${b.title}</h3>
-        <div class="sub">${author}${b.series ? ' · ' + b.series : ''}</div>
+          ${esc(b.title)}</h3>
+        <div class="sub">${esc(author)}${b.series ? ' · ' + esc(b.series) : ''}</div>
         <div class="sub" style="margin-top:6px">
-          ${b.year ? `<span class="badge">${b.year}</span>` : ''}
-          ${b.narrator ? `<span class="badge">Narrator: ${b.narrator}</span>` : ''}
+          ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
+          ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
           ${b.duration ? `<span class="badge">${hms(b.duration)}</span>` : ''}
         </div>
-        <div class="desc">${b.description || 'No description.'}</div>
+        <div class="desc">${esc(b.description) || 'No description.'}</div>
       </div>
       <div class="actions">
         <button onclick="playBook(${b.id})">▶ Play</button>
@@ -108,7 +111,7 @@ window.playBook = async function (id) {
   $('#player').hidden = false;
   $('#pCover').src = `/api/cover/${id}`;
   $('#pTitle').textContent = book.title;
-  $('#trackSelect').innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${t.title}</option>`).join('');
+  $('#trackSelect').innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join('');
   playTrack(book.progress ? book.progress.track_idx : 0, book.progress ? book.progress.position : 0);
 };
 
@@ -153,8 +156,11 @@ window.setListened = async function (id, box) {
 
 // Writes tags while the bar at the bottom follows the file count.
 async function writeWithProgress(id, pick) {
-  const request = post(`/api/apply/${id}`, { pick, writeTags: true }).catch((e) => ({ error: e.message }));
-  const p = await trackProgress('/api/apply/status', 'Writing tags…');
+  const until = { finished: false };
+  const request = post(`/api/apply/${id}`, { pick, writeTags: true })
+    .catch((e) => ({ error: e.message }))
+    .then((r) => { until.finished = true; return r; });
+  const p = await trackProgress('/api/apply/status', 'Writing tags…', until);
   const r = await request;
   const failure = r.error || p.error;
   $('#progressText').textContent = failure
@@ -226,11 +232,11 @@ window.findMeta = async function (id, query) {
     const cands = await api(`/api/lookup/${id}` + (query ? '?q=' + encodeURIComponent(query) : ''));
     window._cands = cands;
     $('#lookupBody').innerHTML = cands.length ? cands.map((c, i) => `<div class="cand">
-      ${c.thumbnail ? `<img src="${c.thumbnail}" alt="">` : ''}
+      ${c.thumbnail ? `<img src="${esc(c.thumbnail)}" alt="">` : ''}
       <div style="flex:1">
-        <strong>${c.title}</strong>
-        <div class="sub">${c.author}${c.year ? ' · ' + c.year : ''}${c.genre ? ' · ' + c.genre : ''}</div>
-        <div class="desc">${c.description || ''}</div>
+        <strong>${esc(c.title)}</strong>
+        <div class="sub">${esc(c.author)}${c.year ? ' · ' + esc(c.year) : ''}${c.genre ? ' · ' + esc(c.genre) : ''}</div>
+        <div class="desc">${esc(c.description)}</div>
         <div class="row">
           <button onclick="applyMeta(${id},${i},false)">Use metadata</button>
           <button class="ghost" onclick="applyMeta(${id},${i},true)">Use + write into MP3s</button>
@@ -263,7 +269,7 @@ let libs = [];
 let libsAtOpen = '[]';
 function renderLibs() {
   $('#libList').innerHTML = libs.map((l, i) =>
-    `<li><span>${l}</span><button data-i="${i}">✕</button></li>`).join('') || '<li class="empty">None yet.</li>';
+    `<li><span>${esc(l)}</span><button data-i="${i}">✕</button></li>`).join('') || '<li class="empty">None yet.</li>';
   $('#libList').querySelectorAll('button').forEach((b) => {
     b.onclick = () => { libs.splice(Number(b.dataset.i), 1); renderLibs(); };
   });
@@ -297,8 +303,8 @@ async function browse(p) {
     $('#browser').hidden = false;
     $('#browserPath').textContent = d.path;
     $('#browserList').innerHTML = d.entries.map((e) =>
-      `<li><span data-p="${e}">📁 ${e.split(/[\\/]/).pop()}</span>
-       <button data-add="${e}">${libs.includes(e) ? '✓ added' : '+ Add'}</button></li>`).join('')
+      `<li><span data-p="${esc(e)}">📁 ${esc(e.split(/[\\/]/).pop())}</span>
+       <button data-add="${esc(e)}">${libs.includes(e) ? '✓ added' : '+ Add'}</button></li>`).join('')
       || '<li class="empty">No sub-folders.</li>';
     $('#browserList').querySelectorAll('span[data-p]').forEach((s) => { s.onclick = () => browse(s.dataset.p); });
     $('#browserList').querySelectorAll('button[data-add]').forEach((b) => { b.onclick = () => addLib(b.dataset.add, b); });
@@ -313,7 +319,9 @@ $('#browseBtn').onclick = () => browse($('#libPath').value.trim() || '/');
 $('#browsePick').onclick = () => addLib(browsePath);
 
 // Drives the bar at the bottom from a {running, done, total, current} endpoint.
-async function trackProgress(statusUrl, label) {
+// `until` lets the caller stop as soon as its own request has returned; without
+// it the bar follows the server's running flag.
+async function trackProgress(statusUrl, label, until) {
   $('#progress').hidden = false;
   $('#progressBar').style.width = '0';
   $('#progressText').textContent = label;
@@ -321,13 +329,14 @@ async function trackProgress(statusUrl, label) {
   let waited = 0;
   for (;;) {
     await new Promise((r) => setTimeout(r, 300));
-    const p = await api(statusUrl);
+    const p = await api(statusUrl).catch(() => null);
+    if (!p) return { error: 'lost contact with the server' };
     if (p.running) started = true;
     if (p.total) {
       $('#progressBar').style.width = (p.done / p.total) * 100 + '%';
       $('#progressText').textContent = `${p.done} / ${p.total} · ${p.current}`;
     }
-    if (started ? !p.running : (waited += 300) > 3000) return p;
+    if (until ? until.finished : (started ? !p.running : (waited += 300) > 3000)) return p;
   }
 }
 
