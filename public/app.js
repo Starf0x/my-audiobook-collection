@@ -22,7 +22,8 @@ async function loadUsers() {
   state.user = $('#user').value || '';
   localStorage.user = state.user;
 }
-$('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); };
+$('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
+$('#home').onclick = loadHome;
 $('#addUser').onclick = async () => {
   const name = prompt('User name');
   if (!name) return;
@@ -36,6 +37,47 @@ async function loadStats() {
   $('#status').innerHTML = [
     [s.books, 'audiobooks'], [s.files, 'files'], [s.done, 'listened'], [s.todo, 'not listened'],
   ].map(([n, label]) => `<span><strong>${n.toLocaleString()}</strong> ${label}</span>`).join('');
+}
+
+// --- landing view ------------------------------------------------------
+// A book with no cover falls back to the app icon, so the row keeps its grid.
+const tile = (b, resumable) => {
+  const at = Math.min(b.track_idx + 1, b.tracks || 1);
+  const pct = b.done ? 100 : b.tracks ? (at / b.tracks) * 100 : 0;
+  return `<div class="tile" data-id="${b.id}" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
+       data-resume="${resumable ? 1 : 0}" title="${esc(b.title)}">
+    <img src="/api/cover/${b.id}" onerror="this.src='icon-128.png'" alt="">
+    <div class="t">${esc(b.title)}</div>
+    <div class="a">${esc(b.author)}</div>
+    ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
+      <div class="a">${b.done ? 'Listened' : `Track ${at} of ${b.tracks}`}</div>` : ''}
+  </div>`;
+};
+
+const shelf = (title, items, resumable) => !items.length ? '' :
+  `<div class="shelf"><div class="shelf-title">${title}</div>
+     <div class="tiles">${items.map((b) => tile(b, resumable)).join('')}</div></div>`;
+
+async function loadHome() {
+  document.body.classList.remove('maintenance');
+  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+  $('#authors ul').innerHTML = '';
+  const d = await api('/api/home?user=' + encodeURIComponent(state.user));
+  const html = shelf('Continue listening', d.continue, true) + shelf('Recently added', d.recent, false);
+  $('#books .list').innerHTML = html
+    || '<div class="empty">Nothing here yet — add a library folder in Settings and scan.</div>';
+  $('#books .list').querySelectorAll('.tile').forEach((t) => {
+    t.onclick = () => (t.dataset.resume === '1'
+      ? playBook(Number(t.dataset.id))
+      : openInLibrary(t.dataset.genre, t.dataset.author));
+  });
+}
+
+async function openInLibrary(genre, author) {
+  const gli = [...document.querySelectorAll('#genres ul li[data-name]')].find((l) => l.dataset.name === genre);
+  await selectGenre(genre, gli);
+  const ali = [...document.querySelectorAll('#authors li')].find((l) => l.dataset.name === author);
+  await selectAuthor(author, ali);
 }
 
 // --- browsing ----------------------------------------------------------
@@ -116,7 +158,9 @@ window.playBook = async function (id) {
   $('#pCover').src = `/api/cover/${id}`;
   $('#pTitle').textContent = book.title;
   $('#trackSelect').innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join('');
-  playTrack(book.progress ? book.progress.track_idx : 0, book.progress ? book.progress.position : 0);
+  // a saved track index can outlive the files it pointed at
+  const at = Math.min(book.progress ? book.progress.track_idx : 0, book.tracks.length - 1);
+  playTrack(Math.max(0, at), book.progress ? book.progress.position : 0);
 };
 
 function playTrack(idx, position = 0) {
@@ -521,4 +565,4 @@ function finishScan(error, p) {
 
 $('#scan').onclick = startScan;
 
-loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(loadImport);
+loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(loadImport).then(loadHome);

@@ -91,6 +91,16 @@ app.get('/api/untagged', (req, res) => {
   }));
 });
 
+// the landing view: what this user was listening to, and what turned up last
+app.get('/api/home', (req, res) => res.json({
+  continue: db.prepare(`SELECT b.id, b.title, b.author, b.genre, p.track_idx, p.done,
+                               (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks
+                        FROM progress p JOIN books b ON b.id = p.book_id
+                        WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
+                        ORDER BY p.updated DESC LIMIT 12`).all(req.query.user || ''),
+  recent: db.prepare('SELECT id, title, author, genre FROM books ORDER BY id DESC LIMIT 12').all(),
+}));
+
 app.get('/api/genres', (req, res) => res.json(
   db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all()));
 
