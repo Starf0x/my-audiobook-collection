@@ -176,6 +176,24 @@ async function writeWithProgress(id, pick) {
 // Write what the app already knows about the book into its MP3 files.
 window.writeTags = (id) => writeWithProgress(id, {});
 
+// The whole library, one book at a time, so the bar can show where it is.
+$('#tagAll').onclick = async () => {
+  const books = await api('/api/allbooks');
+  if (!confirm(`Write tags into every MP3 of all ${books.length} book(s)? This rewrites the files.`)) return;
+  $('#settings').close();
+  $('#progress').hidden = false;
+  let failed = 0;
+  for (const [i, b] of books.entries()) {
+    $('#progressBar').style.width = ((i + 1) / books.length) * 100 + '%';
+    $('#progressText').textContent = `${i + 1} / ${books.length} · ${b.title}`;
+    const r = await post(`/api/apply/${b.id}`, { pick: {}, writeTags: true }).catch(() => null);
+    if (!r) failed++;
+  }
+  $('#progressText').textContent = `Tags written into ${books.length - failed} of ${books.length} book(s).`;
+  hideProgressSoon();
+  if (state.author) selectAuthor(state.author, null);
+};
+
 window.editMeta = async function (id) {
   const b = await api(`/api/books/${id}`);
   $('#eTitle').value = b.title || '';
