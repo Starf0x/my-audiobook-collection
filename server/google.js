@@ -121,6 +121,14 @@ async function apply_(book, pick, writeTags) {
     } catch (e) {
       tagProgress.error = e.message;
     }
+    if (tagProgress.written) {
+      const present = [
+        ['album', tags.album], ['artist', tags.artist], ['narrator', tags.composer],
+        ['genre', tags.genre], ['year', tags.year], ['description', tags.comment.text],
+        ['cover', tags.APIC],
+      ].filter(([, v]) => v).map(([k]) => k).join(',');
+      db.prepare('UPDATE books SET tagged = ? WHERE id = ?').run(present, book.id);
+    }
   }
   return { written: tagProgress.written };
 }
