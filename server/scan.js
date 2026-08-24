@@ -20,7 +20,9 @@ async function readMeta(files, bookPath) {
   const meta = { title: '', narrator: '', year: '', description: '', duration: 0, cover: null };
   for (const [i, file] of files.entries()) {
     let tags = {};
-    try { tags = await parseFile(file, { duration: true }); } catch { /* unreadable file */ }
+    // No { duration: true }: that scans every frame of every file (~4s per MP3).
+    // Duration is only used for a badge, so take it when the header offers it for free.
+    try { tags = await parseFile(file); } catch { /* unreadable file */ }
     const c = tags.common || {}, f = tags.format || {};
     meta.duration += f.duration || 0;
     meta.tracks = meta.tracks || [];
@@ -75,9 +77,13 @@ async function addBook(genre, author, series, bookPath) {
   return 1;
 }
 
+export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '' };
+
 export async function scan() {
-  let books = 0;
-  const seen = [];
+  // running must be true before walking the tree: on a large library that walk
+  // takes tens of seconds, and the UI would otherwise read the scan as finished.
+  Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '' });
+  const jobs = [];
   for (const root of getLibraries()) {
     if (!fs.existsSync(root)) continue;
     for (const genreDir of dirs(root)) {
@@ -85,25 +91,31 @@ export async function scan() {
       for (const authorDir of dirs(genreDir)) {
         const author = path.basename(authorDir);
         for (const level3 of dirs(authorDir)) {
-          if (audioFiles(level3).length) {
-            books += await addBook(genre, author, null, level3);
-            seen.push(level3);
-          } else {
-            const series = path.basename(level3);
-            for (const bookDir of dirs(level3)) {
-              books += await addBook(genre, author, series, bookDir);
-              seen.push(bookDir);
-            }
-          }
+          if (audioFiles(level3).length) jobs.push({ genre, author, series: null, dir: level3 });
+          else for (const bookDir of dirs(level3)) jobs.push({ genre, author, series: path.basename(level3), dir: bookDir });
         }
       }
     }
   }
-  for (const b of db.prepare('SELECT id, path FROM books').all()) {
-    if (!seen.includes(b.path)) {
-      db.prepare('DELETE FROM tracks WHERE book_id = ?').run(b.id);
-      db.prepare('DELETE FROM books WHERE id = ?').run(b.id);
+
+  progress.total = jobs.length;
+  try {
+    for (const j of jobs) {
+      progress.current = path.basename(j.dir);
+      progress.books += await addBook(j.genre, j.author, j.series, j.dir);
+      progress.done++;
     }
+    const seen = jobs.map((j) => j.dir);
+    for (const b of db.prepare('SELECT id, path FROM books').all()) {
+      if (!seen.includes(b.path)) {
+        db.prepare('DELETE FROM tracks WHERE book_id = ?').run(b.id);
+        db.prepare('DELETE FROM books WHERE id = ?').run(b.id);
+      }
+    }
+  } catch (e) {
+    progress.error = e.message;
+  } finally {
+    progress.running = false;
   }
-  return { books };
+  return { books: progress.books };
 }
