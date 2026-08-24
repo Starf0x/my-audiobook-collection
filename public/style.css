@@ -181,3 +181,4 @@ body.maintenance main { grid-template-columns: 230px 1fr; }
 button.danger { background: #6b2434; }
 button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
 .fix .sub .missing { color: #ffa8a8; }
+.empty.missing { color: #ffa8a8; }
