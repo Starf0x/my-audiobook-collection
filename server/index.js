@@ -56,6 +56,29 @@ app.get('/api/stats', (req, res) => {
 app.get('/api/allbooks', (req, res) => res.json(
   db.prepare('SELECT id, title FROM books ORDER BY genre, author, title').all()));
 
+const REQUIRED_TAGS = ['album', 'artist', 'album artist', 'genre', 'year', 'description', 'cover', 'track no'];
+
+// books whose files miss one of the required tags, split into what writing can
+// fix now and what has to be looked up first
+app.get('/api/untagged', (req, res) => {
+  const rows = db.prepare(`SELECT id, genre, author, title, year, description, cover, tagged
+                           FROM books ORDER BY genre, author, title`).all();
+  res.json(rows.flatMap((b) => {
+    const inFile = new Set((b.tagged || '').split(',').filter(Boolean));
+    const missing = REQUIRED_TAGS.filter((f) => !inFile.has(f));
+    if (!missing.length) return [];
+    const known = {
+      album: b.title, artist: b.author, 'album artist': b.author, genre: b.genre,
+      year: b.year, description: b.description, cover: b.cover, 'track no': 1,
+    };
+    return [{
+      id: b.id, genre: b.genre, author: b.author, title: b.title,
+      fixable: missing.filter((f) => known[f]),
+      needsLookup: missing.filter((f) => !known[f]),
+    }];
+  }));
+});
+
 app.get('/api/genres', (req, res) => res.json(
   db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all()));
 
