@@ -152,3 +152,26 @@ body.maintenance main { grid-template-columns: 230px 1fr; }
 #importForm .row { flex-wrap: wrap; }
 #importForm input, #importForm select { flex: 1 1 150px; min-width: 110px; }
 #importForm .fix { margin-top: 4px; }
+
+/* landing view: shelves of covers */
+.shelf { margin-bottom: 6px; }
+.shelf-title { color: var(--accent2); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin: 6px 0 10px; }
+.tiles { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.tile { flex: 0 0 auto; width: 104px; cursor: pointer; }
+.tile img { display: block; width: 104px; height: 156px; object-fit: cover; border-radius: 8px;
+  background: var(--panel2); border: 1px solid var(--line); }
+.tile:hover img { border-color: var(--accent); }
+.tile .t { margin-top: 7px; font-size: 12.5px; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tile .a { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .tbar { height: 4px; margin: 6px 0 3px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
+.tile .tbar div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+
+.col-title button.linkish { background: none; border: 0; padding: 0 0 0 10px; color: var(--accent2);
+  font: inherit; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.col-title button.linkish:hover { color: #fff; filter: none; }
+.tiles::-webkit-scrollbar { height: 8px; }
+.tiles::-webkit-scrollbar-track { background: transparent; }
+.tiles::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+.tiles::-webkit-scrollbar-thumb:hover { background: #39404d; }
+.tiles { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
