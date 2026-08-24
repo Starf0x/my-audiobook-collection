@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Audiobook Collection</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🎧 My Audiobook Collection</h1>
+  <div class="spacer"></div>
+  <select id="user"></select>
+  <button id="addUser" class="ghost">+ User</button>
+  <button id="scan" class="ghost">Scan library</button>
+  <button id="openSettings" class="ghost">Settings</button>
+</header>
+
+<main>
+  <aside id="genres"><div class="col-title">Genres</div><ul></ul></aside>
+  <section id="authors"><div class="col-title">Authors</div><ul></ul></section>
+  <section id="books"><div class="col-title">Books</div><div class="list"></div></section>
+</main>
+
+<footer id="player" hidden>
+  <img id="pCover" alt="">
+  <div class="meta">
+    <strong id="pTitle"></strong>
+    <span id="pTrack"></span>
+  </div>
+  <audio id="audio" controls></audio>
+  <select id="trackSelect"></select>
+</footer>
+
+<dialog id="settings">
+  <h2>Settings</h2>
+  <label>Library folders (on the server)</label>
+  <ul id="libList"></ul>
+  <div class="row">
+    <input id="libPath" placeholder="/audiobooks">
+    <button id="browseBtn" class="ghost">Browse…</button>
+    <button id="addLib">Add</button>
+  </div>
+  <div id="browser" hidden>
+    <div class="row"><strong id="browserPath"></strong><button id="browseUp" class="ghost">Up</button>
+      <button id="browsePick">Use this folder</button></div>
+    <ul id="browserList"></ul>
+  </div>
+  <label>Google Books API key</label>
+  <input id="apiKey" placeholder="AIza…">
+  <p class="hint">Used to look up missing metadata. Get one at
+    console.cloud.google.com → APIs &amp; Services → Credentials (enable "Books API").</p>
+  <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
+</dialog>
+
+<dialog id="lookup">
+  <h2>Metadata lookup</h2>
+  <div id="lookupBody"></div>
+  <div class="row end"><button id="closeLookup" class="ghost">Close</button></div>
+</dialog>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
