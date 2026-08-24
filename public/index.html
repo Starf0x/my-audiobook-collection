@@ -62,8 +62,23 @@
 
 <dialog id="lookup">
   <h2>Metadata lookup</h2>
+  <div class="row"><input id="lookupQuery" placeholder="title author"><button id="lookupSearch">Search</button></div>
   <div id="lookupBody"></div>
   <div class="row end"><button id="closeLookup" class="ghost">Close</button></div>
+</dialog>
+
+<dialog id="edit">
+  <h2>Edit metadata</h2>
+  <label>Title</label><input id="eTitle">
+  <label>Author</label><input id="eAuthor">
+  <label>Narrator</label><input id="eNarrator">
+  <label>Year</label><input id="eYear">
+  <label>Description</label><textarea id="eDescription" rows="4"></textarea>
+  <div class="row end">
+    <button id="closeEdit" class="ghost">Cancel</button>
+    <button id="saveEdit" class="ghost">Save</button>
+    <button id="saveEditTags">Save + write into MP3s</button>
+  </div>
 </dialog>
 
 <div id="toast"></div>
