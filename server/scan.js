@@ -8,11 +8,11 @@ const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 const COVER = /^(cover|folder|front)\.(jpg|jpeg|png)$/i;
 const DISC = /^(disc|disk|cd|part|tape)[\s._-]*\d+$/i;
 
-const dirs = (p) => fs.readdirSync(p, { withFileTypes: true })
+export const dirs = (p) => fs.readdirSync(p, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
   .map((e) => path.join(p, e.name));
 
-const audioFiles = (p) => fs.readdirSync(p, { withFileTypes: true })
+export const audioFiles = (p) => fs.readdirSync(p, { withFileTypes: true })
   .filter((e) => e.isFile() && AUDIO.test(e.name))
   .map((e) => path.join(p, e.name))
   .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -108,6 +108,16 @@ async function addBook(genre, author, series, bookPath, files = null) {
   return 1;
 }
 
+// A folder whose sub-folders are all disc markers is one book split over discs,
+// wherever it sits: directly under an author, or under a series folder as well.
+// Returns its files in disc order, or null when it is not such a folder.
+function discFiles(dir) {
+  if (audioFiles(dir).length) return null;
+  const inner = dirs(dir).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (inner.length < 2 || !inner.every((d) => DISC.test(path.basename(d)))) return null;
+  return inner.flatMap(audioFiles);
+}
+
 // A library root holds genre folders, so its books sit three levels down. When
 // they sit two levels down the root is a genre folder and every author would be
 // filed as a genre, which is the easiest mistake to make when picking a folder.
@@ -150,16 +160,15 @@ async function walkAndScan() {
         const author = path.basename(authorDir);
         for (const level3 of dirs(authorDir)) {
           if (audioFiles(level3).length) jobs.push({ genre, author, series: null, dir: level3 });
-          else {
+          else if (discFiles(level3)) {
+            jobs.push({ genre, author, series: null, dir: level3, files: discFiles(level3) });
+          } else {
+            // A folder holding a single sub-folder is a redundantly nested book,
+            // not a series: there is nothing to group.
             const books = dirs(level3).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-            if (books.length > 1 && books.every((b) => DISC.test(path.basename(b)))) {
-              // One book split over disc folders: play the discs as one track list.
-              jobs.push({ genre, author, series: null, dir: level3, files: books.flatMap(audioFiles) });
-            } else {
-              // A folder holding a single sub-folder is a redundantly nested book,
-              // not a series: there is nothing to group.
-              const series = books.length > 1 ? path.basename(level3) : null;
-              for (const bookDir of books) jobs.push({ genre, author, series, dir: bookDir });
+            const series = books.length > 1 ? path.basename(level3) : null;
+            for (const bookDir of books) {
+              jobs.push({ genre, author, series, dir: bookDir, files: discFiles(bookDir) });
             }
           }
         }
