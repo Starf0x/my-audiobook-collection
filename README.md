@@ -42,7 +42,8 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 2. Open `http://TOWER-IP:8080`
 3. **+ User** → add yourself (playback positions are stored per user)
 4. **Settings** → add `/audiobooks` as a library folder (use *Browse…* to pick it),
-   paste your Google Books API key, **Save**
+   paste your Google Books API key, **Save**. If `/audiobooks` also holds folders you do not
+   want scanned, add the genre folders one by one instead and tick *is one genre* behind each.
 5. **Scan library**
 
 `unraid-template.xml` in this repo can also be dropped into

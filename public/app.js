@@ -341,8 +341,15 @@ let libs = [];
 let libsAtOpen = '[]';
 function renderLibs() {
   $('#libList').innerHTML = libs.map((l, i) =>
-    `<li><span>${esc(l)}</span><button data-i="${i}">✕</button></li>`).join('') || '<li class="empty">None yet.</li>';
-  $('#libList').querySelectorAll('button').forEach((b) => {
+    `<li><span>${esc(l.path)}</span>
+       <label class="asgenre" title="This folder is one genre, rather than a folder holding genre folders">
+         <input type="checkbox" data-g="${i}"${l.asGenre ? ' checked' : ''}> is one genre
+       </label>
+       <button data-i="${i}">✕</button></li>`).join('') || '<li class="empty">None yet.</li>';
+  $('#libList').querySelectorAll('input[data-g]').forEach((c) => {
+    c.onchange = () => { libs[Number(c.dataset.g)].asGenre = c.checked; };
+  });
+  $('#libList').querySelectorAll('button[data-i]').forEach((b) => {
     b.onclick = () => { libs.splice(Number(b.dataset.i), 1); renderLibs(); };
   });
 }
@@ -376,7 +383,7 @@ async function browse(p) {
     $('#browserPath').textContent = d.path;
     $('#browserList').innerHTML = d.entries.map((e) =>
       `<li><span data-p="${esc(e)}">📁 ${esc(e.split(/[\\/]/).pop())}</span>
-       <button data-add="${esc(e)}">${libs.includes(e) ? '✓ added' : '+ Add'}</button></li>`).join('')
+       <button data-add="${esc(e)}">${libs.some((l) => l.path === e) ? '✓ added' : '+ Add'}</button></li>`).join('')
       || '<li class="empty">No sub-folders.</li>';
     $('#browserList').querySelectorAll('span[data-p]').forEach((s) => { s.onclick = () => browse(s.dataset.p); });
     $('#browserList').querySelectorAll('button[data-add]').forEach((b) => { b.onclick = () => addLib(b.dataset.add, b); });
@@ -384,7 +391,7 @@ async function browse(p) {
   } catch (e) { toast(e.message); }
 }
 function addLib(p, btn) {
-  if (!libs.includes(p)) { libs.push(p); renderLibs(); }
+  if (!libs.some((l) => l.path === p)) { libs.push({ path: p, asGenre: false }); renderLibs(); }
   if (btn) btn.textContent = '✓ added';
 }
 $('#browseBtn').onclick = () => browse($('#libPath').value.trim() || '/');
@@ -412,8 +419,8 @@ async function trackProgress(statusUrl, label, until) {
   }
 }
 
-function hideProgressSoon() {
-  setTimeout(() => { $('#progress').hidden = true; }, 3000);
+function hideProgressSoon(ms = 3000) {
+  setTimeout(() => { $('#progress').hidden = true; }, ms);
 }
 
 async function startScan() {
@@ -429,10 +436,13 @@ function finishScan(error, p) {
     $('#progressText').textContent = 'Scan failed: ' + error;
     return;
   }
-  $('#progressText').textContent = `Scan complete: ${p.books} book(s).`;
+  $('#progressText').textContent = p.warning
+    ? `Scan complete: ${p.books} book(s) — ${p.warning}`
+    : `Scan complete: ${p.books} book(s).`;
+  $('#progressText').classList.toggle('warn', !!p.warning);
   loadGenres();
   loadStats();
-  hideProgressSoon();
+  hideProgressSoon(p.warning ? 30000 : 3000);
 }
 
 $('#scan').onclick = startScan;
