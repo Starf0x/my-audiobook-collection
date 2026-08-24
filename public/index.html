@@ -24,6 +24,7 @@
     <ul>
       <li id="needsTags"><span>Needs tags</span><span class="count" id="needsTagsCount">…</span></li>
       <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
+      <li id="trashList"><span>Trash</span><span class="count" id="trashCount">…</span></li>
     </ul>
   </aside>
   <section id="authors"><div class="col-title">Authors</div><ul></ul></section>
@@ -80,6 +81,17 @@
     Books with no description or narrator keep those frames empty.</p>
   <button id="tagAll" class="ghost">Write tags into all MP3s</button>
   <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
+</dialog>
+
+<dialog id="move">
+  <h2>Move book</h2>
+  <p class="hint">Moves the folder on disk. The listened state and playback position stay with the book.</p>
+  <label>Genre</label><select id="mGenre"></select>
+  <label>Author</label><input id="mAuthor">
+  <label>Series (optional)</label><input id="mSeries">
+  <label>Title</label><input id="mTitle">
+  <p class="hint" id="mWhere"></p>
+  <div class="row end"><button id="closeMove" class="ghost">Cancel</button><button id="doMove">Move</button></div>
 </dialog>
 
 <dialog id="lookup">

@@ -11,6 +11,7 @@ organised on disk as **Genre → Author → Book** or **Genre → Author → Ser
 * Fills in missing metadata via the **Google Books API**, or by hand, and writes it back into the MP3s
 * A *Needs tags* list of every book whose files miss a required tag, with writing and lookup on the spot
 * Files new audiobooks from an **import folder** into the right genre, author and series
+* Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
 * Runs as a single Docker container, ~700 lines of code, SQLite storage, no external services
 
@@ -85,6 +86,18 @@ it. If the import folder sits on a different mount than the library, the files a
 copied across and the source removed, with the bar showing the file count. Names
 are stripped of characters a path cannot hold.
 
+## Moving and deleting
+
+*Move…* on a book card shifts its folder to where a new genre, author, series and
+title say it belongs. The book keeps its row, so the listened state and playback
+position travel with it.
+
+*Delete…* moves the folder into a  folder inside the same library folder,
+which keeps it on the same filesystem and out of the scanner's way, and records
+the deletion. **Trash** in the left column lists what is in there, how long it has
+left, and offers *Put back*, *Delete now* per book and *Empty trash*. Anything
+older than 30 days is dropped by itself, checked at startup and once a day after.
+
 ## Google Books API key
 
 Google Cloud Console → *APIs & Services* → enable **Books API** → *Credentials* →
@@ -137,5 +150,6 @@ server/db.js      SQLite schema + settings
 server/scan.js    library scanner + tag reader
 server/google.js  Google Books lookup + ID3 writer
 server/import.js  import folder: candidates and moving a book into place
+server/trash.js   move a book, delete to trash, put back, empty
 public/           UI (index.html, style.css, app.js)
 ```
