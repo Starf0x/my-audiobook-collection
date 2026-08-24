@@ -33,7 +33,9 @@ async function readMeta(files, bookPath) {
     meta.narrator = c.composer?.[0] || c.artist || '';
     meta.year = c.year ? String(c.year) : '';
     const comment = c.comment?.[0];
-    meta.description = (typeof comment === 'string' ? comment : comment?.text) || '';
+    const text = ((typeof comment === 'string' ? comment : comment?.text) || '').trim();
+    // iTunes normalisation data ends up in the ID3v1 comment field as hex groups.
+    meta.description = /^[0-9a-f]{6,8}( +[0-9a-f]{6,8})+$/i.test(text) ? '' : text;
     const pic = c.picture?.[0];
     if (pic) {
       const name = crypto.createHash('md5').update(bookPath).digest('hex') + '.jpg';
