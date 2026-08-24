@@ -6,9 +6,11 @@ organised on disk as **Genre → Author → Book** or **Genre → Author → Ser
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
 * Scans one or more library folders on the server (with a built-in folder browser)
 * Reads ID3 / audio metadata from the files (title, narrator, year, description, embedded cover art)
-* Fills in missing metadata via the **Google Books API** and can optionally write it back into the MP3s
-* Streams books in the browser and remembers the playback position **per user**
-* Runs as a single Docker container, ~600 lines of code, SQLite storage, no external services
+* Shows per book which tags the **files themselves** carry, so database-only metadata is visible as such
+* Fills in missing metadata via the **Google Books API**, or by hand, and writes it back into the MP3s
+* A *Needs tags* list of every book whose files miss a required tag, with writing and lookup on the spot
+* Streams books in the browser, remembers the playback position **per user**, and marks books listened
+* Runs as a single Docker container, ~700 lines of code, SQLite storage, no external services
 
 ## Folder layout it expects
 
@@ -28,8 +30,20 @@ organised on disk as **Genre → Author → Book** or **Genre → Author → Ser
         └── The Shining
 ```
 
-A third-level folder that contains audio files itself is treated as a **book**;
-a third-level folder that only contains sub-folders is treated as a **series**.
+How a third-level folder is read:
+
+| It contains | Read as |
+| --- | --- |
+| audio files | a **book** |
+| several sub-folders | a **series**, each sub-folder a book |
+| sub-folders that are all `Disc 01`, `CD 2`, `Part 3`… | **one book**, its discs played in order as one track list |
+| exactly one sub-folder | **one book**; a series of one has nothing to group |
+
+If a library folder holds things you do not want scanned, add the genre folders
+themselves and tick *Is a Genre* behind each, instead of adding their parent.
+A scan warns when a folder looks like a genre but is not marked as one, since its
+authors would otherwise be filed as genres.
+
 Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 
 ## Run it on Unraid
@@ -59,9 +73,28 @@ docker compose up -d
 
 Google Cloud Console → *APIs & Services* → enable **Books API** → *Credentials* →
 *Create credentials* → *API key*. Paste it in **Settings**. Then use
-**Find metadata** on a book: pick a result and choose either *Use metadata*
-(database only) or *Use + write into MP3s* (writes album/artist/year/genre/comment
-and the cover art into every MP3 of that book).
+**Find metadata** on a book and pick a result, or type your own search when the
+folder name finds nothing. A 503 from Google is retried after 10, 20 and 30
+seconds, with the wait shown in the dialog.
+
+## What a tag write puts in the MP3s
+
+*Write into MP3s* on a book, *Save + write into MP3s* in the edit dialog and
+*Write tags into all MP3s* in Settings all write the same thing into every MP3 of
+the book:
+
+| Frame | From |
+| --- | --- |
+| `TALB` album | the book title |
+| `TPE1` artist and `TPE2` album artist | the author |
+| `TCON` genre | the genre folder |
+| `TYER` year, `COMM` description, `APIC` cover | the book's metadata |
+| `TCOM` composer | the narrator |
+| `TRCK` track number | renumbered in playing order, zero padded: `01/12`, `001/120` |
+
+Values the app does not have are left out rather than written empty, so a book
+with no description keeps no empty comment frame. The badge on each card lists
+what the files actually carry.
 
 ## Development
 
