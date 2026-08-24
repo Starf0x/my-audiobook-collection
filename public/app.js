@@ -87,6 +87,9 @@ async function selectAuthor(author, li) {
           ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
           ${b.duration ? `<span class="badge">${hms(b.duration)}</span>` : ''}
+          ${b.tagged
+            ? `<span class="badge tagged" title="Tags found in the MP3 files">In MP3: ${esc(b.tagged.split(',').join(', '))}</span>`
+            : '<span class="badge untagged" title="The MP3 files carry none of these tags">Not in MP3</span>'}
         </div>
         <div class="desc">${esc(b.description) || 'No description.'}</div>
       </div>
