@@ -4,6 +4,7 @@ A small, self-hosted web app to browse and play an audiobook collection that is
 organised on disk as **Genre → Author → Book** or **Genre → Author → Series → Book**.
 
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
+* Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
 * Scans one or more library folders on the server (with a built-in folder browser)
 * Reads ID3 / audio metadata from the files (title, narrator, year, description, embedded cover art)
 * Shows per book which tags the **files themselves** carry, so database-only metadata is visible as such
