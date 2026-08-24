@@ -132,3 +132,9 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 /* the maintenance list has no author column, so give it that space */
 body.maintenance #authors { display: none; }
 body.maintenance main { grid-template-columns: 230px 1fr; }
+
+#progressText.warn { color: #ffb4a8; text-align: left; min-width: 0; }
+
+.asgenre { display: flex; align-items: center; gap: 5px; color: var(--dim); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.asgenre input { padding: 0; width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.asgenre { text-transform: none; letter-spacing: 0; margin: 0; }

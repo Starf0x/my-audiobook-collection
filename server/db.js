@@ -49,4 +49,7 @@ export const setSetting = (key, value) =>
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?')
     .run(key, value, value);
 
-export const getLibraries = () => JSON.parse(getSetting('libraries', '[]'));
+// A library entry is either a folder holding genre folders, or a single genre
+// folder itself. Plain strings are entries stored before that choice existed.
+export const getLibraries = () => JSON.parse(getSetting('libraries', '[]'))
+  .map((l) => (typeof l === 'string' ? { path: l, asGenre: false } : l));
