@@ -93,7 +93,13 @@ export async function scan() {
         const author = path.basename(authorDir);
         for (const level3 of dirs(authorDir)) {
           if (audioFiles(level3).length) jobs.push({ genre, author, series: null, dir: level3 });
-          else for (const bookDir of dirs(level3)) jobs.push({ genre, author, series: path.basename(level3), dir: bookDir });
+          else {
+            // A folder holding a single sub-folder is a redundantly nested book,
+            // not a series: there is nothing to group.
+            const books = dirs(level3);
+            const series = books.length > 1 ? path.basename(level3) : null;
+            for (const bookDir of books) jobs.push({ genre, author, series, dir: bookDir });
+          }
         }
       }
     }
