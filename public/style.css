@@ -175,3 +175,9 @@ body.maintenance main { grid-template-columns: 230px 1fr; }
 .tiles::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
 .tiles::-webkit-scrollbar-thumb:hover { background: #39404d; }
 .tiles { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+.card .actions .row2 { display: flex; gap: 6px; margin-top: 0; }
+.card .actions .row2 button { flex: 1; }
+button.danger { background: #6b2434; }
+button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
+.fix .sub .missing { color: #ffa8a8; }
