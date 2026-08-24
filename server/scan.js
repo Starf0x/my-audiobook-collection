@@ -6,6 +6,7 @@ import { db, getLibraries, DATA_DIR } from './db.js';
 
 const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 const COVER = /^(cover|folder|front)\.(jpg|jpeg|png)$/i;
+const DISC = /^(disc|disk|cd|part|tape)[\s._-]*\d+$/i;
 
 const dirs = (p) => fs.readdirSync(p, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
@@ -47,8 +48,8 @@ async function readMeta(files, bookPath) {
   return meta;
 }
 
-async function addBook(genre, author, series, bookPath) {
-  const files = audioFiles(bookPath);
+async function addBook(genre, author, series, bookPath, files = null) {
+  files = files || audioFiles(bookPath);
   if (!files.length) return 0;
   const folderTitle = path.basename(bookPath);
   const existing = db.prepare('SELECT id, duration FROM books WHERE path = ?').get(bookPath);
@@ -94,11 +95,16 @@ export async function scan() {
         for (const level3 of dirs(authorDir)) {
           if (audioFiles(level3).length) jobs.push({ genre, author, series: null, dir: level3 });
           else {
-            // A folder holding a single sub-folder is a redundantly nested book,
-            // not a series: there is nothing to group.
-            const books = dirs(level3);
-            const series = books.length > 1 ? path.basename(level3) : null;
-            for (const bookDir of books) jobs.push({ genre, author, series, dir: bookDir });
+            const books = dirs(level3).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            if (books.length > 1 && books.every((b) => DISC.test(path.basename(b)))) {
+              // One book split over disc folders: play the discs as one track list.
+              jobs.push({ genre, author, series: null, dir: level3, files: books.flatMap(audioFiles) });
+            } else {
+              // A folder holding a single sub-folder is a redundantly nested book,
+              // not a series: there is nothing to group.
+              const series = books.length > 1 ? path.basename(level3) : null;
+              for (const bookDir of books) jobs.push({ genre, author, series, dir: bookDir });
+            }
           }
         }
       }
@@ -109,7 +115,7 @@ export async function scan() {
   try {
     for (const j of jobs) {
       progress.current = path.basename(j.dir);
-      progress.books += await addBook(j.genre, j.author, j.series, j.dir);
+      progress.books += await addBook(j.genre, j.author, j.series, j.dir, j.files);
       progress.done++;
     }
     const seen = jobs.map((j) => j.dir);
