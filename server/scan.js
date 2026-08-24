@@ -31,7 +31,8 @@ async function readMeta(files, bookPath) {
     meta.title = c.album || c.title || '';
     meta.narrator = c.composer?.[0] || c.artist || '';
     meta.year = c.year ? String(c.year) : '';
-    meta.description = c.comment?.[0]?.text || c.comment?.[0] || '';
+    const comment = c.comment?.[0];
+    meta.description = (typeof comment === 'string' ? comment : comment?.text) || '';
     const pic = c.picture?.[0];
     if (pic) {
       const name = crypto.createHash('md5').update(bookPath).digest('hex') + '.jpg';
