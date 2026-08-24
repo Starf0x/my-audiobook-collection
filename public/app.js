@@ -151,13 +151,21 @@ window.setListened = async function (id, box) {
   }
 };
 
+// Writes tags while the bar at the bottom follows the file count.
+async function writeWithProgress(id, pick) {
+  const request = post(`/api/apply/${id}`, { pick, writeTags: true }).catch((e) => ({ error: e.message }));
+  const p = await trackProgress('/api/apply/status', 'Writing tags…');
+  const r = await request;
+  const failure = r.error || p.error;
+  $('#progressText').textContent = failure
+    ? 'Writing tags failed: ' + failure
+    : `${r.written} MP3 file(s) tagged.`;
+  hideProgressSoon();
+  return !failure;
+}
+
 // Write what the app already knows about the book into its MP3 files.
-window.writeTags = async function (id) {
-  try {
-    const r = await post(`/api/apply/${id}`, { pick: {}, writeTags: true });
-    toast(`${r.written} MP3 file(s) tagged.`);
-  } catch (e) { toast(e.message); }
-};
+window.writeTags = (id) => writeWithProgress(id, {});
 
 window.editMeta = async function (id) {
   const b = await api(`/api/books/${id}`);
@@ -172,12 +180,14 @@ window.editMeta = async function (id) {
       narrator: $('#eNarrator').value.trim(), year: $('#eYear').value.trim(),
       description: $('#eDescription').value.trim(),
     };
-    try {
-      const r = await post(`/api/apply/${id}`, { pick, writeTags });
-      toast(writeTags ? `Saved, ${r.written} MP3 file(s) tagged.` : 'Saved.');
-      $('#edit').close();
-      if (state.author) selectAuthor(state.author, null);
-    } catch (e) { toast(e.message); }
+    $('#edit').close();
+    if (writeTags) {
+      await writeWithProgress(id, pick);
+    } else {
+      try { await post(`/api/apply/${id}`, { pick, writeTags: false }); toast('Saved.'); }
+      catch (e) { return toast(e.message); }
+    }
+    if (state.author) selectAuthor(state.author, null);
   };
   $('#saveEdit').onclick = () => save(false);
   $('#saveEditTags').onclick = () => save(true);
@@ -214,12 +224,15 @@ window.findMeta = async function (id, query) {
 };
 
 window.applyMeta = async function (id, i, writeTags) {
-  try {
-    const r = await post(`/api/apply/${id}`, { pick: window._cands[i], writeTags });
-    toast(writeTags ? `Metadata applied, ${r.written} MP3 file(s) tagged.` : 'Metadata applied.');
-    $('#lookup').close();
-    if (state.author) selectAuthor(state.author, null);
-  } catch (e) { toast(e.message); }
+  const pick = window._cands[i];
+  $('#lookup').close();
+  if (writeTags) {
+    await writeWithProgress(id, pick);
+  } else {
+    try { await post(`/api/apply/${id}`, { pick, writeTags: false }); toast('Metadata applied.'); }
+    catch (e) { return toast(e.message); }
+  }
+  if (state.author) selectAuthor(state.author, null);
 };
 $('#closeLookup').onclick = () => $('#lookup').close();
 
@@ -277,21 +290,35 @@ function addLib(p, btn) {
 $('#browseBtn').onclick = () => browse($('#libPath').value.trim() || '/');
 $('#browsePick').onclick = () => addLib(browsePath);
 
-async function startScan() {
+// Drives the bar at the bottom from a {running, done, total, current} endpoint.
+async function trackProgress(statusUrl, label) {
   $('#progress').hidden = false;
   $('#progressBar').style.width = '0';
-  $('#progressText').textContent = 'Looking for books…';
+  $('#progressText').textContent = label;
+  let started = false;
+  let waited = 0;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 300));
+    const p = await api(statusUrl);
+    if (p.running) started = true;
+    if (p.total) {
+      $('#progressBar').style.width = (p.done / p.total) * 100 + '%';
+      $('#progressText').textContent = `${p.done} / ${p.total} · ${p.current}`;
+    }
+    if (started ? !p.running : (waited += 300) > 3000) return p;
+  }
+}
+
+function hideProgressSoon() {
+  setTimeout(() => { $('#progress').hidden = true; }, 3000);
+}
+
+async function startScan() {
   try {
     await post('/api/scan', {});
   } catch (e) { return finishScan(e.message); }
-
-  while (true) {
-    await new Promise((r) => setTimeout(r, 400));
-    const p = await api('/api/scan/status');
-    $('#progressBar').style.width = (p.total ? (p.done / p.total) * 100 : 0) + '%';
-    $('#progressText').textContent = p.total ? `${p.done} / ${p.total} · ${p.current}` : 'Looking for books…';
-    if (!p.running) return finishScan(p.error, p);
-  }
+  const p = await trackProgress('/api/scan/status', 'Looking for books…');
+  finishScan(p.error, p);
 }
 
 function finishScan(error, p) {
@@ -302,7 +329,7 @@ function finishScan(error, p) {
   $('#progressText').textContent = `Scan complete: ${p.books} book(s).`;
   loadGenres();
   loadStats();
-  setTimeout(() => { $('#progress').hidden = true; }, 3000);
+  hideProgressSoon();
 }
 
 $('#scan').onclick = startScan;

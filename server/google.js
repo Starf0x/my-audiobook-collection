@@ -47,7 +47,11 @@ export async function lookup(book, search) {
   }));
 }
 
+export const tagProgress = { running: false, done: 0, total: 0, current: '', written: 0, error: '' };
+
 export async function applyMetadata(book, pick, writeTags) {
+  // set before the first await so a poll right after the request sees it
+  if (writeTags) Object.assign(tagProgress, { running: true, done: 0, total: 0, current: '', written: 0, error: '' });
   let cover = book.cover;
   if (pick.thumbnail) {
     const res = await fetch(pick.thumbnail.replace('http://', 'https://'));
@@ -64,8 +68,9 @@ export async function applyMetadata(book, pick, writeTags) {
     .run(pick.title || book.title, pick.narrator || book.narrator,
          pick.year || book.year, pick.description || book.description, cover, book.id);
 
-  const written = [];
-  if (writeTags) {
+  if (!writeTags) return { written: 0 };
+
+  {
     const coverFile = cover && !cover.startsWith('file:') ? path.join(DATA_DIR, 'covers', cover) : null;
     const tags = {
       album: pick.title || book.title,
@@ -76,11 +81,22 @@ export async function applyMetadata(book, pick, writeTags) {
       comment: { language: 'eng', text: pick.description || book.description || '' },
       ...(coverFile && fs.existsSync(coverFile) ? { APIC: coverFile } : {}),
     };
-    for (const t of db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)) {
-      if (!t.path.toLowerCase().endsWith('.mp3')) continue;
-      const ok = NodeID3.update(tags, t.path);
-      if (ok === true) written.push(t.path);
+    const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
+      .map((t) => t.path).filter((p) => p.toLowerCase().endsWith('.mp3'));
+    tagProgress.total = files.length;
+    try {
+      for (const file of files) {
+        tagProgress.current = path.basename(file);
+        if (NodeID3.update(tags, file) === true) tagProgress.written++;
+        tagProgress.done++;
+        // yield so the status endpoint can answer while writing
+        await new Promise((r) => setImmediate(r));
+      }
+    } catch (e) {
+      tagProgress.error = e.message;
+    } finally {
+      tagProgress.running = false;
     }
   }
-  return { written: written.length };
+  return { written: tagProgress.written };
 }
