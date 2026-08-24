@@ -16,20 +16,34 @@ const explain = (status, detail) => ({
   503: 'Google Books is temporarily unavailable. Retried after 10, 20 and 30 seconds without success — try again later.',
 }[status] || `Google Books replied with an unexpected error (HTTP ${status}).`) + (detail ? ` Google says: "${detail}"` : '');
 
+export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTER.length + 1, retryUntil: 0 };
+
 export async function lookup(book, search) {
   const key = getSetting('googleApiKey');
   if (!key) throw new Error('No Google Books API key set yet. Open Settings and paste your key first.');
+  Object.assign(lookupProgress, { running: true, attempt: 0, retryUntil: 0 });
+  try {
+    return await search_(book, search, key);
+  } finally {
+    lookupProgress.running = false;
+  }
+}
+
+async function search_(book, search, key) {
   const q = search || `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
   const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&key=${key}`;
 
   let res;
   for (let attempt = 0; ; attempt++) {
+    lookupProgress.attempt = attempt + 1;
+    lookupProgress.retryUntil = 0;
     try {
       res = await fetch(url);
     } catch {
       throw new Error('Could not reach Google Books. The server appears to have no internet connection.');
     }
     if (res.status !== 503 || attempt === RETRY_AFTER.length) break;
+    lookupProgress.retryUntil = Date.now() + RETRY_AFTER[attempt];
     await new Promise((r) => setTimeout(r, RETRY_AFTER[attempt]));
   }
   if (!res.ok) {
