@@ -12,10 +12,10 @@ const explain = (status, detail) => ({
   429: 'Too many requests: the Google Books daily quota or rate limit has been reached. Try again later.',
 }[status] || `Google Books replied with an unexpected error (HTTP ${status}).`) + (detail ? ` Google says: "${detail}"` : '');
 
-export async function lookup(book) {
+export async function lookup(book, search) {
   const key = getSetting('googleApiKey');
   if (!key) throw new Error('No Google Books API key set yet. Open Settings and paste your key first.');
-  const q = `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
+  const q = search || `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
   const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&key=${key}`;
 
   let res;
@@ -50,9 +50,11 @@ export async function applyMetadata(book, pick, writeTags) {
     }
   }
 
-  db.prepare('UPDATE books SET title = ?, author = ?, year = ?, description = ?, cover = ? WHERE id = ?')
-    .run(pick.title || book.title, pick.author || book.author, pick.year || book.year,
-         pick.description || book.description, cover, book.id);
+  // author and genre stay as the folder tree named them: they are the navigation
+  // keys, and a scan derives them from the folders anyway. Only the tag gets pick.
+  db.prepare('UPDATE books SET title = ?, narrator = ?, year = ?, description = ?, cover = ? WHERE id = ?')
+    .run(pick.title || book.title, pick.narrator || book.narrator,
+         pick.year || book.year, pick.description || book.description, cover, book.id);
 
   const written = [];
   if (writeTags) {
@@ -62,6 +64,7 @@ export async function applyMetadata(book, pick, writeTags) {
       artist: pick.author || book.author,
       year: pick.year || book.year,
       genre: pick.genre || book.genre,
+      composer: pick.narrator || book.narrator || '',
       comment: { language: 'eng', text: pick.description || book.description || '' },
       ...(coverFile && fs.existsSync(coverFile) ? { APIC: coverFile } : {}),
     };

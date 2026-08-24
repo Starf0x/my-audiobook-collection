@@ -75,6 +75,8 @@ async function selectAuthor(author, li) {
       <div class="actions">
         <button onclick="playBook(${b.id})">▶ Play</button>
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
+        <button class="ghost" onclick="writeTags(${b.id})">Write into MP3s</button>
+        <button class="ghost" onclick="editMeta(${b.id})">Edit metadata</button>
       </div>
     </div>`;
   }
@@ -119,11 +121,50 @@ function saveProgress() {
 }
 
 // --- metadata lookup ---------------------------------------------------
-window.findMeta = async function (id) {
-  $('#lookupBody').innerHTML = 'Searching Google Books…';
-  $('#lookup').showModal();
+// Write what the app already knows about the book into its MP3 files.
+window.writeTags = async function (id) {
   try {
-    const cands = await api(`/api/lookup/${id}`);
+    const r = await post(`/api/apply/${id}`, { pick: {}, writeTags: true });
+    toast(`${r.written} MP3 file(s) tagged.`);
+  } catch (e) { toast(e.message); }
+};
+
+window.editMeta = async function (id) {
+  const b = await api(`/api/books/${id}`);
+  $('#eTitle').value = b.title || '';
+  $('#eAuthor').value = b.author || '';
+  $('#eNarrator').value = b.narrator || '';
+  $('#eYear').value = b.year || '';
+  $('#eDescription').value = b.description || '';
+  const save = async (writeTags) => {
+    const pick = {
+      title: $('#eTitle').value.trim(), author: $('#eAuthor').value.trim(),
+      narrator: $('#eNarrator').value.trim(), year: $('#eYear').value.trim(),
+      description: $('#eDescription').value.trim(),
+    };
+    try {
+      const r = await post(`/api/apply/${id}`, { pick, writeTags });
+      toast(writeTags ? `Saved, ${r.written} MP3 file(s) tagged.` : 'Saved.');
+      $('#edit').close();
+      if (state.author) selectAuthor(state.author, null);
+    } catch (e) { toast(e.message); }
+  };
+  $('#saveEdit').onclick = () => save(false);
+  $('#saveEditTags').onclick = () => save(true);
+  $('#edit').showModal();
+};
+$('#closeEdit').onclick = () => $('#edit').close();
+
+window.findMeta = async function (id, query) {
+  $('#lookupBody').innerHTML = 'Searching Google Books…';
+  if (!$('#lookup').open) {
+    const b = await api(`/api/books/${id}`);
+    $('#lookupQuery').value = [b.title, b.author].filter(Boolean).join(' ');
+    $('#lookup').showModal();
+  }
+  $('#lookupSearch').onclick = () => findMeta(id, $('#lookupQuery').value.trim());
+  try {
+    const cands = await api(`/api/lookup/${id}` + (query ? '?q=' + encodeURIComponent(query) : ''));
     window._cands = cands;
     $('#lookupBody').innerHTML = cands.length ? cands.map((c, i) => `<div class="cand">
       ${c.thumbnail ? `<img src="${c.thumbnail}" alt="">` : ''}
@@ -136,7 +177,7 @@ window.findMeta = async function (id) {
           <button class="ghost" onclick="applyMeta(${id},${i},true)">Use + write into MP3s</button>
         </div>
       </div></div>`).join('')
-      : '<div class="empty">Google Books found no match for this title and author. Try correcting the folder name or the album/artist tag, then search again.</div>';
+      : '<div class="empty">No match on Google Books. Adjust the search above and try again, or use <em>Edit metadata</em> to fill it in yourself.</div>';
   } catch (e) {
     $('#lookupBody').innerHTML = `<div class="empty">${e.message}</div>`;
   }
