@@ -35,7 +35,7 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 ## Run it on Unraid
 
 1. Docker → **Add Container** → fill in:
-   * Repository: `YOURDOCKERHUBUSER/my-audiobook-collection:latest`
+   * Repository: `starf0x/my-audiobook-collection:latest`
    * Port: `8080` → `8080`
    * Path: `/data` → `/mnt/user/appdata/my-audiobook-collection` (database + covers)
    * Path: `/audiobooks` → `/mnt/user/Audiobooks` (read/write if you want to write tags)
