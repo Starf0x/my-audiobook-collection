@@ -98,22 +98,31 @@ async function apply_(book, pick, writeTags) {
 
   {
     const coverFile = cover && !cover.startsWith('file:') ? path.join(DATA_DIR, 'covers', cover) : null;
+    const author = pick.author || book.author;
+    const description = pick.description || book.description || '';
     const tags = {
       album: pick.title || book.title,
-      artist: pick.author || book.author,
+      artist: author,
+      performerInfo: author, // TPE2, the album artist
       year: pick.year || book.year,
       genre: pick.genre || book.genre,
       composer: pick.narrator || book.narrator || '',
-      comment: { language: 'eng', text: pick.description || book.description || '' },
+      ...(description ? { comment: { language: 'eng', text: description } } : {}),
       ...(coverFile && fs.existsSync(coverFile) ? { APIC: coverFile } : {}),
     };
+    // an empty value would write an empty frame, which reads back as "present"
+    for (const [k, v] of Object.entries(tags)) if (!v) delete tags[k];
     const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
       .map((t) => t.path).filter((p) => p.toLowerCase().endsWith('.mp3'));
     tagProgress.total = files.length;
+    // renumber in the order the tracks already play, zero padded to at least two digits
+    const width = Math.max(2, String(files.length).length);
+    const total = String(files.length).padStart(width, '0');
     try {
-      for (const file of files) {
+      for (const [i, file] of files.entries()) {
         tagProgress.current = path.basename(file);
-        if (NodeID3.update(tags, file) === true) tagProgress.written++;
+        const trackNumber = `${String(i + 1).padStart(width, '0')}/${total}`;
+        if (NodeID3.update({ ...tags, trackNumber }, file) === true) tagProgress.written++;
         tagProgress.done++;
         // yield so the status endpoint can answer while writing
         await new Promise((r) => setImmediate(r));
@@ -123,9 +132,9 @@ async function apply_(book, pick, writeTags) {
     }
     if (tagProgress.written) {
       const present = [
-        ['album', tags.album], ['artist', tags.artist], ['narrator', tags.composer],
-        ['genre', tags.genre], ['year', tags.year], ['description', tags.comment.text],
-        ['cover', tags.APIC],
+        ['album', tags.album], ['artist', tags.artist], ['album artist', tags.performerInfo],
+        ['narrator', tags.composer], ['genre', tags.genre], ['year', tags.year],
+        ['description', tags.comment?.text], ['cover', tags.APIC], ['track no', true],
       ].filter(([, v]) => v).map(([k]) => k).join(',');
       db.prepare('UPDATE books SET tagged = ? WHERE id = ?').run(present, book.id);
     }

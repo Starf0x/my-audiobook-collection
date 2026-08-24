@@ -27,9 +27,9 @@ const descriptionOf = (c) => {
 // which tags the files themselves carry, so the interface can tell file
 // metadata apart from what only lives in the database
 const taggedFields = (c) => [
-  ['album', c.album], ['artist', c.artist], ['narrator', c.composer?.[0]],
-  ['genre', c.genre?.[0]], ['year', c.year], ['description', descriptionOf(c)],
-  ['cover', c.picture?.[0]],
+  ['album', c.album], ['artist', c.artist], ['album artist', c.albumartist],
+  ['narrator', c.composer?.[0]], ['genre', c.genre?.[0]], ['year', c.year],
+  ['description', descriptionOf(c)], ['cover', c.picture?.[0]], ['track no', c.track?.no],
 ].filter(([, v]) => v).map(([k]) => k).join(',');
 
 async function taggedOf(file) {
