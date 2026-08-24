@@ -26,6 +26,8 @@ db.exec(`
     PRIMARY KEY (user, book_id)
   );
   CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY);
+  -- every book lookup, delete and tag write filters tracks by book_id
+  CREATE INDEX IF NOT EXISTS tracks_book ON tracks (book_id);
 `);
 
 // databases created before the listened flag existed

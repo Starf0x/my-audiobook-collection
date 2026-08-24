@@ -66,14 +66,26 @@ export const tagProgress = { running: false, done: 0, total: 0, current: '', wri
 export async function applyMetadata(book, pick, writeTags) {
   // set before the first await so a poll right after the request sees it
   if (writeTags) Object.assign(tagProgress, { running: true, done: 0, total: 0, current: '', written: 0, error: '' });
+  try {
+    return await apply_(book, pick, writeTags);
+  } finally {
+    // whatever failed, the bar must stop spinning
+    tagProgress.running = false;
+  }
+}
+
+async function apply_(book, pick, writeTags) {
   let cover = book.cover;
   if (pick.thumbnail) {
-    const res = await fetch(pick.thumbnail.replace('http://', 'https://'));
-    if (res.ok) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      cover = crypto.createHash('md5').update(book.path).digest('hex') + '.jpg';
-      fs.writeFileSync(path.join(DATA_DIR, 'covers', cover), buf);
-    }
+    // a cover that will not download must not stop the metadata being applied
+    try {
+      const res = await fetch(pick.thumbnail.replace('http://', 'https://'));
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        cover = crypto.createHash('md5').update(book.path).digest('hex') + '.jpg';
+        fs.writeFileSync(path.join(DATA_DIR, 'covers', cover), buf);
+      }
+    } catch { /* keep the cover the book already had */ }
   }
 
   // author and genre stay as the folder tree named them: they are the navigation
@@ -108,8 +120,6 @@ export async function applyMetadata(book, pick, writeTags) {
       }
     } catch (e) {
       tagProgress.error = e.message;
-    } finally {
-      tagProgress.running = false;
     }
   }
   return { written: tagProgress.written };
