@@ -108,12 +108,24 @@ async function addBook(genre, author, series, bookPath, files = null) {
   return 1;
 }
 
-export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '' };
+// A library root holds genre folders, so its books sit three levels down. When
+// they sit two levels down the root is a genre folder and every author would be
+// filed as a genre, which is the easiest mistake to make when picking a folder.
+function looksTooDeep(root) {
+  for (const child of dirs(root).slice(0, 3)) {
+    for (const grand of dirs(child).slice(0, 3)) {
+      if (audioFiles(grand).length) return true;
+    }
+  }
+  return false;
+}
+
+export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '', warning: '' };
 
 export async function scan() {
   // running must be true before walking the tree: on a large library that walk
   // takes tens of seconds, and the UI would otherwise read the scan as finished.
-  Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '' });
+  Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '', warning: '' });
   try {
     await walkAndScan();
   } catch (e) {
@@ -128,9 +140,11 @@ export async function scan() {
 
 async function walkAndScan() {
   const jobs = [];
-  for (const root of getLibraries()) {
-    if (!fs.existsSync(root)) continue;
-    for (const genreDir of dirs(root)) {
+  const tooDeep = [];
+  for (const lib of getLibraries()) {
+    if (!fs.existsSync(lib.path)) continue;
+    if (!lib.asGenre && looksTooDeep(lib.path)) tooDeep.push(lib.path);
+    for (const genreDir of (lib.asGenre ? [lib.path] : dirs(lib.path))) {
       const genre = path.basename(genreDir);
       for (const authorDir of dirs(genreDir)) {
         const author = path.basename(authorDir);
@@ -151,6 +165,12 @@ async function walkAndScan() {
         }
       }
     }
+  }
+
+  if (tooDeep.length) {
+    progress.warning = `${tooDeep.join(', ')} looks like a single genre folder, so its authors are `
+      + 'being filed as genres. Tick "is one genre" behind it in Settings, or add the folder that '
+      + 'contains your genre folders instead.';
   }
 
   progress.total = jobs.length;
