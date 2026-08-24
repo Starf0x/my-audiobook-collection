@@ -292,48 +292,75 @@ $('#importList').onclick = async () => {
       <div class="sub">${c.files} file(s)${c.album ? ' · album: ' + esc(c.album) : ''}${c.artist ? ' · author: ' + esc(c.artist) : ''}</div>
     </div>
     <div class="actions"><button data-pick="${i}">Import this</button></div>
-  </div>`).join('') + '<div id="importForm"></div>';
+  </div>`).join('');
   $('#books .list').querySelectorAll('button[data-pick]').forEach((b) => {
     b.onclick = () => importForm(d, d.candidates[Number(b.dataset.pick)]);
   });
 };
 
+// A dialog rather than a panel: with a long candidate list a form appended below
+// it lands off screen, which looks exactly like the button doing nothing.
 function importForm(d, c) {
-  $('#importForm').innerHTML = `<div class="fix" style="display:block">
-    <strong>Import “${esc(c.name)}”</strong>
-    <div class="row">
-      <select id="iGenre">${d.genres.map((g) => `<option>${esc(g)}</option>`).join('')}</select>
-      <input id="iAuthor" placeholder="Author" value="${esc(c.artist)}">
-      <input id="iSeries" placeholder="Series (optional)" value="${esc(c.series || '')}">
-      <input id="iTitle" placeholder="Title" value="${esc(c.album || c.name)}">
-      <button id="iGo">Move</button>
-    </div>
-    <div class="sub" id="iWhere"></div>
-  </div>`;
+  $('#iSource').textContent = `From ${c.where} · ${c.files} file(s)`;
+  $('#iFound').innerHTML = '';
+  $('#iGenre').innerHTML = d.genres.map((g) =>
+    `<option${g === c.genre ? ' selected' : ''}>${esc(g)}</option>`).join('');
+  $('#iAuthor').value = c.artist || '';
+  $('#iSeries').value = c.series || '';
+  $('#iTitle').value = c.album || c.name;
   const preview = () => {
     const parts = [$('#iAuthor').value.trim(), $('#iSeries').value.trim(), $('#iTitle').value.trim()].filter(Boolean);
     $('#iWhere').textContent = `Moves into ${$('#iGenre').value} / ${parts.join(' / ')}`;
   };
   ['iGenre', 'iAuthor', 'iSeries', 'iTitle'].forEach((id) => { $('#' + id).oninput = preview; $('#' + id).onchange = preview; });
   preview();
+  // Look the book up before its folder name is settled, and fill the fields in
+  // from a result rather than typing them.
+  $('#iLookup').onclick = async () => {
+    const q = [$('#iTitle').value.trim(), $('#iAuthor').value.trim()].filter(Boolean).join(' ');
+    if (!q) return toast('Fill in a title or author to search for.');
+    $('#iFound').innerHTML = '<p class="hint">Searching Google Books…</p>';
+    try {
+      const found = await api('/api/lookup?q=' + encodeURIComponent(q));
+      $('#iFound').innerHTML = found.length ? found.slice(0, 4).map((r, i) => `<div class="cand">
+        ${r.thumbnail ? `<img src="${esc(r.thumbnail)}" alt="">` : ''}
+        <div style="flex:1">
+          <strong>${esc(r.title)}</strong>
+          <div class="sub">${esc(r.author)}${r.year ? ' · ' + esc(r.year) : ''}</div>
+          <div class="row"><button data-use="${i}">Use this</button></div>
+        </div></div>`).join('') : '<p class="hint missing">No match. Adjust the title or author and try again.</p>';
+      $('#iFound').querySelectorAll('button[data-use]').forEach((b) => {
+        b.onclick = () => {
+          const r = found[Number(b.dataset.use)];
+          if (r.title) $('#iTitle').value = r.title;
+          if (r.author) $('#iAuthor').value = r.author;
+          $('#iFound').innerHTML = '';
+          preview();
+        };
+      });
+    } catch (e) {
+      $('#iFound').innerHTML = `<p class="hint missing">${esc(e.message)}</p>`;
+    }
+  };
+
   $('#iGo').onclick = async () => {
+    $('#importDlg').close();
     const body = {
       source: c.path, genre: $('#iGenre').value, author: $('#iAuthor').value.trim(),
       series: $('#iSeries').value.trim(), title: $('#iTitle').value.trim(),
     };
-    const until = { finished: false };
-    const request = post('/api/import', body).catch((e) => ({ error: e.message }))
-      .then((r) => { until.finished = true; return r; });
-    const p = await trackProgress('/api/files/status', 'Moving the files…', until);
-    const r = await request;
-    const failure = r.error || p.error;
-    $('#progressText').textContent = failure ? 'Import failed: ' + failure : `Imported into ${r.dest}`;
-    hideProgressSoon(failure ? 15000 : 3000);
-    if (!failure) { await post('/api/scan', {}); await trackProgress('/api/scan/status', 'Looking for books…'); }
-    loadGenres(); loadStats(); loadUntagged();
+    const { ok, r } = await fileWork('/api/import', body, 'Import');
+    if (ok) {
+      $('#progressText').textContent = `Imported into ${r.dest}`;
+      await post('/api/scan', {});
+      await trackProgress('/api/scan/status', 'Looking for books…');
+      await Promise.all([loadGenres(), loadStats(), loadUntagged()]);
+    }
     $('#importList').click();
   };
+  $('#importDlg').showModal();
 }
+$('#closeImport').onclick = () => $('#importDlg').close();
 
 // --- move and delete ---------------------------------------------------
 // Runs a file operation while the bar at the bottom follows it.

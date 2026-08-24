@@ -53,6 +53,7 @@ export async function candidates() {
 
   const found = [];
   for (const d of dirs(root)) findBooks(d, 1, found);
+  const known = new Set(genreFolders().map((g) => g.genre));
 
   // reading one tag per book is the slow part, so it reports progress
   beginFileWork();
@@ -68,18 +69,21 @@ export async function candidates() {
         album = c.album || '';
         artist = c.artist || c.albumartist || '';
       } catch { /* unreadable, the folder names will have to do */ }
-      // Guess from the folders around it, the way the library itself is laid out:
-      // author/book, or author/series/book when it sits a level deeper.
+      // Guess from the folders around it, the way the library itself is laid out.
+      // A leading folder that names a known genre is that, not an author, which
+      // is what an import folder organised like the library looks like.
       const parts = path.relative(root, b.dir).split(path.sep);
-      const guessedAuthor = parts.length >= 3 ? parts[parts.length - 3] : (parts[parts.length - 2] || '');
+      const genre = known.has(parts[0]) ? parts[0] : '';
+      const p = genre ? parts.slice(1) : parts;
       out.push({
         path: b.dir,
         name: path.basename(b.dir),
         where: parts.join(' / '),
         files: b.files.length,
         album,
-        artist: artist || guessedAuthor,
-        series: parts.length >= 3 ? parts[parts.length - 2] : '',
+        genre,
+        artist: artist || (p.length >= 3 ? p[p.length - 3] : (p[p.length - 2] || '')),
+        series: p.length >= 3 ? p[p.length - 2] : '',
       });
       fileProgress.done++;
       await new Promise((r) => setImmediate(r));
