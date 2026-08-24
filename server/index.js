@@ -93,7 +93,7 @@ app.post('/api/progress', (req, res) => {
 // --- metadata lookup ---------------------------------------------------
 app.get('/api/lookup/:id', wrap(async (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
-  res.json(await lookup(book));
+  res.json(await lookup(book, req.query.q));
 }));
 
 app.post('/api/apply/:id', wrap(async (req, res) => {
