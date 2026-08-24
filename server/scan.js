@@ -70,7 +70,9 @@ async function addBook(genre, author, series, bookPath, files = null) {
     ON CONFLICT(path) DO UPDATE SET genre = excluded.genre, author = excluded.author, series = excluded.series,
       title = excluded.title, narrator = excluded.narrator, year = excluded.year,
       description = excluded.description, cover = excluded.cover, duration = excluded.duration`)
-    .run(bookPath, genre, author, series, m.title || folderTitle, m.narrator, m.year, m.description, m.cover, m.duration);
+    // Folder name wins over the album tag: album tags repeat across a series
+    // ("The Belgariad" for all ten books) while folder names identify the book.
+    .run(bookPath, genre, author, series, folderTitle || m.title, m.narrator, m.year, m.description, m.cover, m.duration);
 
   const id = db.prepare('SELECT id FROM books WHERE path = ?').get(bookPath).id;
   db.prepare('DELETE FROM tracks WHERE book_id = ?').run(id);
