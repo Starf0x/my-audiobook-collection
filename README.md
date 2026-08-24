@@ -75,8 +75,10 @@ docker compose up -d
 ## Importing new audiobooks
 
 Set an **Import folder** in Settings, drop new audiobooks in it, then open
-**Import** in the left column. Every folder there that holds audio is listed with
-what its tags say. Pick one, choose the genre, and correct the author, optional
+**Import** in the left column. Every book folder in there is listed, however deep
+it sits: a folder holding audio is a book, and so is one whose sub-folders are all
+discs. The author and series are guessed from the folders around it and from the
+tags. Pick one, choose the genre, and correct the author, optional
 series and title; the line underneath shows exactly where it will land. *Move*
 files the folder into `<genre>/<author>/[series]/<title>` and rescans, so the book
 appears in the library straight away.

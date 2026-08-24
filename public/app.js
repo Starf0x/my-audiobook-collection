@@ -251,10 +251,18 @@ $('#tagAll').onclick = async () => {
 };
 
 // --- import: file a folder from the import path under a genre and author ---
-async function loadImport() {
-  const d = await api('/api/import').catch(() => ({ candidates: [] }));
-  $('#importCount').textContent = d.candidates.length;
-  return d;
+// Reading a tag per book takes a moment on a full import folder, so the bar
+// follows it. Errors are handed back rather than swallowed into "nothing found".
+async function loadImport(showBar) {
+  const until = { finished: false };
+  const request = api('/api/import')
+    .then((d) => ({ d }), (e) => ({ error: e.message }))
+    .then((r) => { until.finished = true; return r; });
+  if (showBar) await trackProgress('/api/files/status', 'Reading the import folder…', until);
+  const r = await request;
+  if (showBar) { $('#progress').hidden = true; }
+  $('#importCount').textContent = r.d ? r.d.candidates.length : '!';
+  return r;
 }
 
 $('#importList').onclick = async () => {
@@ -263,19 +271,25 @@ $('#importList').onclick = async () => {
   $('#importList').classList.add('active');
   $('#authors ul').innerHTML = '';
   $('#books .list').innerHTML = '<div class="empty">Looking in the import folder…</div>';
-  const d = await loadImport();
-  if (!d.path) {
-    $('#books .list').innerHTML = '<div class="empty">No import folder set. Add one in Settings.</div>';
+  const { d, error } = await loadImport(true);
+  if (error) {
+    $('#books .list').innerHTML = `<div class="empty missing">${esc(error)}</div>`;
+    return;
+  }
+  if (!d.genres.length) {
+    $('#books .list').innerHTML = '<div class="empty missing">No genre folders to import into. '
+      + 'Add a library folder in Settings and scan first.</div>';
     return;
   }
   if (!d.candidates.length) {
-    $('#books .list').innerHTML = `<div class="empty">Nothing to import in ${esc(d.path)}.</div>`;
+    $('#books .list').innerHTML = `<div class="empty">No audiobook folders found in ${esc(d.path)}.</div>`;
     return;
   }
   $('#books .list').innerHTML = d.candidates.map((c, i) => `<div class="fix" data-i="${i}">
     <div>
       <strong>${esc(c.name)}</strong>
-      <div class="sub">${c.files} file(s)${c.album ? ' · album: ' + esc(c.album) : ''}${c.artist ? ' · artist: ' + esc(c.artist) : ''}</div>
+      <div class="sub">${esc(c.where)}</div>
+      <div class="sub">${c.files} file(s)${c.album ? ' · album: ' + esc(c.album) : ''}${c.artist ? ' · author: ' + esc(c.artist) : ''}</div>
     </div>
     <div class="actions"><button data-pick="${i}">Import this</button></div>
   </div>`).join('') + '<div id="importForm"></div>';
@@ -290,7 +304,7 @@ function importForm(d, c) {
     <div class="row">
       <select id="iGenre">${d.genres.map((g) => `<option>${esc(g)}</option>`).join('')}</select>
       <input id="iAuthor" placeholder="Author" value="${esc(c.artist)}">
-      <input id="iSeries" placeholder="Series (optional)">
+      <input id="iSeries" placeholder="Series (optional)" value="${esc(c.series || '')}">
       <input id="iTitle" placeholder="Title" value="${esc(c.album || c.name)}">
       <button id="iGo">Move</button>
     </div>
@@ -677,4 +691,4 @@ function finishScan(error, p) {
 
 $('#scan').onclick = startScan;
 
-loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(loadImport).then(loadTrash).then(loadHome);
+loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(() => loadImport(false)).then(loadTrash).then(loadHome);

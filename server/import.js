@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { getSetting, getLibraries } from './db.js';
-import { dirs, audioFiles } from './scan.js';
+import { dirs, audioFiles, DISC } from './scan.js';
 
 // One progress object for every operation that shifts files about: importing,
 // moving a book and emptying it into the trash all report through it.
@@ -25,28 +25,69 @@ export async function moveFolder(src, dest) {
   }
 }
 
-// audio directly in the folder, plus one level down for a disc-split rip
-const filesUnder = (dir) => audioFiles(dir).concat(...dirs(dir).map(audioFiles));
+// Find the book folders in the import path, however deep they sit: a folder that
+// holds audio is a book, and so is one whose sub-folders are all disc markers.
+// Offering the folder that *is* the book matters, or importing an author folder
+// would file its book one level too deep.
+function findBooks(dir, depth, out) {
+  if (depth > 5) return;
+  let own = [];
+  let subs = [];
+  try {
+    own = audioFiles(dir);
+    subs = dirs(dir).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  } catch {
+    return; // unreadable folder, skip it rather than fail the whole listing
+  }
+  if (own.length) return void out.push({ dir, files: own });
+  if (subs.length > 1 && subs.every((d) => DISC.test(path.basename(d)))) {
+    return void out.push({ dir, files: subs.flatMap(audioFiles) });
+  }
+  for (const s of subs) findBooks(s, depth + 1, out);
+}
 
-// Every folder in the import path that holds audio, with what its tags say so
-// the form can be filled in for you.
 export async function candidates() {
   const root = getSetting('importPath');
-  if (!root || !fs.existsSync(root)) return [];
-  const out = [];
-  for (const dir of dirs(root)) {
-    const files = filesUnder(dir);
-    if (!files.length) continue;
-    let album = '';
-    let artist = '';
-    try {
-      const c = (await parseFile(files[0])).common || {};
-      album = c.album || '';
-      artist = c.artist || c.albumartist || '';
-    } catch { /* unreadable, the folder name will have to do */ }
-    out.push({ path: dir, name: path.basename(dir), files: files.length, album, artist });
+  if (!root) throw new Error('No import folder set yet. Add one in Settings.');
+  if (!fs.existsSync(root)) throw new Error(`The import folder is not there: ${root}`);
+
+  const found = [];
+  for (const d of dirs(root)) findBooks(d, 1, found);
+
+  // reading one tag per book is the slow part, so it reports progress
+  beginFileWork();
+  fileProgress.total = found.length;
+  try {
+    const out = [];
+    for (const b of found) {
+      fileProgress.current = path.basename(b.dir);
+      let album = '';
+      let artist = '';
+      try {
+        const c = (await parseFile(b.files[0])).common || {};
+        album = c.album || '';
+        artist = c.artist || c.albumartist || '';
+      } catch { /* unreadable, the folder names will have to do */ }
+      // Guess from the folders around it, the way the library itself is laid out:
+      // author/book, or author/series/book when it sits a level deeper.
+      const parts = path.relative(root, b.dir).split(path.sep);
+      const guessedAuthor = parts.length >= 3 ? parts[parts.length - 3] : (parts[parts.length - 2] || '');
+      out.push({
+        path: b.dir,
+        name: path.basename(b.dir),
+        where: parts.join(' / '),
+        files: b.files.length,
+        album,
+        artist: artist || guessedAuthor,
+        series: parts.length >= 3 ? parts[parts.length - 2] : '',
+      });
+      fileProgress.done++;
+      await new Promise((r) => setImmediate(r));
+    }
+    return out;
+  } finally {
+    fileProgress.running = false;
   }
-  return out;
 }
 
 // Which folder each genre lives in, so an import knows where to put a book.
@@ -78,12 +119,28 @@ export async function importBook({ source, genre, author, series, title }) {
   beginFileWork();
   try {
     await moveFolder(source, dest);
+    pruneEmptyParents(source);
     return { dest };
   } catch (e) {
     fileProgress.error = e.message;
     throw e;
   } finally {
     fileProgress.running = false;
+  }
+}
+
+// A book nested under author and series folders leaves those behind. Drop them
+// while they are empty, never the import folder itself.
+function pruneEmptyParents(source) {
+  const root = path.resolve(getSetting('importPath'));
+  let dir = path.resolve(path.dirname(source));
+  while (dir !== root && dir.startsWith(root + path.sep)) {
+    try {
+      fs.rmdirSync(dir); // throws while anything is still in it
+    } catch {
+      return;
+    }
+    dir = path.dirname(dir);
   }
 }
 
