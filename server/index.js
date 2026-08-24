@@ -4,7 +4,7 @@ import path from 'node:path';
 import url from 'node:url';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
-import { lookup, applyMetadata, tagProgress } from './google.js';
+import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -111,8 +111,15 @@ app.post('/api/progress', (req, res) => {
 });
 
 // --- metadata lookup ---------------------------------------------------
+// before /api/lookup/:id, which would otherwise swallow "status"
+app.get('/api/lookup/status', (req, res) => res.json({
+  ...lookupProgress,
+  retryIn: Math.max(0, Math.ceil((lookupProgress.retryUntil - Date.now()) / 1000)),
+}));
+
 app.get('/api/lookup/:id', wrap(async (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
+  if (!book) return res.status(404).json({ error: 'Book not found' });
   res.json(await lookup(book, req.query.q));
 }));
 
