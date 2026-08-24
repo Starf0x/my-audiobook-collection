@@ -4,7 +4,26 @@ import { parseFile } from 'music-metadata';
 import { getSetting, getLibraries } from './db.js';
 import { dirs, audioFiles } from './scan.js';
 
-export const importProgress = { running: false, done: 0, total: 0, current: '', error: '' };
+// One progress object for every operation that shifts files about: importing,
+// moving a book and emptying it into the trash all report through it.
+export const fileProgress = { running: false, done: 0, total: 0, current: '', error: '' };
+
+export function beginFileWork() {
+  Object.assign(fileProgress, { running: true, done: 0, total: 0, current: '', error: '' });
+}
+
+// A rename where the two paths share a filesystem, a copy where they do not,
+// which is the case for two separate Docker bind mounts.
+export async function moveFolder(src, dest) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  try {
+    fs.renameSync(src, dest);
+  } catch (e) {
+    if (e.code !== 'EXDEV') throw e;
+    await copyTree(src, dest);
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+}
 
 // audio directly in the folder, plus one level down for a disc-split rip
 const filesUnder = (dir) => audioFiles(dir).concat(...dirs(dir).map(audioFiles));
@@ -41,35 +60,30 @@ export function genreFolders() {
   return out;
 }
 
-const clean = (s) => String(s || '').trim().replace(/[\\/:*?"<>|]/g, '-');
+export const clean = (s) => String(s || '').trim().replace(/[\\/:*?"<>|]/g, '-');
 
-export async function importBook({ source, genre, author, series, title }) {
+// Where a book with this genre, author, series and title belongs on disk.
+export function destinationFor({ genre, author, series, title }) {
   const target = genreFolders().find((g) => g.genre === genre);
   if (!target) throw new Error(`Unknown genre: ${genre}`);
   if (!clean(author) || !clean(title)) throw new Error('An author and a title are required');
-  if (!source || !fs.existsSync(source)) throw new Error('That import folder is no longer there');
+  return path.join(target.path, clean(author), ...(clean(series) ? [clean(series)] : []), clean(title));
+}
 
-  const parts = [clean(author), ...(clean(series) ? [clean(series)] : []), clean(title)];
-  const dest = path.join(target.path, ...parts);
+export async function importBook({ source, genre, author, series, title }) {
+  const dest = destinationFor({ genre, author, series, title });
+  if (!source || !fs.existsSync(source)) throw new Error('That import folder is no longer there');
   if (fs.existsSync(dest)) throw new Error(`There is already a folder at ${dest}`);
 
-  Object.assign(importProgress, { running: true, done: 0, total: 0, current: '', error: '' });
+  beginFileWork();
   try {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    try {
-      fs.renameSync(source, dest);
-    } catch (e) {
-      // import folder on another mount than the library: copy across, then drop the source
-      if (e.code !== 'EXDEV') throw e;
-      await copyTree(source, dest);
-      fs.rmSync(source, { recursive: true, force: true });
-    }
+    await moveFolder(source, dest);
     return { dest };
   } catch (e) {
-    importProgress.error = e.message;
+    fileProgress.error = e.message;
     throw e;
   } finally {
-    importProgress.running = false;
+    fileProgress.running = false;
   }
 }
 
@@ -82,12 +96,12 @@ async function copyTree(src, dest) {
     }
   };
   walk(src, '');
-  importProgress.total = files.length;
+  fileProgress.total = files.length;
   for (const f of files) {
-    importProgress.current = path.basename(f.from);
+    fileProgress.current = path.basename(f.from);
     fs.mkdirSync(path.dirname(f.to), { recursive: true });
     fs.copyFileSync(f.from, f.to);
-    importProgress.done++;
+    fileProgress.done++;
     await new Promise((r) => setImmediate(r)); // let the status endpoint answer
   }
 }
