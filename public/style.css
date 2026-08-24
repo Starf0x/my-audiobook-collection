@@ -7,12 +7,19 @@
 [hidden] { display: none !important; }
 body {
   margin: 0; height: 100vh; display: flex; flex-direction: column;
-  background: var(--bg); color: var(--text);
+  color: var(--text);
+  /* a soft glow in the interface colours, so the empty panels are not a flat slab */
+  background:
+    radial-gradient(1100px 700px at 8% -12%, rgba(124, 92, 255, .20), transparent 62%),
+    radial-gradient(900px 600px at 94% 108%, rgba(34, 211, 238, .15), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 header {
   display: flex; align-items: center; gap: 8px; padding: 10px 16px;
   background: linear-gradient(90deg, #171a21, #12141a); border-bottom: 1px solid var(--line);
+  box-shadow: 0 10px 26px -22px #000;
 }
 header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
 .spacer { flex: 1; }
@@ -28,7 +35,8 @@ main { flex: 1; display: grid; grid-template-columns: 230px 260px 1fr; min-heigh
 main > * { overflow-y: auto; border-right: 1px solid var(--line); padding-bottom: 24px; }
 #books { border-right: none; }
 .col-title {
-  position: sticky; top: 0; background: var(--bg); padding: 12px 16px 8px;
+  position: sticky; top: 0; padding: 12px 16px 8px;
+  background: rgba(14, 16, 20, .82); backdrop-filter: blur(8px);
   font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
 }
 main ul { list-style: none; margin: 0; padding: 0 8px; }
@@ -46,6 +54,7 @@ main li.active .count { color: #e8e2ff; }
 .card {
   display: grid; grid-template-columns: 96px 1fr auto; gap: 14px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 6px 18px -16px #000;
 }
 .card img { width: 96px; height: 144px; object-fit: cover; border-radius: 6px; background: var(--panel2); }
 .card h3 { margin: 0 0 4px; font-size: 15px; }
@@ -64,6 +73,7 @@ main li.active .count { color: #e8e2ff; }
 footer {
   display: flex; align-items: center; gap: 12px; padding: 10px 16px;
   background: var(--panel); border-top: 1px solid var(--line);
+  box-shadow: 0 -10px 26px -22px #000;
 }
 footer img { width: 36px; height: 54px; border-radius: 4px; object-fit: cover; background: var(--panel2); }
 footer .meta { min-width: 200px; display: flex; flex-direction: column; }
