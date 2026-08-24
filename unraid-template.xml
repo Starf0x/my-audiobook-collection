@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>my-audiobook-collection</Name>
-  <Repository>YOURDOCKERHUBUSER/my-audiobook-collection:latest</Repository>
-  <Registry>https://hub.docker.com/r/YOURDOCKERHUBUSER/my-audiobook-collection</Registry>
+  <Repository>starf0x/my-audiobook-collection:latest</Repository>
+  <Registry>https://hub.docker.com/r/starf0x/my-audiobook-collection</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
   <Support>https://github.com/YOURGITHUBUSER/my-audiobook-collection/issues</Support>
