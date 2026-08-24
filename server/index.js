@@ -5,6 +5,7 @@ import url from 'node:url';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
+import { candidates, genreFolders, importBook, importProgress } from './import.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -24,10 +25,12 @@ app.post('/api/users', (req, res) => {
 app.get('/api/settings', (req, res) => res.json({
   libraries: getLibraries(),
   googleApiKey: getSetting('googleApiKey'),
+  importPath: getSetting('importPath'),
 }));
 app.post('/api/settings', (req, res) => {
   setSetting('libraries', JSON.stringify(req.body.libraries || []));
   setSetting('googleApiKey', req.body.googleApiKey || '');
+  setSetting('importPath', req.body.importPath || '');
   res.json({ ok: true });
 });
 
@@ -40,6 +43,15 @@ app.get('/api/browse', (req, res) => {
     .sort();
   res.json({ path: path.resolve(dir), parent: path.dirname(path.resolve(dir)), entries });
 });
+
+// --- import ------------------------------------------------------------
+app.get('/api/import/status', (req, res) => res.json(importProgress));
+app.get('/api/import', wrap(async (req, res) => res.json({
+  path: getSetting('importPath'),
+  genres: genreFolders().map((g) => g.genre),
+  candidates: await candidates(),
+})));
+app.post('/api/import', wrap(async (req, res) => res.json(await importBook(req.body))));
 
 app.post('/api/scan', (req, res) => { if (!progress.running) scan(); res.json({ started: true }); });
 app.get('/api/scan/status', (req, res) => res.json(progress));

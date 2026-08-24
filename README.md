@@ -9,6 +9,7 @@ organised on disk as **Genre → Author → Book** or **Genre → Author → Ser
 * Shows per book which tags the **files themselves** carry, so database-only metadata is visible as such
 * Fills in missing metadata via the **Google Books API**, or by hand, and writes it back into the MP3s
 * A *Needs tags* list of every book whose files miss a required tag, with writing and lookup on the spot
+* Files new audiobooks from an **import folder** into the right genre, author and series
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
 * Runs as a single Docker container, ~700 lines of code, SQLite storage, no external services
 
@@ -57,7 +58,7 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 3. **+ User** → add yourself (playback positions are stored per user)
 4. **Settings** → add `/audiobooks` as a library folder (use *Browse…* to pick it),
    paste your Google Books API key, **Save**. If `/audiobooks` also holds folders you do not
-   want scanned, add the genre folders one by one instead and tick *is one genre* behind each.
+   want scanned, add the genre folders one by one instead and tick *Is a Genre* behind each.
 5. **Scan library**
 
 `unraid-template.xml` in this repo can also be dropped into
@@ -68,6 +69,20 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 ```bash
 docker compose up -d
 ```
+
+## Importing new audiobooks
+
+Set an **Import folder** in Settings, drop new audiobooks in it, then open
+**Import** in the left column. Every folder there that holds audio is listed with
+what its tags say. Pick one, choose the genre, and correct the author, optional
+series and title; the line underneath shows exactly where it will land. *Move*
+files the folder into `<genre>/<author>/[series]/<title>` and rescans, so the book
+appears in the library straight away.
+
+The folder is moved, not copied, so the import folder empties as you work through
+it. If the import folder sits on a different mount than the library, the files are
+copied across and the source removed, with the bar showing the file count. Names
+are stripped of characters a path cannot hold.
 
 ## Google Books API key
 
@@ -120,5 +135,6 @@ server/index.js   HTTP API (express)
 server/db.js      SQLite schema + settings
 server/scan.js    library scanner + tag reader
 server/google.js  Google Books lookup + ID3 writer
+server/import.js  import folder: candidates and moving a book into place
 public/           UI (index.html, style.css, app.js)
 ```
