@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
-import { scan } from './scan.js';
+import { scan, progress } from './scan.js';
 import { lookup, applyMetadata } from './google.js';
 
 const app = express();
@@ -36,12 +36,13 @@ app.get('/api/browse', (req, res) => {
   const dir = req.query.path || '/';
   const entries = fs.readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-    .map((e) => path.join(dir, e.name))
+    .map((e) => path.resolve(dir, e.name))
     .sort();
   res.json({ path: path.resolve(dir), parent: path.dirname(path.resolve(dir)), entries });
 });
 
-app.post('/api/scan', wrap(async (req, res) => res.json(await scan())));
+app.post('/api/scan', (req, res) => { if (!progress.running) scan(); res.json({ started: true }); });
+app.get('/api/scan/status', (req, res) => res.json(progress));
 
 // --- library -----------------------------------------------------------
 app.get('/api/genres', (req, res) => res.json(
