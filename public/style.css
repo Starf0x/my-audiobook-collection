@@ -122,3 +122,13 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 
 .badge.tagged { color: #8ee0b4; border-color: #2b5a45; background: #16241d; }
 .badge.untagged { color: #ffa8a8; border-color: #5a2b2b; background: #241616; }
+
+.fix { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.fix .actions { display: flex; gap: 6px; }
+.fix strong { font-size: 14px; }
+.fix .sub.missing { color: #ffa8a8; }
+
+/* the maintenance list has no author column, so give it that space */
+body.maintenance #authors { display: none; }
+body.maintenance main { grid-template-columns: 230px 1fr; }

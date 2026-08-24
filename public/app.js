@@ -48,6 +48,7 @@ async function loadGenres() {
 }
 
 async function selectGenre(genre, li) {
+  document.body.classList.remove('maintenance');
   state.genre = genre;
   document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
@@ -170,17 +171,16 @@ async function writeWithProgress(id, pick) {
     ? 'Writing tags failed: ' + failure
     : `${r.written} MP3 file(s) tagged.`;
   hideProgressSoon();
+  // the maintenance list and its count depend on what is in the files
+  loadUntagged().then(() => { if ($('#needsTags').classList.contains('active')) $('#needsTags').click(); });
   return !failure;
 }
 
 // Write what the app already knows about the book into its MP3 files.
 window.writeTags = (id) => writeWithProgress(id, {});
 
-// The whole library, one book at a time, so the bar can show where it is.
-$('#tagAll').onclick = async () => {
-  const books = await api('/api/allbooks');
-  if (!confirm(`Write tags into every MP3 of all ${books.length} book(s)? This rewrites the files.`)) return;
-  $('#settings').close();
+// A run of books, one at a time, so the bar can show where it is.
+async function writeMany(books) {
   $('#progress').hidden = false;
   let failed = 0;
   for (const [i, b] of books.entries()) {
@@ -191,7 +191,58 @@ $('#tagAll').onclick = async () => {
   }
   $('#progressText').textContent = `Tags written into ${books.length - failed} of ${books.length} book(s).`;
   hideProgressSoon();
+  loadUntagged();
+}
+
+$('#tagAll').onclick = async () => {
+  const books = await api('/api/allbooks');
+  if (!confirm(`Write tags into every MP3 of all ${books.length} book(s)? This rewrites the files.`)) return;
+  $('#settings').close();
+  await writeMany(books);
   if (state.author) selectAuthor(state.author, null);
+};
+
+// --- maintenance: books whose files miss required tags -------------------
+async function loadUntagged() {
+  const list = await api('/api/untagged').catch(() => []);
+  $('#needsTagsCount').textContent = list.length;
+  return list;
+}
+
+$('#needsTags').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
+  $('#needsTags').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  $('#books .list').innerHTML = '<div class="empty">Checking the files…</div>';
+  const list = await loadUntagged();
+  if (!list.length) {
+    $('#books .list').innerHTML = '<div class="empty">Every book carries all required tags.</div>';
+    return;
+  }
+  const fixable = list.filter((b) => b.fixable.length);
+  const lookup = list.filter((b) => b.needsLookup.length);
+  $('#books .list').innerHTML = `
+    <div class="row" style="margin-bottom:4px">
+      <button id="tagFixable">Write into ${fixable.length} book(s)</button>
+      <span class="hint">${lookup.length} book(s) also miss data this app does not have yet —
+        use Find metadata on those.</span>
+    </div>
+    ${list.map((b) => `<div class="fix">
+      <div>
+        <strong>${esc(b.title)}</strong>
+        <div class="sub">${esc(b.genre)} · ${esc(b.author)}</div>
+        ${b.fixable.length ? `<div class="sub">Writing adds: ${esc(b.fixable.join(', '))}</div>` : ''}
+        ${b.needsLookup.length ? `<div class="sub missing">Not known yet: ${esc(b.needsLookup.join(', '))}</div>` : ''}
+      </div>
+      <div class="actions">
+        ${b.fixable.length ? `<button onclick="writeTags(${b.id})">Write into MP3s</button>` : ''}
+        <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
+      </div>
+    </div>`).join('')}`;
+  $('#tagFixable').onclick = () => {
+    if (confirm(`Write tags into ${fixable.length} book(s)?`)) writeMany(fixable).then(() => $('#needsTags').click());
+  };
 };
 
 window.editMeta = async function (id) {
@@ -386,4 +437,4 @@ function finishScan(error, p) {
 
 $('#scan').onclick = startScan;
 
-loadUsers().then(loadGenres).then(loadStats);
+loadUsers().then(loadGenres).then(loadStats).then(loadUntagged);
