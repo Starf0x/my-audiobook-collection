@@ -21,7 +21,10 @@
   <aside id="genres">
     <div class="col-title">Genres</div><ul></ul>
     <div class="col-title">Maintenance</div>
-    <ul><li id="needsTags"><span>Needs tags</span><span class="count" id="needsTagsCount">…</span></li></ul>
+    <ul>
+      <li id="needsTags"><span>Needs tags</span><span class="count" id="needsTagsCount">…</span></li>
+      <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
+    </ul>
   </aside>
   <section id="authors"><div class="col-title">Authors</div><ul></ul></section>
   <section id="books"><div class="col-title">Books</div><div class="list"></div></section>
@@ -49,7 +52,7 @@
   <label>Library folders (on the server) — add as many as you like</label>
   <p class="hint">Add the folder that <em>contains</em> your genre folders, e.g. <code>/audiobooks</code>.
     If that folder also holds things you do not want scanned, add the genre folders one by one instead
-    and tick <em>is one genre</em> behind each of them.</p>
+    and tick <em>Is a Genre</em> behind each of them.</p>
   <ul id="libList"></ul>
   <div class="row">
     <input id="libPath" placeholder="/audiobooks">
@@ -58,9 +61,15 @@
   </div>
   <div id="browser" hidden>
     <div class="row"><strong id="browserPath"></strong><button id="browseUp" class="ghost">Up</button>
-      <button id="browsePick">Use this folder</button></div>
+      <button id="browsePick">Use as library</button>
+      <button id="browseImportPick" class="ghost">Use as import folder</button></div>
     <ul id="browserList"></ul>
   </div>
+  <label>Import folder (on the server)</label>
+  <div class="row"><input id="importPath" placeholder="/import"><button id="browseImport" class="ghost">Browse…</button></div>
+  <p class="hint">New audiobooks are picked up from here. Use <em>Import</em> in the left column
+    to file one under a genre and author.</p>
+
   <label>Google Books API key</label>
   <input id="apiKey" placeholder="AIza…">
   <p class="hint">Used to look up missing metadata. Get one at
