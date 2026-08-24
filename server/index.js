@@ -45,6 +45,13 @@ app.post('/api/scan', (req, res) => { if (!progress.running) scan(); res.json({ 
 app.get('/api/scan/status', (req, res) => res.json(progress));
 
 // --- library -----------------------------------------------------------
+app.get('/api/stats', (req, res) => {
+  const books = db.prepare('SELECT COUNT(*) AS n FROM books').get().n;
+  const files = db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n;
+  const done = db.prepare('SELECT COUNT(*) AS n FROM progress WHERE user = ? AND done = 1').get(req.query.user || '').n;
+  res.json({ books, files, done, todo: books - done });
+});
+
 app.get('/api/genres', (req, res) => res.json(
   db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all()));
 
