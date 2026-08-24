@@ -118,6 +118,12 @@ function discFiles(dir) {
   return inner.flatMap(audioFiles);
 }
 
+// Add one known book straight away, so an import or a restore turns up in the
+// library at once instead of after a full scan of everything else.
+export async function addOne({ genre, author, series, dir }) {
+  return addBook(genre, author, series || null, dir, discFiles(dir));
+}
+
 // A library root holds genre folders, so its books sit three levels down. When
 // they sit two levels down the root is a genre folder and every author would be
 // filed as a genre, which is the easiest mistake to make when picking a folder.

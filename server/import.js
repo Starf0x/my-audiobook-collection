@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { getSetting, getLibraries } from './db.js';
-import { dirs, audioFiles, DISC } from './scan.js';
+import { dirs, audioFiles, DISC, addOne } from './scan.js';
 
 // One progress object for every operation that shifts files about: importing,
 // moving a book and emptying it into the trash all report through it.
@@ -124,6 +124,8 @@ export async function importBook({ source, genre, author, series, title }) {
   try {
     await moveFolder(source, dest);
     pruneEmptyParents(source);
+    // put it in the library now: a full rescan of a big share takes minutes
+    await addOne({ genre, author: clean(author), series: clean(series), dir: dest });
     return { dest };
   } catch (e) {
     fileProgress.error = e.message;
