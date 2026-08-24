@@ -53,9 +53,22 @@ app.get('/api/authors', (req, res) => res.json(
     .all(req.query.genre)));
 
 app.get('/api/books', (req, res) => res.json(
-  db.prepare(`SELECT id, title, series, narrator, year, description, cover, duration
-              FROM books WHERE genre = ? AND author = ?
-              ORDER BY series IS NULL, series, title`).all(req.query.genre, req.query.author)));
+  db.prepare(`SELECT b.id, b.title, b.series, b.narrator, b.year, b.description, b.cover, b.duration,
+                     p.done, p.position > 0 AS started
+              FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
+              WHERE b.genre = ? AND b.author = ?
+              ORDER BY b.series IS NULL, b.series, b.title`)
+    .all(req.query.user || '', req.query.genre, req.query.author)));
+
+app.post('/api/listened', (req, res) => {
+  const { user, bookId, done } = req.body;
+  if (!user) return res.status(400).json({ error: 'No user' });
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated)
+    VALUES (?, ?, 0, 0, ?, datetime('now'))
+    ON CONFLICT(user, book_id) DO UPDATE SET done = excluded.done, updated = excluded.updated`)
+    .run(user, bookId, done ? 1 : 0);
+  res.json({ ok: true });
+});
 
 app.get('/api/books/:id', (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));

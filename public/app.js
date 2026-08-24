@@ -52,7 +52,8 @@ async function selectAuthor(author, li) {
   state.author = author;
   document.querySelectorAll('#authors li').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
-  const books = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`);
+  const books = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`
+    + `&user=${encodeURIComponent(state.user)}`);
   let html = '';
   let series = '';
   for (const b of books) {
@@ -60,10 +61,17 @@ async function selectAuthor(author, li) {
       series = b.series;
       if (series) html += `<div class="series-head">Series · ${series}</div>`;
     }
-    html += `<div class="card">
-      <img src="/api/cover/${b.id}" onerror="this.style.visibility='hidden'" alt="">
+    html += `<div class="card" data-started="${b.started ? 1 : 0}">
+      <div class="cover">
+        <img src="/api/cover/${b.id}" onerror="this.style.visibility='hidden'" alt="">
+        <label class="listened">
+          <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
+        </label>
+      </div>
       <div>
-        <h3>${b.title}</h3>
+        <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
+              title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
+          ${b.title}</h3>
         <div class="sub">${author}${b.series ? ' · ' + b.series : ''}</div>
         <div class="sub" style="margin-top:6px">
           ${b.year ? `<span class="badge">${b.year}</span>` : ''}
@@ -121,6 +129,20 @@ function saveProgress() {
 }
 
 // --- metadata lookup ---------------------------------------------------
+window.setListened = async function (id, box) {
+  if (!state.user) { box.checked = !box.checked; return toast('Create or select a user first.'); }
+  try {
+    await post('/api/listened', { user: state.user, bookId: id, done: box.checked });
+    const note = box.closest('.card').querySelector('.note');
+    const started = box.closest('.card').dataset.started === '1';
+    note.className = 'note ' + (box.checked ? 'done' : started ? 'part' : 'new');
+    note.title = box.checked ? 'Listened' : started ? 'Partly listened' : 'Not listened yet';
+  } catch (e) {
+    box.checked = !box.checked;
+    toast(e.message);
+  }
+};
+
 // Write what the app already knows about the book into its MP3 files.
 window.writeTags = async function (id) {
   try {
@@ -156,7 +178,7 @@ window.editMeta = async function (id) {
 $('#closeEdit').onclick = () => $('#edit').close();
 
 window.findMeta = async function (id, query) {
-  $('#lookupBody').innerHTML = 'Searching Google Books…';
+  $('#lookupBody').innerHTML = 'Searching Google Books… If the service is busy this keeps retrying for up to a minute.';
   if (!$('#lookup').open) {
     const b = await api(`/api/books/${id}`);
     $('#lookupQuery').value = [b.title, b.author].filter(Boolean).join(' ');
