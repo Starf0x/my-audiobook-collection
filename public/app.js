@@ -19,7 +19,7 @@ async function loadUsers() {
   state.user = $('#user').value || '';
   localStorage.user = state.user;
 }
-$('#user').onchange = () => { state.user = localStorage.user = $('#user').value; };
+$('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); };
 $('#addUser').onclick = async () => {
   const name = prompt('User name');
   if (!name) return;
@@ -27,6 +27,13 @@ $('#addUser').onclick = async () => {
   state.user = name;
   await loadUsers();
 };
+
+async function loadStats() {
+  const s = await api('/api/stats?user=' + encodeURIComponent(state.user));
+  $('#status').innerHTML = [
+    [s.books, 'audiobooks'], [s.files, 'files'], [s.done, 'listened'], [s.todo, 'not listened'],
+  ].map(([n, label]) => `<span><strong>${n.toLocaleString()}</strong> ${label}</span>`).join('');
+}
 
 // --- browsing ----------------------------------------------------------
 async function loadGenres() {
@@ -137,6 +144,7 @@ window.setListened = async function (id, box) {
     const started = box.closest('.card').dataset.started === '1';
     note.className = 'note ' + (box.checked ? 'done' : started ? 'part' : 'new');
     note.title = box.checked ? 'Listened' : started ? 'Partly listened' : 'Not listened yet';
+    loadStats();
   } catch (e) {
     box.checked = !box.checked;
     toast(e.message);
@@ -293,9 +301,10 @@ function finishScan(error, p) {
   }
   $('#progressText').textContent = `Scan complete: ${p.books} book(s).`;
   loadGenres();
+  loadStats();
   setTimeout(() => { $('#progress').hidden = true; }, 3000);
 }
 
 $('#scan').onclick = startScan;
 
-loadUsers().then(loadGenres);
+loadUsers().then(loadGenres).then(loadStats);
