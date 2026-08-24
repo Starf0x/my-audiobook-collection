@@ -89,6 +89,19 @@ export async function scan() {
   // running must be true before walking the tree: on a large library that walk
   // takes tens of seconds, and the UI would otherwise read the scan as finished.
   Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '' });
+  try {
+    await walkAndScan();
+  } catch (e) {
+    // an unreadable folder must not escape: the caller does not await scan(),
+    // so an unhandled rejection would take the process down
+    progress.error = e.message;
+  } finally {
+    progress.running = false;
+  }
+  return { books: progress.books };
+}
+
+async function walkAndScan() {
   const jobs = [];
   for (const root of getLibraries()) {
     if (!fs.existsSync(root)) continue;
@@ -116,23 +129,16 @@ export async function scan() {
   }
 
   progress.total = jobs.length;
-  try {
-    for (const j of jobs) {
-      progress.current = path.basename(j.dir);
-      progress.books += await addBook(j.genre, j.author, j.series, j.dir, j.files);
-      progress.done++;
-    }
-    const seen = jobs.map((j) => j.dir);
-    for (const b of db.prepare('SELECT id, path FROM books').all()) {
-      if (!seen.includes(b.path)) {
-        db.prepare('DELETE FROM tracks WHERE book_id = ?').run(b.id);
-        db.prepare('DELETE FROM books WHERE id = ?').run(b.id);
-      }
-    }
-  } catch (e) {
-    progress.error = e.message;
-  } finally {
-    progress.running = false;
+  for (const j of jobs) {
+    progress.current = path.basename(j.dir);
+    progress.books += await addBook(j.genre, j.author, j.series, j.dir, j.files);
+    progress.done++;
   }
-  return { books: progress.books };
+  const seen = new Set(jobs.map((j) => j.dir));
+  for (const b of db.prepare('SELECT id, path FROM books').all()) {
+    if (!seen.has(b.path)) {
+      db.prepare('DELETE FROM tracks WHERE book_id = ?').run(b.id);
+      db.prepare('DELETE FROM books WHERE id = ?').run(b.id);
+    }
+  }
 }
