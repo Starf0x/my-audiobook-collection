@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { db, getLibraries } from './db.js';
-import { audioFiles } from './scan.js';
+import { audioFiles, addOne } from './scan.js';
 import { beginFileWork, fileProgress, moveFolder, destinationFor, clean } from './import.js';
 
 export const KEEP_DAYS = 30;
@@ -96,6 +96,8 @@ export async function restoreFromTrash(id) {
   beginFileWork();
   try {
     await moveFolder(t.trash_path, t.was_path);
+    // back in the library at once, rather than after a full rescan
+    await addOne({ genre: t.genre, author: t.author, series: t.series, dir: t.was_path });
     db.prepare('DELETE FROM trash WHERE id = ?').run(t.id);
     return { restored: t.was_path };
   } catch (e) {
