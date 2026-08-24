@@ -114,3 +114,8 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 
 #status { display: flex; gap: 20px; padding: 7px 16px; background: #101318; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
 #status strong { color: var(--text); font-weight: 600; }
+
+#lookupProgress { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; }
+#lookupProgress .track { flex: 1; height: 8px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
+#lookupBar { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .25s; }
+#lookupState { color: var(--dim); font-size: 12px; min-width: 250px; text-align: right; }
