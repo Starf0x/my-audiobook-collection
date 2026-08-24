@@ -4,13 +4,30 @@ import crypto from 'node:crypto';
 import NodeID3 from 'node-id3';
 import { db, getSetting, DATA_DIR } from './db.js';
 
+const explain = (status, detail) => ({
+  400: 'Google rejected the request. The API key looks invalid — check it in Settings.',
+  401: 'Google did not accept the API key. Check it in Settings.',
+  403: 'Google refused the key. Open Google Cloud Console and make sure the "Books API" is enabled for this key, and that no IP/website restriction blocks your server.',
+  404: 'The Google Books service could not be found. Check the server\'s internet connection.',
+  429: 'Too many requests: the Google Books daily quota or rate limit has been reached. Try again later.',
+}[status] || `Google Books replied with an unexpected error (HTTP ${status}).`) + (detail ? ` Google says: "${detail}"` : '');
+
 export async function lookup(book) {
   const key = getSetting('googleApiKey');
-  if (!key) throw new Error('No Google Books API key configured (Settings).');
+  if (!key) throw new Error('No Google Books API key set yet. Open Settings and paste your key first.');
   const q = `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
   const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&key=${key}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Google Books API error ${res.status}`);
+
+  let res;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new Error('Could not reach Google Books. The server appears to have no internet connection.');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(explain(res.status, body.error?.message));
+  }
   const data = await res.json();
   return (data.items || []).map((it) => ({
     title: it.volumeInfo.title || '',
