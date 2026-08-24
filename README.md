@@ -92,7 +92,7 @@ are stripped of characters a path cannot hold.
 title say it belongs. The book keeps its row, so the listened state and playback
 position travel with it.
 
-*Delete…* moves the folder into a  folder inside the same library folder,
+*Delete…* moves the folder into a `.trash` folder inside the same library folder,
 which keeps it on the same filesystem and out of the scanner's way, and records
 the deletion. **Trash** in the left column lists what is in there, how long it has
 left, and offers *Put back*, *Delete now* per book and *Empty trash*. Anything
