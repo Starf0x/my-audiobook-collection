@@ -351,16 +351,23 @@ function importForm(d, c) {
     };
     const { ok, r } = await fileWork('/api/import', body, 'Import');
     if (ok) {
+      // the server files the book itself, so there is nothing to rescan
       $('#progressText').textContent = `Imported into ${r.dest}`;
-      await post('/api/scan', {});
-      await trackProgress('/api/scan/status', 'Looking for books…');
-      await Promise.all([loadGenres(), loadStats(), loadUntagged()]);
+      await refreshLibrary();
     }
     $('#importList').click();
   };
   $('#importDlg').showModal();
 }
 $('#closeImport').onclick = () => $('#importDlg').close();
+
+// Everything the library counts feeds off the same data, so refresh it together.
+// The shelves included: a book that just arrived belongs under Recently added.
+async function refreshLibrary() {
+  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), loadImport(false)]);
+  if (state.author) selectAuthor(state.author, null);
+  else if (!document.body.classList.contains('maintenance')) await loadHome();
+}
 
 // --- move and delete ---------------------------------------------------
 // Runs a file operation while the bar at the bottom follows it.
@@ -397,7 +404,7 @@ window.moveBook = async function (id) {
       series: $('#mSeries').value.trim(), title: $('#mTitle').value.trim(),
     };
     const { ok } = await fileWork(`/api/move/${id}`, body, 'Move');
-    if (ok) { await loadGenres(); openInLibrary(body.genre, body.author); }
+    if (ok) { await refreshLibrary(); openInLibrary(body.genre, body.author); }
   };
   $('#move').showModal();
 };
@@ -408,10 +415,7 @@ window.trashBook = async function (id) {
   if (!confirm(`Move “${b.title}” and its files to the trash?\n\nThey are kept for 30 days, `
     + 'and you can put them back or empty the trash yourself.')) return;
   const { ok } = await fileWork(`/api/trash/${id}`, {}, 'Delete');
-  if (ok) {
-    await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash()]);
-    if (state.author) selectAuthor(state.author, null); else loadHome();
-  }
+  if (ok) await refreshLibrary();
 };
 
 // --- trash --------------------------------------------------------------
@@ -455,9 +459,8 @@ $('#trashList').onclick = async () => {
   };
   $('#books .list').querySelectorAll('button[data-restore]').forEach((b) => {
     b.onclick = async () => {
-      const { ok } = await fileWork(`/api/trash/${b.dataset.restore}/restore`, {}, 'Put back');
-      if (ok) { await post('/api/scan', {}); await trackProgress('/api/scan/status', 'Looking for books…'); }
-      await Promise.all([loadGenres(), loadStats(), loadUntagged()]);
+      await fileWork(`/api/trash/${b.dataset.restore}/restore`, {}, 'Put back');
+      await refreshLibrary();
       $('#trashList').click();
     };
   });
@@ -517,9 +520,11 @@ window.editMeta = async function (id) {
   const b = await api(`/api/books/${id}`);
   $('#eTitle').value = b.title || '';
   $('#eAuthor').value = b.author || '';
+  $('#eSeries').value = b.folderSeries || b.series || '';
   $('#eNarrator').value = b.narrator || '';
   $('#eYear').value = b.year || '';
   $('#eDescription').value = b.description || '';
+  const wasSeries = $('#eSeries').value;
   const save = async (writeTags) => {
     const pick = {
       title: $('#eTitle').value.trim(), author: $('#eAuthor').value.trim(),
@@ -527,13 +532,23 @@ window.editMeta = async function (id) {
       description: $('#eDescription').value.trim(),
     };
     $('#edit').close();
+    // The series is a folder level, so a change to it has to move the book, or
+    // the next scan would read the old folders and undo it. The folder keeps its
+    // own name: renaming that is what Move… is for.
+    if ($('#eSeries').value.trim() !== wasSeries) {
+      const { ok } = await fileWork(`/api/move/${id}`, {
+        genre: b.genre, author: b.author, series: $('#eSeries').value.trim(),
+        title: b.path.split(/[\\/]/).pop(),
+      }, 'Move');
+      if (!ok) return;
+    }
     if (writeTags) {
       await writeWithProgress(id, pick);
     } else {
       try { await post(`/api/apply/${id}`, { pick, writeTags: false }); toast('Saved.'); }
       catch (e) { return toast(e.message); }
     }
-    if (state.author) selectAuthor(state.author, null);
+    await refreshLibrary();
   };
   $('#saveEdit').onclick = () => save(false);
   $('#saveEditTags').onclick = () => save(true);

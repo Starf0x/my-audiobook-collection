@@ -90,6 +90,10 @@ are stripped of characters a path cannot hold.
 
 ## Moving and deleting
 
+The **Series** field in *Edit metadata* moves the book too, since a series is a
+folder: filling it in files the book under `genre / author / series / book`, and
+emptying it moves the book back up. The folder keeps its own name.
+
 *Move…* on a book card shifts its folder to where a new genre, author, series and
 title say it belongs. The book keeps its row, so the listened state and playback
 position travel with it.

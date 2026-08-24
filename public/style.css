@@ -3,6 +3,14 @@
   --text: #e6e8ec; --dim: #939aa8; --accent: #7c5cff; --accent2: #22d3ee;
 }
 * { box-sizing: border-box; }
+/* This is an application, not a document: clicking a list, a card or a tile
+   should not drop a text cursor into it or start selecting words. Text you
+   might want to copy keeps its caret. */
+body { cursor: default; user-select: none; -webkit-user-select: none; }
+input, textarea, .desc, .sub, #status, .hint, #progressText, #lookupState {
+  user-select: text; -webkit-user-select: text; cursor: auto;
+}
+input, textarea { cursor: text; }
 /* author display rules would otherwise beat the browser rule for [hidden] */
 [hidden] { display: none !important; }
 body {
