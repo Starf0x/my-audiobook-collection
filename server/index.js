@@ -52,6 +52,10 @@ app.get('/api/stats', (req, res) => {
   res.json({ books, files, done, todo: books - done });
 });
 
+// ids for the "write tags into every book" run, which the browser drives one by one
+app.get('/api/allbooks', (req, res) => res.json(
+  db.prepare('SELECT id, title FROM books ORDER BY genre, author, title').all()));
+
 app.get('/api/genres', (req, res) => res.json(
   db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all()));
 
