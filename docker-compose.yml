@@ -1,6 +1,6 @@
 services:
   audiobooks:
-    image: ${DOCKERHUB_USER:-frankbastiaens}/my-audiobook-collection:latest
+    image: starf0x/my-audiobook-collection:latest
     container_name: my-audiobook-collection
     ports:
       - "8080:8080"
