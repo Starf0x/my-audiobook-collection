@@ -195,14 +195,33 @@ window.editMeta = async function (id) {
 };
 $('#closeEdit').onclick = () => $('#edit').close();
 
+// Follows the lookup through its retry ladder while the request is in flight.
+async function pollLookup(state_) {
+  $('#lookupProgress').hidden = false;
+  $('#lookupBar').style.width = '0';
+  $('#lookupState').textContent = 'Contacting Google Books…';
+  while (!state_.finished) {
+    await new Promise((r) => setTimeout(r, 300));
+    const p = await api('/api/lookup/status').catch(() => null);
+    if (!p || state_.finished) break;
+    $('#lookupBar').style.width = (p.attempt / p.attempts) * 100 + '%';
+    $('#lookupState').textContent = p.retryIn
+      ? `Google Books is busy — attempt ${p.attempt} of ${p.attempts} failed, retrying in ${p.retryIn}s`
+      : `Attempt ${p.attempt} of ${p.attempts}…`;
+  }
+  $('#lookupProgress').hidden = true;
+}
+
 window.findMeta = async function (id, query) {
-  $('#lookupBody').innerHTML = 'Searching Google Books… If the service is busy this keeps retrying for up to a minute.';
+  $('#lookupBody').innerHTML = '';
   if (!$('#lookup').open) {
     const b = await api(`/api/books/${id}`);
     $('#lookupQuery').value = [b.title, b.author].filter(Boolean).join(' ');
     $('#lookup').showModal();
   }
   $('#lookupSearch').onclick = () => findMeta(id, $('#lookupQuery').value.trim());
+  const state_ = { finished: false };
+  const poll = pollLookup(state_);
   try {
     const cands = await api(`/api/lookup/${id}` + (query ? '?q=' + encodeURIComponent(query) : ''));
     window._cands = cands;
@@ -220,6 +239,9 @@ window.findMeta = async function (id, query) {
       : '<div class="empty">No match on Google Books. Adjust the search above and try again, or use <em>Edit metadata</em> to fill it in yourself.</div>';
   } catch (e) {
     $('#lookupBody').innerHTML = `<div class="empty">${e.message}</div>`;
+  } finally {
+    state_.finished = true;
+    await poll;
   }
 };
 
