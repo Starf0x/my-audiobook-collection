@@ -83,6 +83,22 @@
   <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
 </dialog>
 
+<dialog id="importDlg">
+  <h2>Import audiobook</h2>
+  <p class="hint" id="iSource"></p>
+  <label>Genre</label><select id="iGenre"></select>
+  <label>Author</label><input id="iAuthor">
+  <label>Series (optional)</label><input id="iSeries">
+  <label>Title</label><input id="iTitle">
+  <p class="hint" id="iWhere"></p>
+  <div id="iFound"></div>
+  <div class="row end">
+    <button id="closeImport" class="ghost">Cancel</button>
+    <button id="iLookup" class="ghost">Find metadata</button>
+    <button id="iGo">Move into the library</button>
+  </div>
+</dialog>
+
 <dialog id="move">
   <h2>Move book</h2>
   <p class="hint">Moves the folder on disk. The listened state and playback position stay with the book.</p>
