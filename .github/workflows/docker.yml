@@ -23,15 +23,10 @@ jobs:
           tags: |
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
-      - name: Build the icon data URI
-        id: icon
-        run: echo "uri=data:image/png;base64,$(base64 -w0 public/icon-128.png)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            ICON_DATA_URI=${{ steps.icon.outputs.uri }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
