@@ -202,6 +202,77 @@ $('#tagAll').onclick = async () => {
   if (state.author) selectAuthor(state.author, null);
 };
 
+// --- import: file a folder from the import path under a genre and author ---
+async function loadImport() {
+  const d = await api('/api/import').catch(() => ({ candidates: [] }));
+  $('#importCount').textContent = d.candidates.length;
+  return d;
+}
+
+$('#importList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
+  $('#importList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  $('#books .list').innerHTML = '<div class="empty">Looking in the import folder…</div>';
+  const d = await loadImport();
+  if (!d.path) {
+    $('#books .list').innerHTML = '<div class="empty">No import folder set. Add one in Settings.</div>';
+    return;
+  }
+  if (!d.candidates.length) {
+    $('#books .list').innerHTML = `<div class="empty">Nothing to import in ${esc(d.path)}.</div>`;
+    return;
+  }
+  $('#books .list').innerHTML = d.candidates.map((c, i) => `<div class="fix" data-i="${i}">
+    <div>
+      <strong>${esc(c.name)}</strong>
+      <div class="sub">${c.files} file(s)${c.album ? ' · album: ' + esc(c.album) : ''}${c.artist ? ' · artist: ' + esc(c.artist) : ''}</div>
+    </div>
+    <div class="actions"><button data-pick="${i}">Import this</button></div>
+  </div>`).join('') + '<div id="importForm"></div>';
+  $('#books .list').querySelectorAll('button[data-pick]').forEach((b) => {
+    b.onclick = () => importForm(d, d.candidates[Number(b.dataset.pick)]);
+  });
+};
+
+function importForm(d, c) {
+  $('#importForm').innerHTML = `<div class="fix" style="display:block">
+    <strong>Import “${esc(c.name)}”</strong>
+    <div class="row">
+      <select id="iGenre">${d.genres.map((g) => `<option>${esc(g)}</option>`).join('')}</select>
+      <input id="iAuthor" placeholder="Author" value="${esc(c.artist)}">
+      <input id="iSeries" placeholder="Series (optional)">
+      <input id="iTitle" placeholder="Title" value="${esc(c.album || c.name)}">
+      <button id="iGo">Move</button>
+    </div>
+    <div class="sub" id="iWhere"></div>
+  </div>`;
+  const preview = () => {
+    const parts = [$('#iAuthor').value.trim(), $('#iSeries').value.trim(), $('#iTitle').value.trim()].filter(Boolean);
+    $('#iWhere').textContent = `Moves into ${$('#iGenre').value} / ${parts.join(' / ')}`;
+  };
+  ['iGenre', 'iAuthor', 'iSeries', 'iTitle'].forEach((id) => { $('#' + id).oninput = preview; $('#' + id).onchange = preview; });
+  preview();
+  $('#iGo').onclick = async () => {
+    const body = {
+      source: c.path, genre: $('#iGenre').value, author: $('#iAuthor').value.trim(),
+      series: $('#iSeries').value.trim(), title: $('#iTitle').value.trim(),
+    };
+    const until = { finished: false };
+    const request = post('/api/import', body).catch((e) => ({ error: e.message }))
+      .then((r) => { until.finished = true; return r; });
+    const p = await trackProgress('/api/import/status', 'Moving the files…', until);
+    const r = await request;
+    const failure = r.error || p.error;
+    $('#progressText').textContent = failure ? 'Import failed: ' + failure : `Imported into ${r.dest}`;
+    hideProgressSoon(failure ? 15000 : 3000);
+    if (!failure) { await post('/api/scan', {}); await trackProgress('/api/scan/status', 'Looking for books…'); }
+    loadGenres(); loadStats(); loadUntagged();
+    $('#importList').click();
+  };
+}
+
 // --- maintenance: books whose files miss required tags -------------------
 async function loadUntagged() {
   const list = await api('/api/untagged').catch(() => []);
@@ -358,6 +429,7 @@ $('#openSettings').onclick = async () => {
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
   $('#apiKey').value = s.googleApiKey;
+  $('#importPath').value = s.importPath || '';
   renderLibs();
   $('#browser').hidden = true;
   $('#settings').showModal();
@@ -368,7 +440,7 @@ $('#addLib').onclick = () => {
 };
 $('#closeSettings').onclick = () => $('#settings').close();
 $('#saveSettings').onclick = async () => {
-  await post('/api/settings', { libraries: libs, googleApiKey: $('#apiKey').value.trim() });
+  await post('/api/settings', { libraries: libs, googleApiKey: $('#apiKey').value.trim(), importPath: $('#importPath').value.trim() });
   $('#settings').close();
   toast('Settings saved.');
   if (JSON.stringify(libs) !== libsAtOpen) startScan();
@@ -396,6 +468,8 @@ function addLib(p, btn) {
 }
 $('#browseBtn').onclick = () => browse($('#libPath').value.trim() || '/');
 $('#browsePick').onclick = () => addLib(browsePath);
+$('#browseImportPick').onclick = () => { $('#importPath').value = browsePath; $('#browser').hidden = true; };
+$('#browseImport').onclick = () => browse($('#importPath').value.trim() || '/');
 
 // Drives the bar at the bottom from a {running, done, total, current} endpoint.
 // `until` lets the caller stop as soon as its own request has returned; without
@@ -447,4 +521,4 @@ function finishScan(error, p) {
 
 $('#scan').onclick = startScan;
 
-loadUsers().then(loadGenres).then(loadStats).then(loadUntagged);
+loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(loadImport);
