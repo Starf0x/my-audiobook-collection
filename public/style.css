@@ -182,3 +182,5 @@ button.danger { background: #6b2434; }
 button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
 .fix .sub .missing { color: #ffa8a8; }
 .empty.missing { color: #ffa8a8; }
+.hint.missing { color: #ffa8a8; }
+#iFound { max-height: 260px; overflow: auto; margin-top: 10px; }

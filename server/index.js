@@ -184,6 +184,12 @@ app.get('/api/lookup/status', (req, res) => res.json({
   retryIn: Math.max(0, Math.ceil((lookupProgress.retryUntil - Date.now()) / 1000)),
 }));
 
+// a lookup for something not in the library yet, such as a book being imported
+app.get('/api/lookup', wrap(async (req, res) => {
+  if (!req.query.q) return res.status(400).json({ error: 'Nothing to search for' });
+  res.json(await lookup({ title: '', author: '' }, req.query.q));
+}));
+
 app.get('/api/lookup/:id', wrap(async (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Book not found' });
