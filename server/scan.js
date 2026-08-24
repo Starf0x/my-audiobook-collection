@@ -6,7 +6,7 @@ import { db, getLibraries, DATA_DIR } from './db.js';
 
 const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 const COVER = /^(cover|folder|front)\.(jpg|jpeg|png)$/i;
-const DISC = /^(disc|disk|cd|part|tape)[\s._-]*\d+$/i;
+export const DISC = /^(disc|disk|cd|part|tape)[\s._-]*\d+$/i;
 
 export const dirs = (p) => fs.readdirSync(p, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
