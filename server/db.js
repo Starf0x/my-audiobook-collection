@@ -22,10 +22,14 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS progress (
     user TEXT, book_id INTEGER, track_idx INTEGER, position REAL, updated TEXT,
+    done INTEGER DEFAULT 0,
     PRIMARY KEY (user, book_id)
   );
   CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY);
 `);
+
+// databases created before the listened flag existed
+try { db.exec('ALTER TABLE progress ADD COLUMN done INTEGER DEFAULT 0'); } catch { /* already there */ }
 
 export const getSetting = (key, def = '') =>
   db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? def;
