@@ -45,7 +45,7 @@ main li.active .count { color: #e8e2ff; }
   display: grid; grid-template-columns: 96px 1fr auto; gap: 14px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
 }
-.card img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background: var(--panel2); }
+.card img { width: 96px; height: 144px; object-fit: cover; border-radius: 6px; background: var(--panel2); }
 .card h3 { margin: 0 0 4px; font-size: 15px; }
 .card .sub { color: var(--dim); font-size: 12.5px; }
 .card .desc {
@@ -63,7 +63,7 @@ footer {
   display: flex; align-items: center; gap: 12px; padding: 10px 16px;
   background: var(--panel); border-top: 1px solid var(--line);
 }
-footer img { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; background: var(--panel2); }
+footer img { width: 36px; height: 54px; border-radius: 4px; object-fit: cover; background: var(--panel2); }
 footer .meta { min-width: 200px; display: flex; flex-direction: column; }
 footer .meta span { color: var(--dim); font-size: 12px; }
 footer audio { flex: 1; height: 36px; }
