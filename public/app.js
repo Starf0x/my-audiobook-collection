@@ -343,7 +343,7 @@ function renderLibs() {
   $('#libList').innerHTML = libs.map((l, i) =>
     `<li><span>${esc(l.path)}</span>
        <label class="asgenre" title="This folder is one genre, rather than a folder holding genre folders">
-         <input type="checkbox" data-g="${i}"${l.asGenre ? ' checked' : ''}> is one genre
+         <input type="checkbox" data-g="${i}"${l.asGenre ? ' checked' : ''}> Is a Genre
        </label>
        <button data-i="${i}">✕</button></li>`).join('') || '<li class="empty">None yet.</li>';
   $('#libList').querySelectorAll('input[data-g]').forEach((c) => {
