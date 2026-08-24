@@ -27,6 +27,12 @@ db.exec(`
     PRIMARY KEY (user, book_id)
   );
   CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY);
+  CREATE TABLE IF NOT EXISTS trash (
+    id INTEGER PRIMARY KEY,
+    was_path TEXT, trash_path TEXT,
+    genre TEXT, author TEXT, series TEXT, title TEXT,
+    files INTEGER, deleted_at TEXT
+  );
   -- every book lookup, delete and tag write filters tracks by book_id
   CREATE INDEX IF NOT EXISTS tracks_book ON tracks (book_id);
 `);

@@ -141,6 +141,10 @@ async function selectAuthor(author, li) {
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
         <button class="ghost" onclick="writeTags(${b.id})">Write into MP3s</button>
         <button class="ghost" onclick="editMeta(${b.id})">Edit metadata</button>
+        <div class="row2">
+          <button class="ghost" onclick="moveBook(${b.id})">Move…</button>
+          <button class="ghost danger" onclick="trashBook(${b.id})">Delete…</button>
+        </div>
       </div>
     </div>`;
   }
@@ -306,7 +310,7 @@ function importForm(d, c) {
     const until = { finished: false };
     const request = post('/api/import', body).catch((e) => ({ error: e.message }))
       .then((r) => { until.finished = true; return r; });
-    const p = await trackProgress('/api/import/status', 'Moving the files…', until);
+    const p = await trackProgress('/api/files/status', 'Moving the files…', until);
     const r = await request;
     const failure = r.error || p.error;
     $('#progressText').textContent = failure ? 'Import failed: ' + failure : `Imported into ${r.dest}`;
@@ -316,6 +320,114 @@ function importForm(d, c) {
     $('#importList').click();
   };
 }
+
+// --- move and delete ---------------------------------------------------
+// Runs a file operation while the bar at the bottom follows it.
+async function fileWork(url, body, label) {
+  const until = { finished: false };
+  const request = post(url, body).catch((e) => ({ error: e.message }))
+    .then((r) => { until.finished = true; return r; });
+  const p = await trackProgress('/api/files/status', label, until);
+  const r = await request;
+  const failure = r.error || p.error;
+  $('#progressText').textContent = failure ? `${label} failed: ${failure}` : `${label} done.`;
+  hideProgressSoon(failure ? 15000 : 3000);
+  return { ok: !failure, r };
+}
+
+window.moveBook = async function (id) {
+  const b = await api(`/api/books/${id}`);
+  const { genres } = await api('/api/import');
+  $('#mGenre').innerHTML = genres.map((g) =>
+    `<option${g === b.genre ? ' selected' : ''}>${esc(g)}</option>`).join('');
+  $('#mAuthor').value = b.author || '';
+  $('#mSeries').value = b.folderSeries || b.series || '';
+  $('#mTitle').value = b.title || '';
+  const preview = () => {
+    const parts = [$('#mAuthor').value.trim(), $('#mSeries').value.trim(), $('#mTitle').value.trim()].filter(Boolean);
+    $('#mWhere').textContent = `Moves to ${$('#mGenre').value} / ${parts.join(' / ')}`;
+  };
+  ['mGenre', 'mAuthor', 'mSeries', 'mTitle'].forEach((k) => { $('#' + k).oninput = preview; $('#' + k).onchange = preview; });
+  preview();
+  $('#doMove').onclick = async () => {
+    $('#move').close();
+    const body = {
+      genre: $('#mGenre').value, author: $('#mAuthor').value.trim(),
+      series: $('#mSeries').value.trim(), title: $('#mTitle').value.trim(),
+    };
+    const { ok } = await fileWork(`/api/move/${id}`, body, 'Move');
+    if (ok) { await loadGenres(); openInLibrary(body.genre, body.author); }
+  };
+  $('#move').showModal();
+};
+$('#closeMove').onclick = () => $('#move').close();
+
+window.trashBook = async function (id) {
+  const b = await api(`/api/books/${id}`);
+  if (!confirm(`Move “${b.title}” and its files to the trash?\n\nThey are kept for 30 days, `
+    + 'and you can put them back or empty the trash yourself.')) return;
+  const { ok } = await fileWork(`/api/trash/${id}`, {}, 'Delete');
+  if (ok) {
+    await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash()]);
+    if (state.author) selectAuthor(state.author, null); else loadHome();
+  }
+};
+
+// --- trash --------------------------------------------------------------
+async function loadTrash() {
+  const d = await api('/api/trash').catch(() => ({ items: [] }));
+  $('#trashCount').textContent = d.items.length;
+  return d;
+}
+
+$('#trashList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
+  $('#trashList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  const d = await loadTrash();
+  if (!d.items.length) {
+    $('#books .list').innerHTML = '<div class="empty">The trash is empty.</div>';
+    return;
+  }
+  $('#books .list').innerHTML = `
+    <div class="row" style="margin-bottom:4px">
+      <button id="emptyTrash" class="danger">Empty trash (${d.items.length})</button>
+      <span class="hint">Files are kept ${d.keepDays} days after deleting, then dropped on their own.</span>
+    </div>
+    ${d.items.map((t) => `<div class="fix">
+      <div>
+        <strong>${esc(t.title)}</strong>
+        <div class="sub">${esc(t.genre)} · ${esc(t.author)}${t.series ? ' · ' + esc(t.series) : ''} · ${t.files} file(s)</div>
+        <div class="sub">Deleted ${esc(t.deleted_at.slice(0, 16).replace('T', ' '))} ·
+          ${t.onDisk ? `${t.daysLeft} day(s) left` : '<span class="missing">files already gone</span>'}</div>
+      </div>
+      <div class="actions">
+        ${t.onDisk ? `<button data-restore="${t.id}">Put back</button>` : ''}
+        <button class="ghost danger" data-purge="${t.id}">Delete now</button>
+      </div>
+    </div>`).join('')}`;
+  $('#emptyTrash').onclick = async () => {
+    if (!confirm(`Delete the files of all ${d.items.length} item(s) for good?`)) return;
+    await post('/api/trash/empty', {}).catch((e) => toast(e.message));
+    $('#trashList').click();
+  };
+  $('#books .list').querySelectorAll('button[data-restore]').forEach((b) => {
+    b.onclick = async () => {
+      const { ok } = await fileWork(`/api/trash/${b.dataset.restore}/restore`, {}, 'Put back');
+      if (ok) { await post('/api/scan', {}); await trackProgress('/api/scan/status', 'Looking for books…'); }
+      await Promise.all([loadGenres(), loadStats(), loadUntagged()]);
+      $('#trashList').click();
+    };
+  });
+  $('#books .list').querySelectorAll('button[data-purge]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Delete these files for good?')) return;
+      await post(`/api/trash/${b.dataset.purge}/purge`, {}).catch((e) => toast(e.message));
+      $('#trashList').click();
+    };
+  });
+};
 
 // --- maintenance: books whose files miss required tags -------------------
 async function loadUntagged() {
@@ -565,4 +677,4 @@ function finishScan(error, p) {
 
 $('#scan').onclick = startScan;
 
-loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(loadImport).then(loadHome);
+loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(loadImport).then(loadTrash).then(loadHome);

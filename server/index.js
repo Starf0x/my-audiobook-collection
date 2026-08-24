@@ -5,7 +5,8 @@ import url from 'node:url';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
-import { candidates, genreFolders, importBook, importProgress } from './import.js';
+import { candidates, genreFolders, importBook, fileProgress } from './import.js';
+import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -45,13 +46,23 @@ app.get('/api/browse', (req, res) => {
 });
 
 // --- import ------------------------------------------------------------
-app.get('/api/import/status', (req, res) => res.json(importProgress));
+app.get('/api/files/status', (req, res) => res.json(fileProgress));
 app.get('/api/import', wrap(async (req, res) => res.json({
   path: getSetting('importPath'),
   genres: genreFolders().map((g) => g.genre),
   candidates: await candidates(),
 })));
 app.post('/api/import', wrap(async (req, res) => res.json(await importBook(req.body))));
+
+// --- move and delete ---------------------------------------------------
+app.post('/api/move/:id', wrap(async (req, res) => res.json(await moveBook(req.params.id, req.body))));
+
+app.get('/api/trash', (req, res) => res.json({ keepDays: KEEP_DAYS, items: listTrash(Date.now()) }));
+// before /api/trash/:id, which would otherwise read "empty" as a book id
+app.post('/api/trash/empty', wrap(async (req, res) => res.json(emptyTrash())));
+app.post('/api/trash/:id', wrap(async (req, res) => res.json(await deleteToTrash(req.params.id, Date.now()))));
+app.post('/api/trash/:id/restore', wrap(async (req, res) => res.json(await restoreFromTrash(req.params.id))));
+app.post('/api/trash/:id/purge', wrap(async (req, res) => res.json(purge(req.params.id))));
 
 app.post('/api/scan', (req, res) => { if (!progress.running) scan(); res.json({ started: true }); });
 app.get('/api/scan/status', (req, res) => res.json(progress));
@@ -132,6 +143,13 @@ app.get('/api/books/:id', (req, res) => {
   book.tracks = db.prepare('SELECT id, idx, title, duration FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id);
   book.progress = db.prepare('SELECT track_idx, position FROM progress WHERE user = ? AND book_id = ?')
     .get(req.query.user || '', book.id) || null;
+  // The folder it actually sits in may name a series the library does not call one
+  // (a series of a single book). The move dialog has to prefill from the folders,
+  // or moving without editing anything would quietly flatten that level away.
+  const here = path.resolve(book.path);
+  const gf = genreFolders().find((g) => here.startsWith(path.resolve(g.path) + path.sep));
+  const rel = gf ? path.relative(path.resolve(gf.path), here).split(path.sep) : [];
+  book.folderSeries = rel.length >= 3 ? rel[1] : '';
   res.json(book);
 });
 
@@ -179,6 +197,11 @@ app.post('/api/apply/:id', wrap(async (req, res) => {
   if (!book) return res.status(404).json({ error: 'Book not found' });
   res.json(await applyMetadata(book, req.body.pick, !!req.body.writeTags));
 }));
+
+// drop whatever outstayed its keep-days, at startup and once a day after that,
+// so a container that runs for months still clears its trash
+purgeExpired(Date.now());
+setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
 
 const port = process.env.PORT || 8080;
 app.listen(port, () => console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR})`));
