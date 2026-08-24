@@ -60,7 +60,7 @@ app.get('/api/authors', (req, res) => res.json(
     .all(req.query.genre)));
 
 app.get('/api/books', (req, res) => res.json(
-  db.prepare(`SELECT b.id, b.title, b.series, b.narrator, b.year, b.description, b.cover, b.duration,
+  db.prepare(`SELECT b.id, b.title, b.series, b.narrator, b.year, b.description, b.cover, b.duration, b.tagged,
                      p.done, p.position > 0 AS started
               FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
               WHERE b.genre = ? AND b.author = ?

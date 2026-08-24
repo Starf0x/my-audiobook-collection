@@ -17,6 +17,29 @@ const audioFiles = (p) => fs.readdirSync(p, { withFileTypes: true })
   .map((e) => path.join(p, e.name))
   .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
+// iTunes normalisation data ends up in the ID3v1 comment field as hex groups.
+const descriptionOf = (c) => {
+  const comment = c.comment?.[0];
+  const text = ((typeof comment === 'string' ? comment : comment?.text) || '').trim();
+  return /^[0-9a-f]{6,8}( +[0-9a-f]{6,8})+$/i.test(text) ? '' : text;
+};
+
+// which tags the files themselves carry, so the interface can tell file
+// metadata apart from what only lives in the database
+const taggedFields = (c) => [
+  ['album', c.album], ['artist', c.artist], ['narrator', c.composer?.[0]],
+  ['genre', c.genre?.[0]], ['year', c.year], ['description', descriptionOf(c)],
+  ['cover', c.picture?.[0]],
+].filter(([, v]) => v).map(([k]) => k).join(',');
+
+async function taggedOf(file) {
+  try {
+    return taggedFields((await parseFile(file)).common || {});
+  } catch {
+    return '';
+  }
+}
+
 async function readMeta(files, bookPath) {
   const meta = { title: '', narrator: '', year: '', description: '', duration: 0, cover: null };
   for (const [i, file] of files.entries()) {
@@ -32,10 +55,8 @@ async function readMeta(files, bookPath) {
     meta.title = c.album || c.title || '';
     meta.narrator = c.composer?.[0] || c.artist || '';
     meta.year = c.year ? String(c.year) : '';
-    const comment = c.comment?.[0];
-    const text = ((typeof comment === 'string' ? comment : comment?.text) || '').trim();
-    // iTunes normalisation data ends up in the ID3v1 comment field as hex groups.
-    meta.description = /^[0-9a-f]{6,8}( +[0-9a-f]{6,8})+$/i.test(text) ? '' : text;
+    meta.description = descriptionOf(c);
+    meta.tagged = taggedFields(c);
     const pic = c.picture?.[0];
     if (pic) {
       const name = crypto.createHash('md5').update(bookPath).digest('hex') + '.jpg';
@@ -61,20 +82,24 @@ async function addBook(genre, author, series, bookPath, files = null) {
   const unchanged = existing && known.length === files.length && known.every((p, i) => p === files[i]);
 
   if (unchanged) {
-    db.prepare('UPDATE books SET genre = ?, author = ?, series = ? WHERE id = ?')
-      .run(genre, author, series, existing.id);
+    // reading the first file's tags is cheap, and it keeps the "in MP3" state
+    // truthful after tags were written outside the app
+    db.prepare('UPDATE books SET genre = ?, author = ?, series = ?, tagged = ? WHERE id = ?')
+      .run(genre, author, series, await taggedOf(files[0]), existing.id);
     return 1;
   }
 
   const m = await readMeta(files, bookPath);
-  db.prepare(`INSERT INTO books (path, genre, author, series, title, narrator, year, description, cover, duration)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  db.prepare(`INSERT INTO books (path, genre, author, series, title, narrator, year, description, cover, duration, tagged)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET genre = excluded.genre, author = excluded.author, series = excluded.series,
       title = excluded.title, narrator = excluded.narrator, year = excluded.year,
-      description = excluded.description, cover = excluded.cover, duration = excluded.duration`)
+      description = excluded.description, cover = excluded.cover, duration = excluded.duration,
+      tagged = excluded.tagged`)
     // Folder name wins over the album tag: album tags repeat across a series
     // ("The Belgariad" for all ten books) while folder names identify the book.
-    .run(bookPath, genre, author, series, folderTitle || m.title, m.narrator, m.year, m.description, m.cover, m.duration);
+    .run(bookPath, genre, author, series, folderTitle || m.title, m.narrator, m.year, m.description,
+         m.cover, m.duration, m.tagged || '');
 
   const id = db.prepare('SELECT id FROM books WHERE path = ?').get(bookPath).id;
   db.prepare('DELETE FROM tracks WHERE book_id = ?').run(id);
