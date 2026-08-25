@@ -136,6 +136,15 @@ into the library, so it turns up at once without a rescan of everything else.
 The list is kept after the first read and handed back at once next time, ten per
 page, while a background pass checks the folder for changes.
 
+If a book already sits where this one would land, nothing is overwritten. The two
+copies are compared on audio quality — bit rate, sample rate, channels, format,
+playing time, size — and you choose. *Replace* renames the copy that is there
+`Replaced - …`, so the new one takes its path and with it the book's row, every
+listener's position and every listened mark; the old copy is listed under
+**Replaced** in the left column until you delete it. *Keep the one I have*
+renames the incoming folder `Not Imported - …` and leaves it where it is. Both
+prefixes hide a folder from the app, and neither is offered for import again.
+
 The folder is moved, not copied, so the import folder empties as you work through
 it. If the import folder sits on a different mount than the library, the files are
 copied across and the source removed, with the bar showing the file count. Names

@@ -27,6 +27,12 @@ db.exec(`
     PRIMARY KEY (user, book_id)
   );
   CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY);
+  CREATE TABLE IF NOT EXISTS replaced (
+    id INTEGER PRIMARY KEY,
+    path TEXT UNIQUE, was_path TEXT,
+    genre TEXT, author TEXT, series TEXT, title TEXT,
+    files INTEGER, bytes INTEGER, quality TEXT, replaced_at TEXT
+  );
   CREATE TABLE IF NOT EXISTS trash (
     id INTEGER PRIMARY KEY,
     was_path TEXT, trash_path TEXT,

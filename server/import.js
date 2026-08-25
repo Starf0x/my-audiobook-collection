@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
-import { getSetting, getLibraries } from './db.js';
-import { dirs, audioFiles, DISC, addOne } from './scan.js';
+import { db, getSetting, getLibraries } from './db.js';
+import { dirs, audioFiles, discFiles, DISC, addOne } from './scan.js';
 
 // One progress object for every operation that shifts files about: importing,
 // moving a book and emptying it into the trash all report through it.
@@ -176,25 +176,112 @@ export function destinationFor({ genre, author, series, title }) {
   return path.join(target.path, clean(author), ...(clean(series) ? [clean(series)] : []), clean(title));
 }
 
-export async function importBook({ source, genre, author, series, title }) {
+// What a folder of audio adds up to, in the terms that decide which of two
+// copies of the same book is the better one to keep.
+export async function qualityOf(dir) {
+  const files = audioFiles(dir).length ? audioFiles(dir) : (discFiles(dir) || []);
+  const out = {
+    files: files.length, bytes: 0, duration: 0, bitrate: 0,
+    sampleRate: 0, channels: 0, codec: '', lossless: false,
+  };
+  for (const f of files) {
+    try { out.bytes += fs.statSync(f).size; } catch { /* vanished mid-read */ }
+    try {
+      const { format } = await parseFile(f);
+      out.duration += format.duration || 0;
+      out.sampleRate = Math.max(out.sampleRate, format.sampleRate || 0);
+      out.channels = Math.max(out.channels, format.numberOfChannels || 0);
+      out.codec = out.codec || format.codec || format.container || '';
+      out.lossless = out.lossless || !!format.lossless;
+    } catch { /* unreadable file: it still counts for size */ }
+  }
+  // measured, not read from a header, so a mislabelled file cannot flatter itself
+  if (out.duration) out.bitrate = Math.round((out.bytes * 8) / out.duration / 1000);
+  return out;
+}
+
+// Is there already a book where this one would land, and how do the two compare?
+export async function compareWithExisting({ source, genre, author, series, title }) {
+  const dest = destinationFor({ genre, author, series, title });
+  if (!fs.existsSync(dest)) return { exists: false, dest };
+  const [incoming, existing] = await Promise.all([qualityOf(source), qualityOf(dest)]);
+  return { exists: true, dest, incoming, existing };
+}
+
+const prefixed = (dir, prefix) => {
+  let target = path.join(path.dirname(dir), prefix + path.basename(dir));
+  for (let n = 2; fs.existsSync(target); n++) {
+    target = path.join(path.dirname(dir), `${prefix}${path.basename(dir)} (${n})`);
+  }
+  return target;
+};
+
+// Left alone but marked, so the folder says for itself why it is still here.
+export const NOT_IMPORTED = 'Not Imported - ';
+export const REPLACED = 'Replaced - ';
+
+export function skipImport(source) {
+  if (!source || !fs.existsSync(source)) throw new Error('That import folder is no longer there');
+  const target = prefixed(source, NOT_IMPORTED);
+  fs.renameSync(source, target);
+  forgetCandidate(source);
+  return { skipped: target };
+}
+
+export async function importBook({ source, genre, author, series, title, replace }) {
   const dest = destinationFor({ genre, author, series, title });
   if (!source || !fs.existsSync(source)) throw new Error('That import folder is no longer there');
-  if (fs.existsSync(dest)) throw new Error(`There is already a folder at ${dest}`);
+  if (fs.existsSync(dest) && !replace) throw new Error(`There is already a folder at ${dest}`);
 
   beginFileWork();
   try {
+    let replacedPath = '';
+    if (fs.existsSync(dest)) {
+      // step the old copy aside under its own name; the new one takes the path,
+      // so the book keeps its row, and with it every listener's place in it
+      const old = db.prepare('SELECT * FROM books WHERE path = ?').get(dest);
+      const quality = await qualityOf(dest);
+      replacedPath = prefixed(dest, REPLACED);
+      fs.renameSync(dest, replacedPath);
+      db.prepare(`INSERT INTO replaced (path, was_path, genre, author, series, title, files, bytes, quality, replaced_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(replacedPath, dest, genre, clean(author), clean(series) || null,
+             old?.title || path.basename(dest), quality.files, quality.bytes,
+             `${quality.bitrate} kbps`, new Date().toISOString());
+    }
     await moveFolder(source, dest);
     pruneEmptyParents(source);
     // put it in the library now: a full rescan of a big share takes minutes
-    await addOne({ genre, author: clean(author), series: clean(series), dir: dest });
+    // force: a replacement lands on the very same file names, and "unchanged"
+    // would then keep the old copy's duration, cover and description
+    await addOne({ genre, author: clean(author), series: clean(series), dir: dest, force: !!replacedPath });
     forgetCandidate(source);
-    return { dest };
+    return { dest, replacedPath };
   } catch (e) {
     fileProgress.error = e.message;
     throw e;
   } finally {
     fileProgress.running = false;
   }
+}
+
+export function listReplaced() {
+  return db.prepare('SELECT * FROM replaced ORDER BY replaced_at DESC').all()
+    .map((r) => ({ ...r, onDisk: fs.existsSync(r.path) }));
+}
+
+export function deleteReplaced(id) {
+  const r = db.prepare('SELECT * FROM replaced WHERE id = ?').get(Number(id));
+  if (!r) throw new Error('Not on the replaced list');
+  fs.rmSync(r.path, { recursive: true, force: true });
+  db.prepare('DELETE FROM replaced WHERE id = ?').run(r.id);
+  return { deleted: 1 };
+}
+
+export function deleteAllReplaced() {
+  let n = 0;
+  for (const r of listReplaced()) { deleteReplaced(r.id); n++; }
+  return { deleted: n };
 }
 
 // A book nested under author and series folders leaves those behind. Drop them

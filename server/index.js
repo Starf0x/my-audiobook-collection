@@ -6,7 +6,8 @@ import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
-import { candidates, genreFolders, importBook, fileProgress, importState, clean } from './import.js';
+import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
+  deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
 import { adminRequired, setPassword, unlock, lock, isAdmin, requireAdmin, tokenOf, passwordFromEnv } from './admin.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
@@ -132,7 +133,19 @@ app.get('/api/import', requireAdmin, wrap(async (req, res) => {
     fromCache: c.fromCache,
   });
 }));
+// Is a book with this genre, author and title already there, and how do the two
+// copies compare? Asked before an import, so nothing is overwritten unseen.
+app.get('/api/import/compare', requireAdmin, wrap(async (req, res) =>
+  res.json(await compareWithExisting(req.query))));
+// Not importing it: the folder stays, renamed so it says so, and is not offered again
+app.post('/api/import/skip', requireAdmin, wrap(async (req, res) => res.json(skipImport(req.body.source))));
 app.post('/api/import', requireAdmin, wrap(async (req, res) => res.json(await importBook(req.body))));
+
+// --- copies an import replaced -----------------------------------------
+app.get('/api/replaced', requireAdmin, (req, res) => res.json(listReplaced()));
+// before /api/replaced/:id, which would otherwise read "all" as an id
+app.post('/api/replaced/all', requireAdmin, wrap(async (req, res) => res.json(deleteAllReplaced())));
+app.post('/api/replaced/:id', requireAdmin, wrap(async (req, res) => res.json(deleteReplaced(req.params.id))));
 
 // --- move and delete ---------------------------------------------------
 app.post('/api/move/:id', requireAdmin, wrap(async (req, res) => res.json(await moveBook(req.params.id, req.body))));
