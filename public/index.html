@@ -12,7 +12,6 @@
   <h1>🎧 My Audiobook Collection</h1>
   <div class="spacer"></div>
   <select id="user"></select>
-  <button id="addUser" class="ghost">+ User</button>
   <button id="adminBtn" class="ghost" hidden>Lock</button>
   <button id="scan" class="ghost">Scan library</button>
   <button id="openSettings" class="ghost">Settings</button>
@@ -79,8 +78,8 @@
     folder when your libraries are single genre folders.</p>
   <ul id="genreList"></ul>
   <div class="row">
-    <input id="newGenre" placeholder="New genre">
     <input id="genreParent" placeholder="folder it goes in">
+    <input id="newGenre" placeholder="New genre">
     <button id="addGenre">Create</button>
   </div>
 
@@ -89,14 +88,11 @@
   <p class="hint">New audiobooks are picked up from here. Use <em>Import</em> in the left column
     to file one under a genre and author.</p>
 
-  <label>Google Books API key</label>
-  <input id="apiKey" placeholder="AIza…">
-  <p class="hint">Used to look up missing metadata. Get one at
-    console.cloud.google.com → APIs &amp; Services → Credentials (enable "Books API").</p>
   <label>Tags in the MP3 files</label>
   <p class="hint">Writes album, artist, album artist, genre, year, description, cover art and
     zero-padded track numbers into every MP3 of every book, using what this app shows.
-    Books with no description or narrator keep those frames empty.</p>
+    It runs over the whole collection, book by book, with a bar at the bottom. Nothing is written
+    empty: a book the app has no description or narrator for keeps whatever its files already carry.</p>
   <button id="tagAll" class="ghost">Write tags into all MP3s</button>
   <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
 </dialog>

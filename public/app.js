@@ -74,7 +74,6 @@ async function askWho(users, cancellable) {
 
 $('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
 $('#home').onclick = loadHome;
-$('#addUser').onclick = async () => askWho(await api('/api/users').catch(() => []), true);
 
 async function loadStats() {
   const s = await api('/api/stats?user=' + encodeURIComponent(state.user));
@@ -789,7 +788,7 @@ $('#savePass').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
-let fromEnv = { key: false, password: false };
+let fromEnv = { password: false };
 
 function showPassState() {
   if (fromEnv.password) {
@@ -805,12 +804,9 @@ $('#openSettings').onclick = async () => {
   const s = await api('/api/settings');
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
-  $('#apiKey').value = s.googleApiKey;
-  $('#apiKey').disabled = !!s.keyFromEnv;
-  $('#apiKey').placeholder = s.keyFromEnv ? 'set in the container template' : 'AIza…';
   $('#setPass').disabled = !!s.passwordFromEnv;
   $('#savePass').disabled = !!s.passwordFromEnv;
-  fromEnv = { key: !!s.keyFromEnv, password: !!s.passwordFromEnv };
+  fromEnv = { password: !!s.passwordFromEnv };
   $('#importPath').value = s.importPath || '';
   renderLibs();
   showPassState();
@@ -824,7 +820,7 @@ $('#addLib').onclick = () => {
 };
 $('#closeSettings').onclick = () => $('#settings').close();
 $('#saveSettings').onclick = async () => {
-  await post('/api/settings', { libraries: libs, googleApiKey: $('#apiKey').value.trim(), importPath: $('#importPath').value.trim() });
+  await post('/api/settings', { libraries: libs, importPath: $('#importPath').value.trim() });
   $('#settings').close();
   toast('Settings saved.');
   if (JSON.stringify(libs) !== libsAtOpen) startScan();

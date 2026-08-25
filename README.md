@@ -68,7 +68,7 @@ check the paths it filled in:
 | Audiobooks | `/mnt/user/Audiobooks` → `/audiobooks` | the collection, read/write so tags can be written |
 | Import folder | empty → `/import` | where new audiobooks arrive; leave empty if you do not import |
 | Admin password | empty | guards everything that changes the collection |
-| Google Books API key | empty | for looking up missing metadata |
+| Google Books API key | empty | for looking up missing metadata; the only place it is set |
 
 The last three are optional, and the two variables are masked in the form. Then
 **Apply**, and open the WebUI:
@@ -96,12 +96,13 @@ something else.
 top right and the container row gains a version column, the context menu a *Force
 update* entry. Neither is shown in Basic View.
 
-### Two settings the template can own
+### The two variables
 
-`ADMIN_PASSWORD` and `GOOGLE_API_KEY` may be left empty and set in Settings
-instead. When the template fills one in it wins over the stored value, and
-Settings shows the field as owned by the template — so the two cannot drift
-apart, and both survive an emptied appdata folder.
+`GOOGLE_API_KEY` lives here and nowhere else — there is no field for it in
+Settings, so there is no second copy to drift out of step, and it survives an
+emptied appdata folder. `ADMIN_PASSWORD` may be left empty and set in Settings
+instead; when the template fills it in it wins, and Settings shows the field as
+owned by the template.
 
 ### Or with docker compose
 
@@ -159,7 +160,8 @@ older than 30 days is dropped by itself, checked at startup and once a day after
 ## Google Books API key
 
 Google Cloud Console → *APIs & Services* → enable **Books API** → *Credentials* →
-*Create credentials* → *API key*. Paste it in **Settings**. Then use
+*Create credentials* → *API key*. It goes on the container, as `GOOGLE_API_KEY`
+(the Unraid template has a masked field for it), and nowhere else. Then use
 **Find metadata** on a book and pick a result, or type your own search when the
 folder name finds nothing. A 503 from Google is retried after 10, 20 and 30
 seconds, with the wait shown in the dialog.
