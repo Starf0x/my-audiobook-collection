@@ -9,6 +9,7 @@ import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js'
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
 import { adminRequired, setPassword, unlock, lock, isAdmin, requireAdmin, tokenOf, passwordFromEnv } from './admin.js';
+import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
@@ -140,6 +141,11 @@ app.get('/api/import/compare', requireAdmin, wrap(async (req, res) =>
 // Not importing it: the folder stays, renamed so it says so, and is not offered again
 app.post('/api/import/skip', requireAdmin, wrap(async (req, res) => res.json(skipImport(req.body.source))));
 app.post('/api/import', requireAdmin, wrap(async (req, res) => res.json(await importBook(req.body))));
+
+// --- cover files no book uses any more ---------------------------------
+app.post('/api/covers/tidy', requireAdmin, wrap(async (req, res) => res.json(tidyCovers())));
+app.post('/api/covers/duplicates/delete', requireAdmin, wrap(async (req, res) => res.json(deleteDuplicates())));
+app.post('/api/covers/duplicates/zip', requireAdmin, wrap(async (req, res) => res.json(zipDuplicates(Date.now()))));
 
 // --- copies an import replaced -----------------------------------------
 app.get('/api/replaced', requireAdmin, (req, res) => res.json(listReplaced()));

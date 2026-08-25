@@ -89,6 +89,12 @@
   <p class="hint">New audiobooks are picked up from here. Use <em>Import</em> in the left column
     to file one under a genre and author.</p>
 
+  <label>Cover files</label>
+  <p class="hint">Covers are named after the image, so a book that gets new artwork leaves its old
+    file behind. This looks for cover files no book uses any more and moves them to
+    <code>covers/duplicates</code>, overwriting a file of the same name already there.</p>
+  <button id="tidyCovers" class="ghost">Tidy up unused covers</button>
+
   <label>Tags in the MP3 files</label>
   <p class="hint">Writes album, artist, album artist, genre, year, description, cover art and
     zero-padded track numbers into every MP3 of every book, using what this app shows.
