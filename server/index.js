@@ -3,11 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
-import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
+import { db, getSetting, setSetting, getLibraries, keyFromEnv, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, fileProgress, importState, clean } from './import.js';
-import { adminRequired, setPassword, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
+import { adminRequired, setPassword, unlock, lock, isAdmin, requireAdmin, tokenOf, passwordFromEnv } from './admin.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
@@ -21,7 +21,9 @@ const coverV = (cover) => (cover ? crypto.createHash('md5').update(cover).digest
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => res.status(400).json({ error: e.message }));
 
 // --- who may change things ---------------------------------------------
-app.get('/api/admin', (req, res) => res.json({ required: adminRequired(), admin: isAdmin(req) }));
+app.get('/api/admin', (req, res) => res.json({
+  required: adminRequired(), admin: isAdmin(req), fromEnv: passwordFromEnv(),
+}));
 
 app.post('/api/admin/unlock', wrap(async (req, res) => {
   const { token } = unlock(req.body.password);
@@ -57,12 +59,15 @@ app.post('/api/users', (req, res) => {
 // --- settings ----------------------------------------------------------
 app.get('/api/settings', requireAdmin, (req, res) => res.json({
   libraries: getLibraries(),
-  googleApiKey: getSetting('googleApiKey'),
+  // a key from the template is not sent back for editing: the template owns it
+  googleApiKey: keyFromEnv() ? '' : getSetting('googleApiKey'),
+  keyFromEnv: keyFromEnv(),
+  passwordFromEnv: passwordFromEnv(),
   importPath: getSetting('importPath'),
 }));
 app.post('/api/settings', requireAdmin, (req, res) => {
   setSetting('libraries', JSON.stringify(req.body.libraries || []));
-  setSetting('googleApiKey', req.body.googleApiKey || '');
+  if (!keyFromEnv()) setSetting('googleApiKey', req.body.googleApiKey || '');
   setSetting('importPath', req.body.importPath || '');
   res.json({ ok: true });
 });

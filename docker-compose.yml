@@ -4,7 +4,12 @@ services:
     container_name: my-audiobook-collection
     ports:
       - "8523:8523"
+    environment:
+      # both may be left out and set in Settings instead
+      ADMIN_PASSWORD: ""
+      GOOGLE_API_KEY: ""
     volumes:
       - ./data:/data
       - /mnt/user/Audiobooks:/audiobooks
+      - /mnt/user/Audiobooks/_AutoDownload:/import
     restart: unless-stopped
