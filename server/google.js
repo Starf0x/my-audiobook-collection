@@ -54,6 +54,8 @@ async function search_(book, search, key) {
   return (data.items || []).map((it) => ({
     title: it.volumeInfo.title || '',
     author: (it.volumeInfo.authors || []).join(', '),
+    // kept apart as well: a book two people wrote is a choice, not a string
+    authors: it.volumeInfo.authors || [],
     year: (it.volumeInfo.publishedDate || '').slice(0, 4),
     // Google answers with categories like "Fiction / Fantasy / Epic": each part
     // is a genre worth offering, so the admin picks which one this book is filed as

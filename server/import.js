@@ -256,7 +256,10 @@ export async function importBook({ source, genre, author, series, title, replace
     // would then keep the old copy's duration, cover and description
     await addOne({ genre, author: clean(author), series: clean(series), dir: dest, force: !!replacedPath });
     forgetCandidate(source);
-    return { dest, replacedPath };
+    // hand back the row as it was filed, so the page can show the book where it
+    // landed instead of leaving it to be found
+    const row = db.prepare('SELECT id, genre, author, title FROM books WHERE path = ?').get(dest) || {};
+    return { dest, replacedPath, ...row };
   } catch (e) {
     fileProgress.error = e.message;
     throw e;

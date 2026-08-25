@@ -159,12 +159,12 @@ function looksTooDeep(root) {
 
 export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '', warning: '' };
 
-export async function scan() {
+export async function scan(only = '') {
   // running must be true before walking the tree: on a large library that walk
   // takes tens of seconds, and the UI would otherwise read the scan as finished.
   Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '', warning: '' });
   try {
-    await walkAndScan();
+    await walkAndScan(only);
   } catch (e) {
     // an unreadable folder must not escape: the caller does not await scan(),
     // so an unhandled rejection would take the process down
@@ -175,10 +175,15 @@ export async function scan() {
   return { books: progress.books };
 }
 
-async function walkAndScan() {
+async function walkAndScan(only) {
   const jobs = [];
   const tooDeep = [];
-  for (const lib of getLibraries()) {
+  // one library folder, or all of them
+  const libs = only
+    ? getLibraries().filter((l) => path.resolve(l.path) === path.resolve(only))
+    : getLibraries();
+  if (only && !libs.length) throw new Error(`Not a library folder: ${only}`);
+  for (const lib of libs) {
     if (!fs.existsSync(lib.path)) continue;
     if (!lib.asGenre && looksTooDeep(lib.path)) tooDeep.push(lib.path);
     for (const genreDir of (lib.asGenre ? [lib.path] : dirs(lib.path))) {
@@ -215,9 +220,14 @@ async function walkAndScan() {
     progress.books += await addBook(j.genre, j.author, j.series, j.dir, j.files);
     progress.done++;
   }
+  // Books whose folder is gone are dropped — but only from what was walked, or
+  // scanning one library folder would delete the books of all the others.
   const seen = new Set(jobs.map((j) => j.dir));
+  const roots = libs.map((l) => path.resolve(l.path));
   for (const b of q.allBookPaths.all()) {
-    if (!seen.has(b.path)) {
+    const here = path.resolve(b.path);
+    const walked = !only || roots.some((r) => here === r || here.startsWith(r + path.sep));
+    if (walked && !seen.has(b.path)) {
       q.dropTracks.run(b.id);
       q.dropBook.run(b.id);
     }
