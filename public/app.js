@@ -250,9 +250,9 @@ window.setListened = async function (id, box) {
 };
 
 // Writes tags while the bar at the bottom follows the file count.
-async function writeWithProgress(id, pick) {
+async function writeWithProgress(id, pick, genre) {
   const until = { finished: false };
-  const request = post(`/api/apply/${id}`, { pick, writeTags: true })
+  const request = post(`/api/apply/${id}`, { pick, genre, writeTags: true })
     .catch((e) => ({ error: e.message }))
     .then((r) => { until.finished = true; return r; });
   const p = await trackProgress('/api/apply/status', 'Writing tags…', until);
@@ -688,13 +688,28 @@ async function pollLookup(state_) {
   $('#lookupProgress').hidden = true;
 }
 
+// The genre a book is filed under is a folder, so Google's categories are
+// offered as a choice rather than applied: picking another one moves the book.
+function genreChoice(i, current, suggested, known) {
+  const options = suggested.filter((g) => g.toLowerCase() !== current.toLowerCase());
+  if (!options.length) return '';
+  return `<label>Genre</label>
+    <select id="cg${i}">
+      <option value="">${esc(current)} — keep</option>
+      ${options.map((g) => `<option value="${esc(g)}">${esc(g)}${known.has(g.toLowerCase()) ? '' : ' — new folder'}</option>`).join('')}
+    </select>
+    <div class="hint">Another genre moves the book into that genre's folder, and writes it into the tags.</div>`;
+}
+
 window.findMeta = async function (id, query) {
   $('#lookupBody').innerHTML = '';
+  const book = await api(`/api/books/${id}`);
   if (!$('#lookup').open) {
-    const b = await api(`/api/books/${id}`);
-    $('#lookupQuery').value = [b.title, b.author].filter(Boolean).join(' ');
+    $('#lookupQuery').value = [book.title, book.author].filter(Boolean).join(' ');
     $('#lookup').showModal();
   }
+  const known = new Set((await api('/api/genrefolders').catch(() => ({ folders: [] })))
+    .folders.map((g) => g.genre.toLowerCase()));
   $('#lookupSearch').onclick = () => findMeta(id, $('#lookupQuery').value.trim());
   const state_ = { finished: false };
   const poll = pollLookup(state_);
@@ -705,8 +720,9 @@ window.findMeta = async function (id, query) {
       ${c.thumbnail ? `<img src="${esc(c.thumbnail)}" alt="">` : ''}
       <div style="flex:1">
         <strong>${esc(c.title)}</strong>
-        <div class="sub">${esc(c.author)}${c.year ? ' · ' + esc(c.year) : ''}${c.genre ? ' · ' + esc(c.genre) : ''}</div>
+        <div class="sub">${esc(c.author)}${c.year ? ' · ' + esc(c.year) : ''}</div>
         <div class="desc">${esc(c.description)}</div>
+        ${genreChoice(i, book.genre, c.genres || [], known)}
         <div class="row">
           <button onclick="applyMeta(${id},${i},false)">Use metadata</button>
           <button class="ghost" onclick="applyMeta(${id},${i},true)">Use + write into MP3s</button>
@@ -723,13 +739,16 @@ window.findMeta = async function (id, query) {
 
 window.applyMeta = async function (id, i, writeTags) {
   const pick = window._cands[i];
+  const genre = $(`#cg${i}`) ? $(`#cg${i}`).value : '';
   $('#lookup').close();
   if (writeTags) {
-    await writeWithProgress(id, pick);
+    await writeWithProgress(id, pick, genre);
   } else {
-    try { await post(`/api/apply/${id}`, { pick, writeTags: false }); toast('Metadata applied.'); }
+    try { await post(`/api/apply/${id}`, { pick, genre, writeTags: false }); toast('Metadata applied.'); }
     catch (e) { return toast(e.message); }
   }
+  // a genre change moves the book, and can add a genre folder to the left column
+  if (genre) { await loadGenres(); await loadHome(); return; }
   if (state.author) selectAuthor(state.author, null);
 };
 $('#closeLookup').onclick = () => $('#lookup').close();

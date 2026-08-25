@@ -163,7 +163,10 @@ Google Cloud Console → *APIs & Services* → enable **Books API** → *Credent
 *Create credentials* → *API key*. It goes on the container, as `GOOGLE_API_KEY`
 (the Unraid template has a masked field for it), and nowhere else. Then use
 **Find metadata** on a book and pick a result, or type your own search when the
-folder name finds nothing. A 503 from Google is retried after 10, 20 and 30
+folder name finds nothing. A result that comes with categories offers them as
+genres next to the one the book is filed under now; since a genre is a folder,
+picking another one moves the book there — creating and registering the folder if
+it is new — and writes that genre into the tags. A 503 from Google is retried after 10, 20 and 30
 seconds, with the wait shown in the dialog.
 
 ## What a tag write puts in the MP3s

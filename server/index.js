@@ -8,7 +8,7 @@ import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, fileProgress, importState, clean } from './import.js';
 import { adminRequired, setPassword, unlock, lock, isAdmin, requireAdmin, tokenOf, passwordFromEnv } from './admin.js';
-import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
+import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -94,10 +94,10 @@ app.get('/api/genrefolders', requireAdmin, (req, res) => res.json({
   suggestedParent: genreParent(),
 }));
 
-app.post('/api/genres', requireAdmin, wrap(async (req, res) => {
-  const name = clean(req.body.name || '');
+function ensureGenre(rawName, rawParent) {
+  const name = clean(rawName || '');
   if (!name) throw new Error('A genre needs a name');
-  const parent = (req.body.parent || genreParent()).trim();
+  const parent = (rawParent || genreParent()).trim();
   if (!parent) throw new Error('Say which folder the genre folder goes in');
   if (!fs.existsSync(parent)) throw new Error(`That folder is not there: ${parent}`);
 
@@ -113,8 +113,11 @@ app.post('/api/genres', requireAdmin, wrap(async (req, res) => {
     libs.push({ path: dir, asGenre: true });
     setSetting('libraries', JSON.stringify(libs));
   }
-  res.json({ dir, existed, registered: !inRoot && !listed });
-}));
+  return { dir, existed, registered: !inRoot && !listed };
+}
+
+app.post('/api/genres', requireAdmin, wrap(async (req, res) =>
+  res.json(ensureGenre(req.body.name, req.body.parent))));
 
 // --- import ------------------------------------------------------------
 app.get('/api/files/status', (req, res) => res.json(fileProgress));
@@ -282,9 +285,18 @@ app.get('/api/lookup/:id', requireAdmin, wrap(async (req, res) => {
 app.get('/api/apply/status', (req, res) => res.json(tagProgress));
 
 app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
-  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
+  let book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Book not found' });
-  res.json(await applyMetadata(book, req.body.pick, !!req.body.writeTags));
+  // a genre is a folder, so taking Google's genre files the book there first,
+  // and the tag write below then carries the genre it ended up in
+  let moved = '';
+  if (req.body.genre && req.body.genre !== book.genre) {
+    ensureGenre(req.body.genre);
+    moved = req.body.genre;
+    await moveToGenre(book.id, req.body.genre);
+    book = db.prepare('SELECT * FROM books WHERE id = ?').get(book.id);
+  }
+  res.json({ ...await applyMetadata(book, req.body.pick, !!req.body.writeTags), moved });
 }));
 
 // drop whatever outstayed its keep-days, at startup and once a day after that,

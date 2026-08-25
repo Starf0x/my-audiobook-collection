@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, getLibraries } from './db.js';
 import { audioFiles, addOne } from './scan.js';
-import { beginFileWork, fileProgress, moveFolder, destinationFor, clean } from './import.js';
+import { beginFileWork, fileProgress, moveFolder, destinationFor, genreFolders, clean } from './import.js';
 
 export const KEEP_DAYS = 30;
 
@@ -16,7 +16,26 @@ const bookOr404 = (id) => {
 // keeping its row so the listened state and playback position survive.
 export async function moveBook(id, { genre, author, series, title }) {
   const book = bookOr404(id);
-  const dest = destinationFor({ genre, author, series, title });
+  return relocate(book, destinationFor({ genre, author, series, title }),
+    { genre, author: clean(author), series: clean(series) || null, title: clean(title) });
+}
+
+// Filing a book under another genre, from the metadata lookup: only the genre
+// folder changes, so the author, series and folder names it already has stay.
+export async function moveToGenre(id, genre) {
+  const book = bookOr404(id);
+  const to = genreFolders().find((g) => g.genre === genre);
+  if (!to) throw new Error(`Unknown genre: ${genre}`);
+  const from = genreFolders().find((g) => g.genre === book.genre);
+  const rel = from ? path.relative(path.resolve(from.path), path.resolve(book.path)) : '';
+  if (!rel || rel.startsWith('..')) {
+    throw new Error(`Cannot tell where ${book.title} sits inside its genre folder — use Move… instead`);
+  }
+  return relocate(book, path.join(to.path, rel),
+    { genre, author: book.author, series: book.series, title: book.title });
+}
+
+async function relocate(book, dest, { genre, author, series, title }) {
   if (dest === book.path) throw new Error('That is where the book already is');
   if (fs.existsSync(dest)) throw new Error(`There is already a folder at ${dest}`);
   if (!fs.existsSync(book.path)) throw new Error(`The book's folder is gone: ${book.path}`);
@@ -25,7 +44,7 @@ export async function moveBook(id, { genre, author, series, title }) {
   try {
     await moveFolder(book.path, dest);
     db.prepare('UPDATE books SET path = ?, genre = ?, author = ?, series = ?, title = ? WHERE id = ?')
-      .run(dest, genre, clean(author), clean(series) || null, clean(title), book.id);
+      .run(dest, genre, author, series || null, title, book.id);
     // one prepared statement, not one per track: a book can hold hundreds
     const move = db.prepare('UPDATE tracks SET path = ? WHERE id = ?');
     for (const t of db.prepare('SELECT id, path FROM tracks WHERE book_id = ?').all(book.id)) {
