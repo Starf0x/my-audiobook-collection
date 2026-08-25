@@ -11,6 +11,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
+import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
@@ -130,6 +131,13 @@ app.get('/api/import/compare', requireAdmin, wrap(async (req, res) =>
 // Not importing it: the folder stays, renamed so it says so, and is not offered again
 app.post('/api/import/skip', requireAdmin, wrap(async (req, res) => res.json(skipImport(req.body.source))));
 app.post('/api/import', requireAdmin, wrap(async (req, res) => res.json(await importBook(req.body))));
+
+// --- writing tags into the whole collection -----------------------------
+// Runs on the server, so closing the page does not stop it, and what is left of
+// it is a queue in the database, so it can be picked up again later.
+app.get('/api/tagall/status', (req, res) => res.json(tagStatus()));
+app.post('/api/tagall', requireAdmin, (req, res) => res.json(startTagAll()));
+app.post('/api/tagall/stop', requireAdmin, (req, res) => res.json(stopTagAll()));
 
 // --- checking the books against the disk --------------------------------
 // Opens every file of every book, so it is only ever started by hand.
@@ -344,6 +352,7 @@ app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
 
 // drop whatever outstayed its keep-days, at startup and once a day after that,
 // so a container that runs for months still clears its trash
+settleTagAll();
 purgeExpired(Date.now());
 setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
 

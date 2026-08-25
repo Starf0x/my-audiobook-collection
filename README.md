@@ -257,3 +257,10 @@ the book:
 Values the app does not have are left out rather than written empty, so a book
 with no description keeps no empty comment frame. The badge on each card lists
 what the files actually carry.
+
+*Write tags into all MP3s* does the whole collection, which is an hour of work on
+a big share, so it runs **on the server**: closing the page does not stop it, and
+reopening it picks the bar back up. **Stop** leaves it exactly where it is — what
+is left to do is a queue in the database — and the button then reads *Carry on
+writing tags*. A container that restarts mid-run leaves the run paused rather
+than starting it again on its own, with its place kept.
