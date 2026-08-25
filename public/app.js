@@ -487,7 +487,8 @@ async function runImport(body) {
 }
 
 // --- two copies of the same book ---------------------------------------
-const kb = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : (n / 1e6).toFixed(0) + ' MB');
+const kb = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB'
+  : n >= 1e6 ? (n / 1e6).toFixed(0) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' kB');
 const hm = (s) => (!s ? '—' : `${Math.floor(s / 3600)}h ${String(Math.round(s % 3600 / 60)).padStart(2, '0')}m`);
 
 function askConflict(body, clash) {
@@ -535,6 +536,29 @@ function askConflict(body, clash) {
   };
   $('#conflict').showModal();
 }
+
+// --- cover files no book uses any more ---------------------------------
+$('#tidyCovers').onclick = async () => {
+  $('#tidyCovers').disabled = true;
+  try {
+    const r = await post('/api/covers/tidy', {});
+    const where = `${r.duplicates} file(s) in covers/duplicates`;
+    if (!r.tooMany) return toast(`${r.moved} unused cover(s) moved aside, ${r.kept} still in use. Now ${where}.`);
+    // more than a thousand: they are either not worth keeping, or worth keeping as one file
+    if (confirm(`${r.moved} unused cover(s) moved aside. There are now ${where}, `
+      + `which is more than ${r.zipAt}.\n\nDelete them?\n\nCancel keeps them, zipped into one file.`)) {
+      const d = await post('/api/covers/duplicates/delete', {});
+      toast(`${d.deleted} cover file(s) deleted.`);
+    } else {
+      const z = await post('/api/covers/duplicates/zip', {});
+      toast(`${z.zipped} cover file(s) zipped into ${z.zip.split(/[\\/]/).pop()} (${kb(z.bytes)}), loose files removed.`);
+    }
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    $('#tidyCovers').disabled = false;
+  }
+};
 
 // --- copies an import replaced -----------------------------------------
 async function loadReplaced() {
