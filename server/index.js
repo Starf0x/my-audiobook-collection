@@ -11,7 +11,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
-import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
+import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
@@ -222,12 +222,14 @@ app.get('/api/untagged', requireAdmin, (req, res) => {
 // the landing view: what this user was listening to, and what turned up last
 app.get('/api/home', (req, res) => res.json({
   continue: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, p.track_idx, p.done,
+                               ${SERIES} AS series, b.series_no,
                                (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks
                         FROM progress p JOIN books b ON b.id = p.book_id
                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
                         ORDER BY p.updated DESC LIMIT 12`).all(req.query.user || '')
     .map((b) => ({ ...b, coverV: coverV(b.cover) })),
-  recent: db.prepare('SELECT id, title, author, genre, cover FROM books ORDER BY id DESC LIMIT 12').all()
+  recent: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${SERIES} AS series, b.series_no
+                      FROM books b ORDER BY b.id DESC LIMIT 12`).all()
     .map((b) => ({ ...b, coverV: coverV(b.cover) })),
 }));
 
@@ -338,6 +340,10 @@ app.get('/api/apply/status', (req, res) => res.json(tagProgress));
 app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
   let book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Book not found' });
+  // the whole-collection run is writing these same files: one writer at a time
+  if (req.body.writeTags && tagAllWorking()) {
+    throw new Error('The whole-collection tag write is running. Stop it in Settings first.');
+  }
   // a genre is a folder, so taking Google's genre files the book there first,
   // and the tag write below then carries the genre it ended up in
   let moved = '';

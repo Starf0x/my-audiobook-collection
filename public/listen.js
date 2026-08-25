@@ -84,6 +84,7 @@ const tile = (b, resumable) => {
     <img src="/api/cover/${b.id}?v=${b.coverV || 0}" onerror="this.src='icon-128.png'" alt="">
     <div class="t">${esc(b.title)}</div>
     <div class="a">${esc(b.author)}</div>
+    ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
       <div class="a">${b.done ? 'Listened' : `Track ${at} of ${b.tracks}`}</div>` : ''}
   </div>`;
@@ -118,17 +119,42 @@ async function openInLibrary(genre, author) {
 // --- browsing -----------------------------------------------------------
 // Each genre lists its series underneath it, so the next book of one is two
 // clicks away without knowing who wrote it.
+// Which genres are showing their series, kept in the browser so the column looks
+// the same when you come back to it.
+const openGenres = new Set(JSON.parse(localStorage.openGenres || '[]'));
+
+function showSeriesOf(genre, open) {
+  if (open) openGenres.add(genre); else openGenres.delete(genre);
+  localStorage.openGenres = JSON.stringify([...openGenres]);
+  document.querySelectorAll(`#genres li[data-genre="${CSS.escape(genre)}"]`).forEach((li) => { li.hidden = !open; });
+  const row = [...document.querySelectorAll('#genres li[data-name]')].find((l) => l.dataset.name === genre);
+  const twist = row && row.querySelector('.twist');
+  if (twist) twist.textContent = open ? '▾' : '▸';
+}
+
 async function loadGenres() {
   const list = await api('/api/genres');
-  $('#genres ul').innerHTML = list.map((g) => `<li data-name="${esc(g.name)}">
-      <span>${esc(g.name)}</span><span class="count">${g.books}</span></li>`
-    + (g.series || []).map((s) => `<li class="series-in-genre" data-genre="${esc(g.name)}" data-series="${esc(s.name)}">
-        <span>${esc(s.name)}</span><span class="count">${s.books}</span></li>`).join('')).join('')
+  $('#genres ul').innerHTML = list.map((g) => {
+    const has = (g.series || []).length;
+    return `<li data-name="${esc(g.name)}">
+      <span class="who">${has ? '<span class="twist">▸</span>' : ''}${esc(g.name)}</span>
+      <span class="count">${g.books}</span></li>`
+      + (g.series || []).map((s) => `<li class="series-in-genre" hidden
+          data-genre="${esc(g.name)}" data-series="${esc(s.name)}">
+          <span class="who">${esc(s.name)}</span><span class="count">${s.books}</span></li>`).join('');
+  }).join('')
     || '<li class="empty">Nothing here yet.</li>';
-  $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => { li.onclick = () => selectGenre(li.dataset.name, li); });
+  $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => {
+    li.onclick = (e) => {
+      if (e.target.classList.contains('twist')) return showSeriesOf(li.dataset.name, !openGenres.has(li.dataset.name));
+      showSeriesOf(li.dataset.name, true);
+      selectGenre(li.dataset.name, li);
+    };
+  });
   $('#genres ul').querySelectorAll('li[data-series]').forEach((li) => {
     li.onclick = () => selectSeries(li.dataset.genre, li.dataset.series, li);
   });
+  for (const g of list) if (openGenres.has(g.name)) showSeriesOf(g.name, true);
 }
 
 async function selectSeries(genre, series, li) {
@@ -185,7 +211,8 @@ function drawBooks(books, heading) {
         <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
               title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
           ${esc(b.title)}</h3>
-        <div class="sub">${esc(author)}${b.series ? ' · ' + esc(b.series) + (b.series_no ? ' #' + b.series_no : '') : ''}</div>
+        <div class="sub">${esc(author)}</div>
+        ${b.series ? `<div class="sub series-of">Series · ${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
         <div class="sub" style="margin-top:6px">
           ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}

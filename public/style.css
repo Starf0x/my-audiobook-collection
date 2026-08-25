@@ -233,6 +233,12 @@ body.working #needsTags, body.working #importList, body.working #trashList, body
 body.working #brokenList { opacity: .45; pointer-events: none; }
 
 /* a series sits under its genre in the left column */
+#genres .who { display: flex; align-items: center; gap: 7px; min-width: 0; }
+#genres .twist {
+  width: 11px; text-align: center; font-size: 10px; color: var(--dim);
+  cursor: pointer; flex: none;
+}
+#genres li.active .twist { color: #e8e2ff; }
 #genres li.series-in-genre {
   padding: 6px 12px 6px 30px;
   font-size: 13px;
@@ -242,7 +248,10 @@ body.working #brokenList { opacity: .45; pointer-events: none; }
 #genres li.series-in-genre::before {
   content: "↳";
   position: absolute;
-  left: 14px;
-  opacity: .55;
+  left: 15px;
+  opacity: .5;
 }
 #genres li.series-in-genre.active { color: #fff; }
+/* the series a book belongs to, on its card and on its shelf tile */
+.card .sub.series-of { color: var(--accent2); }
+.tile .a.series-of { color: var(--accent2); opacity: .85; }

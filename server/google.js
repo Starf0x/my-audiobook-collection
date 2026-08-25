@@ -68,20 +68,36 @@ async function search_(book, search, key) {
   }));
 }
 
+// What a single tag write reports, for the bar that follows it. A run over the
+// whole collection keeps its own count instead of borrowing this one: two writers
+// sharing it is what made a bar read "193 / 157".
 export const tagProgress = { running: false, done: 0, total: 0, current: '', written: 0, error: '' };
+export const newTagProgress = () => ({ running: false, done: 0, total: 0, current: '', written: 0, error: '' });
 
-export async function applyMetadata(book, pick, writeTags) {
+// Only one tag write at a time, whoever asks: two of them writing the same files
+// is worse than a wait, and a shared progress count reads as nonsense.
+let writing = false;
+export const tagWriteBusy = () => writing;
+
+export async function applyMetadata(book, pick, writeTags, sink = tagProgress) {
+  if (writeTags && writing) {
+    throw new Error('A tag write is already running. Wait for it to finish, or stop it in Settings.');
+  }
   // set before the first await so a poll right after the request sees it
-  if (writeTags) Object.assign(tagProgress, { running: true, done: 0, total: 0, current: '', written: 0, error: '' });
+  if (writeTags) {
+    writing = true;
+    Object.assign(sink, { running: true, done: 0, total: 0, current: '', written: 0, error: '' });
+  }
   try {
-    return await apply_(book, pick, writeTags);
+    return await apply_(book, pick, writeTags, sink);
   } finally {
     // whatever failed, the bar must stop spinning
-    tagProgress.running = false;
+    sink.running = false;
+    if (writeTags) writing = false;
   }
 }
 
-async function apply_(book, pick, writeTags) {
+async function apply_(book, pick, writeTags, progress) {
   let cover = book.cover;
   if (pick.thumbnail) {
     // a cover that will not download must not stop the metadata being applied
@@ -126,23 +142,23 @@ async function apply_(book, pick, writeTags) {
     for (const [k, v] of Object.entries(tags)) if (!v) delete tags[k];
     const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
       .map((t) => t.path).filter((p) => p.toLowerCase().endsWith('.mp3'));
-    tagProgress.total = files.length;
+    progress.total = files.length;
     // renumber in the order the tracks already play, zero padded to at least two digits
     const width = Math.max(2, String(files.length).length);
     const total = String(files.length).padStart(width, '0');
     try {
       for (const [i, file] of files.entries()) {
-        tagProgress.current = path.basename(file);
+        progress.current = path.basename(file);
         const trackNumber = `${String(i + 1).padStart(width, '0')}/${total}`;
-        if (NodeID3.update({ ...tags, trackNumber }, file) === true) tagProgress.written++;
-        tagProgress.done++;
+        if (NodeID3.update({ ...tags, trackNumber }, file) === true) progress.written++;
+        progress.done++;
         // yield so the status endpoint can answer while writing
         await new Promise((r) => setImmediate(r));
       }
     } catch (e) {
-      tagProgress.error = e.message;
+      progress.error = e.message;
     }
-    if (tagProgress.written) {
+    if (progress.written) {
       const present = [
         ['album', tags.album], ['title', tags.title], ['artist', tags.artist], ['album artist', tags.performerInfo],
         ['narrator', tags.composer], ['genre', tags.genre], ['year', tags.year],
@@ -151,5 +167,5 @@ async function apply_(book, pick, writeTags) {
       db.prepare('UPDATE books SET tagged = ? WHERE id = ?').run(present, book.id);
     }
   }
-  return { written: tagProgress.written };
+  return { written: progress.written };
 }
