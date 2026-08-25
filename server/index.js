@@ -185,16 +185,16 @@ app.post('/api/scan', requireAdmin, (req, res) => {
 app.get('/api/scan/status', (req, res) => res.json(progress));
 
 // --- library -----------------------------------------------------------
+// A series is a folder where the collection has one, and whatever the files call
+// it where it does not, so a book filed straight under its author still shows up
+// in the series it belongs to.
+const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')), '')";
 app.get('/api/stats', (req, res) => {
   const books = db.prepare('SELECT COUNT(*) AS n FROM books').get().n;
   const files = db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n;
   const done = db.prepare('SELECT COUNT(*) AS n FROM progress WHERE user = ? AND done = 1').get(req.query.user || '').n;
   res.json({ books, files, done, todo: books - done });
 });
-
-// ids for the "write tags into every book" run, which the browser drives one by one
-app.get('/api/allbooks', requireAdmin, (req, res) => res.json(
-  db.prepare('SELECT id, title FROM books ORDER BY genre, author, title').all()));
 
 const REQUIRED_TAGS = ['album', 'title', 'artist', 'album artist', 'genre', 'year', 'description', 'cover', 'track no'];
 
@@ -232,11 +232,6 @@ app.get('/api/home', (req, res) => res.json({
                       FROM books b ORDER BY b.id DESC LIMIT 12`).all()
     .map((b) => ({ ...b, coverV: coverV(b.cover) })),
 }));
-
-// A series is a folder where the collection has one, and whatever the files call
-// it where it does not, so a book filed straight under its author still shows up
-// in the series it belongs to.
-const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')), '')";
 
 app.get('/api/genres', (req, res) => {
   const genres = db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all();

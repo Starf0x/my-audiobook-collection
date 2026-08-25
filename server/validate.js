@@ -20,7 +20,7 @@ const q = {
 };
 
 // What is wrong with this book, or null when nothing is.
-export async function checkBook(book) {
+async function checkBook(book) {
   if (!fs.existsSync(book.path)) {
     return { reason: 'gone', detail: 'The folder is not there any more' };
   }
@@ -116,5 +116,3 @@ export function forget(id) {
   db.prepare('DELETE FROM books WHERE id = ?').run(book.id);
   return { forgotten: book.title };
 }
-
-export const clearBroken = (id) => q.clear.run(Number(id));

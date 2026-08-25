@@ -77,7 +77,6 @@ export const newTagProgress = () => ({ running: false, done: 0, total: 0, curren
 // Only one tag write at a time, whoever asks: two of them writing the same files
 // is worse than a wait, and a shared progress count reads as nonsense.
 let writing = false;
-export const tagWriteBusy = () => writing;
 
 export async function applyMetadata(book, pick, writeTags, sink = tagProgress) {
   if (writeTags && writing) {
