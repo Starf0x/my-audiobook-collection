@@ -177,9 +177,9 @@ async function loadGenres() {
 
   $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => {
     li.onclick = (e) => {
-      // the arrow folds the series away without leaving the genre you are on
+      // only the arrow folds and unfolds; the name selects the genre and leaves
+      // the series list as it was
       if (e.target.classList.contains('twist')) return showSeriesOf(li.dataset.name, !openGenres.has(li.dataset.name));
-      showSeriesOf(li.dataset.name, true);
       selectGenre(li.dataset.name, li);
     };
   });

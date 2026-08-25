@@ -58,9 +58,9 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 ## Series
 
 A series shows up under its genre in the left column, with the number of books
-in it, and opens as one list in reading order. Genres fold their series away —
-the arrow beside a genre opens and closes it, and the column comes back the way
-you left it. Every book card names its series next to the cover, and so does
+in it, and opens as one list in reading order. Genres fold their series away:
+the arrow beside a genre opens and closes it, the name selects the genre and
+leaves the list as it was, and the column comes back the way you left it. Every book card names its series next to the cover, and so does
 every tile on the shelves. It comes from any of three
 places:
 
@@ -72,7 +72,9 @@ places:
 * the **files themselves**, for a book filed straight under its author: the
   movement name (`MVNM`), the grouping frame (`TIT1`) or a `SERIES` text frame,
   which is where audiobook taggers put it, with the movement index deciding the
-  order
+  order. A tag that names the volume rather than the series — `The Dark Tower V`
+  — is read as book 5 of *The Dark Tower*, so it joins the other volumes instead
+  of standing alone
 
 A series only appears after a scan, since that is when the folders and files are
 read. Books that were already in the library pick it up from a rescan without
