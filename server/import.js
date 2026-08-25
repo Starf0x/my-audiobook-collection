@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { db, getSetting, getLibraries } from './db.js';
-import { dirs, audioFiles, discFiles, DISC, addOne } from './scan.js';
+import { dirs, audioFiles, discFiles, DISC, addOne, NOT_IMPORTED, REPLACED } from './scan.js';
 
 // One progress object for every operation that shifts files about: importing,
 // moving a book and emptying it into the trash all report through it.
@@ -216,10 +216,6 @@ const prefixed = (dir, prefix) => {
   return target;
 };
 
-// Left alone but marked, so the folder says for itself why it is still here.
-export const NOT_IMPORTED = 'Not Imported - ';
-export const REPLACED = 'Replaced - ';
-
 export function skipImport(source) {
   if (!source || !fs.existsSync(source)) throw new Error('That import folder is no longer there');
   const target = prefixed(source, NOT_IMPORTED);
@@ -234,8 +230,8 @@ export async function importBook({ source, genre, author, series, title, replace
   if (fs.existsSync(dest) && !replace) throw new Error(`There is already a folder at ${dest}`);
 
   beginFileWork();
+  let replacedPath = '';
   try {
-    let replacedPath = '';
     if (fs.existsSync(dest)) {
       // step the old copy aside under its own name; the new one takes the path,
       // so the book keeps its row, and with it every listener's place in it
@@ -261,6 +257,14 @@ export async function importBook({ source, genre, author, series, title, replace
     const row = db.prepare('SELECT id, genre, author, title FROM books WHERE path = ?').get(dest) || {};
     return { dest, replacedPath, ...row };
   } catch (e) {
+    // The copy that was there has been stepped aside but the new one never
+    // arrived: put it back, or the library points at a folder that is not there.
+    if (replacedPath && !fs.existsSync(dest) && fs.existsSync(replacedPath)) {
+      try {
+        fs.renameSync(replacedPath, dest);
+        db.prepare('DELETE FROM replaced WHERE path = ?').run(replacedPath);
+      } catch { /* leave it on the Replaced list to be put back by hand */ }
+    }
     fileProgress.error = e.message;
     throw e;
   } finally {
