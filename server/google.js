@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import NodeID3 from 'node-id3';
-import { db, getSetting, DATA_DIR } from './db.js';
+import { db, googleKey, DATA_DIR } from './db.js';
 
 // Google Books answers 503 when it is briefly busy: wait and ask again.
 const RETRY_AFTER = [10000, 20000, 30000];
 
 const explain = (status, detail) => ({
-  400: 'Google rejected the request. The API key looks invalid — check it in Settings.',
-  401: 'Google did not accept the API key. Check it in Settings.',
+  400: 'Google rejected the request. The API key looks invalid — check it in the container template or in Settings.',
+  401: 'Google did not accept the API key. Check it in the container template or in Settings.',
   403: 'Google refused the key. Open Google Cloud Console and make sure the "Books API" is enabled for this key, and that no IP/website restriction blocks your server.',
   404: 'The Google Books service could not be found. Check the server\'s internet connection.',
   429: 'Too many requests: the Google Books daily quota or rate limit has been reached. Try again later.',
@@ -19,8 +19,8 @@ const explain = (status, detail) => ({
 export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTER.length + 1, retryUntil: 0 };
 
 export async function lookup(book, search) {
-  const key = getSetting('googleApiKey');
-  if (!key) throw new Error('No Google Books API key set yet. Open Settings and paste your key first.');
+  const key = googleKey();
+  if (!key) throw new Error('No Google Books API key set yet. Put one in the container template or in Settings.');
   Object.assign(lookupProgress, { running: true, attempt: 0, retryUntil: 0 });
   try {
     return await search_(book, search, key);

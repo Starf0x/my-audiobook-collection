@@ -8,12 +8,21 @@ import { getSetting, setSetting } from './db.js';
 
 const sessions = new Set(); // unlocked browsers, forgotten on restart
 
+// A password in the container template wins over a stored one, so a fresh
+// container is guarded from its first start and the template stays the truth.
+const envPassword = () => process.env.ADMIN_PASSWORD || '';
+export const passwordFromEnv = () => !!envPassword();
+const bootSalt = crypto.randomBytes(16).toString('hex');
+
 const hash = (password, salt) =>
   crypto.scryptSync(password, salt, 32).toString('hex');
 
-export const adminRequired = () => !!getSetting('adminHash');
+export const adminRequired = () => !!envPassword() || !!getSetting('adminHash');
 
 export function setPassword(password) {
+  if (passwordFromEnv()) {
+    throw new Error('The password comes from the container template (ADMIN_PASSWORD). Change it there.');
+  }
   if (!password) {
     setSetting('adminHash', '');
     setSetting('adminSalt', '');
@@ -30,8 +39,10 @@ export function setPassword(password) {
 
 export function unlock(password) {
   if (!adminRequired()) return { token: '', admin: true };
-  const stored = getSetting('adminHash');
-  const given = hash(password || '', getSetting('adminSalt'));
+  const stored = envPassword()
+    ? hash(envPassword(), bootSalt)
+    : getSetting('adminHash');
+  const given = hash(password || '', envPassword() ? bootSalt : getSetting('adminSalt'));
   // constant time: both sides are hex of the same length
   const ok = given.length === stored.length
     && crypto.timingSafeEqual(Buffer.from(given, 'hex'), Buffer.from(stored, 'hex'));

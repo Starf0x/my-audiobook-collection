@@ -68,8 +68,26 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
    want scanned, add the genre folders one by one instead and tick *Is a Genre* behind each.
 5. **Scan library**
 
-`unraid-template.xml` in this repo can also be dropped into
-`/boot/config/plugins/dockerMan/templates-user/` to get the same form pre-filled.
+### The template, and Force update
+
+Drop `unraid-template.xml` into `/boot/config/plugins/dockerMan/templates-user/`
+and add the container from it: every field is pre-filled and Unraid then manages
+it as a template, so updating is one click instead of filling the form again.
+
+**Force update** lives in the Docker tab's *Advanced View* — switch the toggle at
+the top right, and the container row gains a version column and the menu gains
+*Force update*. In Basic View neither is shown.
+
+### Two settings the template can own
+
+| Variable | What it does |
+| --- | --- |
+| `ADMIN_PASSWORD` | guards everything that changes the collection, from the container's first start |
+| `GOOGLE_API_KEY` | the Books API key |
+
+Either may be left empty and set in Settings instead. When the template sets one
+it wins over the stored value and Settings shows the field as owned by the
+template, so the two cannot drift apart and both survive an empty appdata folder.
 
 ### Or with docker compose
 
