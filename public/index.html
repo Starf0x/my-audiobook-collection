@@ -24,6 +24,7 @@
     <div class="col-title">Maintenance</div>
     <ul>
       <li id="needsTags"><span>Needs tags</span><span class="count" id="needsTagsCount">…</span></li>
+      <li id="brokenList"><span>Broken on disk</span><span class="count" id="brokenCount">…</span></li>
       <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
       <li id="replacedList"><span>Replaced</span><span class="count" id="replacedCount">…</span></li>
       <li id="trashList"><span>Trash</span><span class="count" id="trashCount">…</span></li>
@@ -82,6 +83,13 @@
   <div class="row"><input id="importPath" placeholder="/import"><button id="browseImport" class="ghost">Browse…</button></div>
   <p class="hint">New audiobooks are picked up from here. Use <em>Import</em> in the left column
     to file one under a genre and author.</p>
+
+  <label>Books against the disk</label>
+  <p class="hint">Opens every file of every book to find what a scan cannot see: a folder that
+    is gone, a truncated download, a share that answers but will not read. This reads your whole
+    collection, so on a large one it takes a long time — minutes, not seconds. Whatever it finds
+    is listed under <em>Broken on disk</em> in the left column.</p>
+  <button id="validateAll" class="ghost">Check every book against the disk</button>
 
   <label>Cover files</label>
   <p class="hint">Covers are named after the image, so a book that gets new artwork leaves its old

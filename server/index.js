@@ -10,6 +10,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
   deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
+import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
@@ -129,6 +130,24 @@ app.get('/api/import/compare', requireAdmin, wrap(async (req, res) =>
 // Not importing it: the folder stays, renamed so it says so, and is not offered again
 app.post('/api/import/skip', requireAdmin, wrap(async (req, res) => res.json(skipImport(req.body.source))));
 app.post('/api/import', requireAdmin, wrap(async (req, res) => res.json(await importBook(req.body))));
+
+// --- checking the books against the disk --------------------------------
+// Opens every file of every book, so it is only ever started by hand.
+app.get('/api/validate/status', (req, res) => res.json(checkProgress));
+app.post('/api/validate', requireAdmin, (req, res) => {
+  if (!checkProgress.running) validateAll(Date.now()).catch(() => {});
+  res.json({ started: true });
+});
+app.get('/api/broken', requireAdmin, (req, res) => res.json(listBroken()));
+app.post('/api/broken/:id/recheck', requireAdmin, wrap(async (req, res) => res.json(await recheck(req.params.id))));
+// files still there: to the trash, so they can come back. Nothing there: forget the book.
+app.post('/api/broken/:id/delete', requireAdmin, wrap(async (req, res) => {
+  const book = db.prepare('SELECT path FROM books WHERE id = ?').get(Number(req.params.id));
+  if (!book) throw new Error('Book not found');
+  res.json(fs.existsSync(book.path)
+    ? { ...await deleteToTrash(req.params.id, Date.now()), trashed: true }
+    : forget(req.params.id));
+}));
 
 // --- cover files no book uses any more ---------------------------------
 app.post('/api/covers/tidy', requireAdmin, wrap(async (req, res) => res.json(tidyCovers())));
