@@ -227,3 +227,4 @@ body.working #needsTags, body.working #importList, body.working #trashList, body
   opacity: .45;
   pointer-events: none;
 }
+body.working #brokenList { opacity: .45; pointer-events: none; }

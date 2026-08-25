@@ -27,6 +27,10 @@ db.exec(`
     PRIMARY KEY (user, book_id)
   );
   CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY);
+  -- what a disk check found wrong with a book, so the list survives a restart
+  CREATE TABLE IF NOT EXISTS broken (
+    book_id INTEGER PRIMARY KEY, reason TEXT, detail TEXT, checked_at TEXT
+  );
   CREATE TABLE IF NOT EXISTS replaced (
     id INTEGER PRIMARY KEY,
     path TEXT UNIQUE, was_path TEXT,
@@ -39,6 +43,10 @@ db.exec(`
     genre TEXT, author TEXT, series TEXT, title TEXT,
     files INTEGER, deleted_at TEXT
   );
+  -- A deleted book must not leave its verdict behind: SQLite hands out ids again,
+  -- and a new book would inherit it.
+  CREATE TRIGGER IF NOT EXISTS broken_follows_books AFTER DELETE ON books
+  BEGIN DELETE FROM broken WHERE book_id = OLD.id; END;
   -- every book lookup, delete and tag write filters tracks by book_id
   CREATE INDEX IF NOT EXISTS tracks_book ON tracks (book_id);
 `);
