@@ -67,7 +67,6 @@ async function askWho(users, cancellable) {
 }
 
 $('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
-$('#addUser').onclick = async () => askWho(await api('/api/users').catch(() => []), true);
 
 async function loadStats() {
   const s = await api('/api/stats?user=' + encodeURIComponent(state.user));
