@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
-import { db, getSetting, setSetting, getLibraries, keyFromEnv, DATA_DIR } from './db.js';
+import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, fileProgress, importState, clean } from './import.js';
@@ -59,15 +59,11 @@ app.post('/api/users', (req, res) => {
 // --- settings ----------------------------------------------------------
 app.get('/api/settings', requireAdmin, (req, res) => res.json({
   libraries: getLibraries(),
-  // a key from the template is not sent back for editing: the template owns it
-  googleApiKey: keyFromEnv() ? '' : getSetting('googleApiKey'),
-  keyFromEnv: keyFromEnv(),
   passwordFromEnv: passwordFromEnv(),
   importPath: getSetting('importPath'),
 }));
 app.post('/api/settings', requireAdmin, (req, res) => {
   setSetting('libraries', JSON.stringify(req.body.libraries || []));
-  if (!keyFromEnv()) setSetting('googleApiKey', req.body.googleApiKey || '');
   setSetting('importPath', req.body.importPath || '');
   res.json({ ok: true });
 });
