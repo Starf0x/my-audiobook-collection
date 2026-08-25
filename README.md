@@ -70,9 +70,12 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 
 ### The template, and Force update
 
-Drop `unraid-template.xml` into `/boot/config/plugins/dockerMan/templates-user/`
-and add the container from it: every field is pre-filled and Unraid then manages
-it as a template, so updating is one click instead of filling the form again.
+Drop `my-My-Audiobook-Collection.xml` into
+`/boot/config/plugins/dockerMan/templates-user/`. Unraid names a user template
+after the container it belongs to, `my-<container name>.xml`, and the `<Name>` in
+the file has to match that name as well — that is what makes Unraid manage the
+container as a template, so updating is one click instead of filling the form
+again. Rename both if you call your container something else.
 
 **Force update** lives in the Docker tab's *Advanced View* — switch the toggle at
 the top right, and the container row gains a version column and the menu gains
