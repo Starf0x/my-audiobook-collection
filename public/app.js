@@ -1175,8 +1175,9 @@ async function trackProgress(statusUrl, label, until) {
 async function loadScanChoices() {
   const s = await api('/api/settings').catch(() => ({ libraries: [] }));
   const libs = s.libraries || [];
-  $('#scanWhich').innerHTML = ['<option value="">All libraries</option>']
-    .concat(libs.map((l) => `<option value="${esc(l.path)}">${esc(l.path)}</option>`)).join('');
+  // each option says what pressing the button will do, closed or open
+  $('#scanWhich').innerHTML = ['<option value="">Scan all libraries</option>']
+    .concat(libs.map((l) => `<option value="${esc(l.path)}">Scan ${esc(l.path)}</option>`)).join('');
   $('#scanWhich').hidden = libs.length < 2;
 }
 
