@@ -116,12 +116,33 @@ async function openInLibrary(genre, author) {
 }
 
 // --- browsing -----------------------------------------------------------
+// Each genre lists its series underneath it, so the next book of one is two
+// clicks away without knowing who wrote it.
 async function loadGenres() {
   const list = await api('/api/genres');
-  $('#genres ul').innerHTML = list.map((g) =>
-    `<li data-name="${esc(g.name)}"><span>${esc(g.name)}</span><span class="count">${g.books}</span></li>`).join('')
+  $('#genres ul').innerHTML = list.map((g) => `<li data-name="${esc(g.name)}">
+      <span>${esc(g.name)}</span><span class="count">${g.books}</span></li>`
+    + (g.series || []).map((s) => `<li class="series-in-genre" data-genre="${esc(g.name)}" data-series="${esc(s.name)}">
+        <span>${esc(s.name)}</span><span class="count">${s.books}</span></li>`).join('')).join('')
     || '<li class="empty">Nothing here yet.</li>';
   $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => { li.onclick = () => selectGenre(li.dataset.name, li); });
+  $('#genres ul').querySelectorAll('li[data-series]').forEach((li) => {
+    li.onclick = () => selectSeries(li.dataset.genre, li.dataset.series, li);
+  });
+}
+
+async function selectSeries(genre, series, li) {
+  state.genre = genre;
+  state.author = null;
+  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+  if (li) li.classList.add('active');
+  const authors = await api('/api/authors?genre=' + encodeURIComponent(genre));
+  $('#authors ul').innerHTML = authors.map((a) =>
+    `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
+  $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
+  const books = await api(`/api/books?genre=${encodeURIComponent(genre)}&series=${encodeURIComponent(series)}`
+    + `&user=${encodeURIComponent(state.user)}`);
+  drawBooks(books, series);
 }
 
 async function selectGenre(genre, li) {
@@ -141,10 +162,15 @@ async function selectAuthor(author, li) {
   if (li) li.classList.add('active');
   const books = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`
     + `&user=${encodeURIComponent(state.user)}`);
-  let html = '';
-  let series = '';
+  drawBooks(books, '');
+}
+
+function drawBooks(books, heading) {
+  let html = heading ? `<div class="series-head">Series · ${esc(heading)}</div>` : '';
+  let series = heading;
   for (const b of books) {
-    if (b.series !== series) {
+    const author = b.author;
+    if (!heading && b.series !== series) {
       series = b.series;
       if (series) html += `<div class="series-head">Series · ${esc(series)}</div>`;
     }
@@ -159,7 +185,7 @@ async function selectAuthor(author, li) {
         <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
               title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
           ${esc(b.title)}</h3>
-        <div class="sub">${esc(author)}${b.series ? ' · ' + esc(b.series) : ''}</div>
+        <div class="sub">${esc(author)}${b.series ? ' · ' + esc(b.series) + (b.series_no ? ' #' + b.series_no : '') : ''}</div>
         <div class="sub" style="margin-top:6px">
           ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}

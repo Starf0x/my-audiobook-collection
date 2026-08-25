@@ -223,21 +223,35 @@ app.get('/api/home', (req, res) => res.json({
     .map((b) => ({ ...b, coverV: coverV(b.cover) })),
 }));
 
-app.get('/api/genres', (req, res) => res.json(
-  db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all()));
+// A series is a folder where the collection has one, and whatever the files call
+// it where it does not, so a book filed straight under its author still shows up
+// in the series it belongs to.
+const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')), '')";
+
+app.get('/api/genres', (req, res) => {
+  const genres = db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all();
+  const series = db.prepare(`SELECT b.genre, ${SERIES} AS name, COUNT(*) AS books
+                             FROM books b WHERE ${SERIES} IS NOT NULL
+                             GROUP BY b.genre, name ORDER BY name`).all();
+  res.json(genres.map((g) => ({ ...g, series: series.filter((s) => s.genre === g.name).map(({ name, books }) => ({ name, books })) })));
+});
 
 app.get('/api/authors', (req, res) => res.json(
   db.prepare('SELECT author AS name, COUNT(*) AS books FROM books WHERE genre = ? GROUP BY author ORDER BY author')
     .all(req.query.genre)));
 
-app.get('/api/books', (req, res) => res.json(
-  db.prepare(`SELECT b.id, b.title, b.series, b.narrator, b.year, b.description, b.cover, b.duration, b.tagged,
-                     p.done, p.position > 0 AS started
-              FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
-              WHERE b.genre = ? AND b.author = ?
-              ORDER BY b.series IS NULL, b.series, b.title`)
-    .all(req.query.user || '', req.query.genre, req.query.author)
-    .map((b) => ({ ...b, coverV: coverV(b.cover) }))));
+// Books of one author, or of one series: the same card either way.
+app.get('/api/books', (req, res) => {
+  const bySeries = !!req.query.series;
+  const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
+                                  b.description, b.cover, b.duration, b.tagged,
+                                  p.done, p.position > 0 AS started
+                           FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
+                           WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
+                           ORDER BY series IS NULL, series, b.series_no, b.title`)
+    .all(req.query.user || '', req.query.genre, bySeries ? req.query.series : req.query.author);
+  res.json(rows.map((b) => ({ ...b, coverV: coverV(b.cover) })));
+});
 
 app.post('/api/listened', (req, res) => {
   const { user, bookId, done } = req.body;
