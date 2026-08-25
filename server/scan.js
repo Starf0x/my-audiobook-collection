@@ -36,11 +36,15 @@ const taggedFields = (c) => [
   ['description', descriptionOf(c)], ['cover', c.picture?.[0]], ['track no', c.track?.no],
 ].filter(([, v]) => v).map(([k]) => k).join(',');
 
-async function taggedOf(file) {
+// One parse of the first file, for the two things a book that has not changed
+// still has to be kept honest about: which tags its files carry, and which series
+// they say it belongs to.
+async function firstFileTells(file) {
   try {
-    return taggedFields((await parseFile(file)).common || {});
+    const tags = await parseFile(file);
+    return { tagged: taggedFields(tags.common || {}), series: seriesFromTags(tags) };
   } catch {
-    return '';
+    return { tagged: '', series: { name: '', no: 0 } };
   }
 }
 
@@ -102,7 +106,8 @@ async function readMeta(files, bookPath) {
 const q = {
   bookByPath: db.prepare('SELECT id, duration FROM books WHERE path = ?'),
   trackPaths: db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx'),
-  touchBook: db.prepare('UPDATE books SET genre = ?, author = ?, series = ?, tagged = ? WHERE id = ?'),
+  touchBook: db.prepare(`UPDATE books SET genre = ?, author = ?, series = ?, tagged = ?,
+      tag_series = ?, series_no = ? WHERE id = ?`),
   upsertBook: db.prepare(`INSERT INTO books
       (path, genre, author, series, title, narrator, year, description, cover, duration, tagged, tag_series, series_no)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -131,8 +136,13 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
 
   if (unchanged) {
     // reading the first file's tags is cheap, and it keeps the "in MP3" state
-    // truthful after tags were written outside the app
-    q.touchBook.run(genre, author, series, await taggedOf(files[0]), existing.id);
+    // truthful after tags were written outside the app. The series goes the same
+    // way: a book already in the library must pick up what a new version of this
+    // app can work out, without its folders having to change first.
+    const told = await firstFileTells(files[0]);
+    q.touchBook.run(genre, author, series, told.tagged,
+      told.series.name || (guess ? guess.name : ''),
+      told.series.no || (guess ? guess.no : 0), existing.id);
     return 1;
   }
 
