@@ -335,12 +335,62 @@ async function writeMany(books) {
   loadUntagged();
 }
 
+// --- the whole collection, written on the server ------------------------
+// It outlives the page, so the page only starts it, follows it and stops it.
+let tagWatch = null;
+
+function tagAllWords(s) {
+  if (s.state === 'running') return `Writing tags: ${s.done} of ${s.total} book(s) done, ${s.left} to go. Now: ${s.current}`;
+  if (s.state === 'paused') return `Stopped at ${s.done} of ${s.total} book(s) — ${s.left} still to go. Start again to carry on.`;
+  if (s.state === 'done') return `Last run: ${s.written} file(s) tagged in ${s.done} book(s).`;
+  return 'Not started.';
+}
+
+async function showTagAll(s) {
+  const status = s || await api('/api/tagall/status').catch(() => ({ state: 'idle' }));
+  $('#tagAllState').textContent = tagAllWords(status);
+  $('#tagAll').textContent = status.state === 'paused' ? 'Carry on writing tags' : 'Write tags into all MP3s';
+  $('#tagAll').disabled = status.state === 'running';
+  $('#tagAllStop').hidden = status.state !== 'running';
+  return status;
+}
+
+// One bar that follows the run wherever it was started, and lets go when it ends
+function watchTagAll() {
+  if (tagWatch) return;
+  const bar = newBar('Writing tags…');
+  tagWatch = setInterval(async () => {
+    const s = await api('/api/tagall/status').catch(() => null);
+    if (!s) return;
+    if (s.total) bar.at((s.done / s.total) * 100);
+    bar.say(tagAllWords(s), s.state === 'paused');
+    showTagAll(s);
+    if (s.state !== 'running') {
+      clearInterval(tagWatch);
+      tagWatch = null;
+      bar.done(s.state === 'paused' ? 8000 : 5000);
+      loadUntagged();
+      if (state.author) selectAuthor(state.author, null);
+    }
+  }, 1000);
+}
+
 $('#tagAll').onclick = async () => {
-  const books = await api('/api/allbooks');
-  if (!confirm(`Write tags into every MP3 of all ${books.length} book(s)? This rewrites the files.`)) return;
+  const s = await api('/api/tagall/status').catch(() => ({ state: 'idle' }));
+  const going = s.state === 'paused'
+    ? confirm(`Carry on writing tags? ${s.left} book(s) are still to go.`)
+    : confirm('Write tags into every MP3 of every book?\n\nThis rewrites the files and takes a long '
+      + 'time on a big collection. It runs on the server, so you can close this page; stopping it '
+      + 'keeps its place.');
+  if (!going) return;
+  await post('/api/tagall', {});
   $('#settings').close();
-  await work($('#tagAll'), 'The tag write', () => writeMany(books));
-  if (state.author) selectAuthor(state.author, null);
+  watchTagAll();
+};
+
+$('#tagAllStop').onclick = async () => {
+  await post('/api/tagall/stop', {}).catch((e) => toast(e.message));
+  await showTagAll();
 };
 
 // --- import: file a folder from the import path under a genre and author ---
@@ -1084,6 +1134,7 @@ $('#openSettings').onclick = async () => {
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
   $('#importPath').value = s.importPath || '';
+  await showTagAll();
   renderLibs();
   await loadGenreFolders();
   $('#browser').hidden = true;
@@ -1218,6 +1269,8 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
   // a scan another browser started is still running: follow it instead of
   // offering a button that would only be refused
+  const tagging = await api('/api/tagall/status').catch(() => null);
+  if (tagging && tagging.state === 'running') watchTagAll();
   const scanning = await api('/api/scan/status').catch(() => null);
   if (scanning && scanning.running) {
     work($('#scan'), 'The scan', async () => finishScan(null, await trackProgress('/api/scan/status', 'Looking for books…')));
