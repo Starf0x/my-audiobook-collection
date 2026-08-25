@@ -168,6 +168,15 @@ the deletion. **Trash** in the left column lists what is in there, how long it h
 left, and offers *Put back*, *Delete now* per book and *Empty trash*. Anything
 older than 30 days is dropped by itself, checked at startup and once a day after.
 
+## Cover files it no longer needs
+
+Covers are stored under the name of the image itself, so a book that gets new
+artwork leaves its old file in `/data/covers`. **Tidy up unused covers** in
+Settings moves every cover file no book refers to into `covers/duplicates`,
+overwriting a file of the same name already there. Once that folder holds more
+than a thousand files it says so and asks whether to delete them; decline and
+they are zipped into one archive beside them and the loose files removed.
+
 ## Google Books API key
 
 Google Cloud Console → *APIs & Services* → enable **Books API** → *Credentials* →
