@@ -1,5 +1,5 @@
 import { db } from './db.js';
-import { applyMetadata } from './google.js';
+import { applyMetadata, newTagProgress } from './google.js';
 
 // Writing tags into a whole collection is an hour of work on a big share, so it
 // runs here rather than in the browser: closing the page, or losing it, does not
@@ -28,6 +28,10 @@ const q = {
 
 let working = false;   // is the loop running in this process
 let stopping = false;
+// its own count, so the bar of a single book's write never mixes with this one
+const mine = newTagProgress();
+
+export const tagAllWorking = () => working;
 
 const now = () => new Date().toISOString();
 
@@ -60,7 +64,7 @@ async function loop() {
       let written = 0;
       let failed = 0;
       try {
-        ({ written } = await applyMetadata(book, {}, true));
+        ({ written } = await applyMetadata(book, {}, true, mine));
       } catch {
         failed = 1; // one unreadable book must not stop the rest of the run
       }
