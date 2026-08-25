@@ -30,6 +30,14 @@ db.exec(`
     PRIMARY KEY (user, book_id)
   );
   CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY);
+  -- a whole-collection tag write, and what is left of it: the queue is what
+  -- makes the run resumable after a stop or a restart
+  CREATE TABLE IF NOT EXISTS tagrun (
+    id INTEGER PRIMARY KEY,
+    total INTEGER, done INTEGER, written INTEGER, failed INTEGER,
+    state TEXT, current TEXT, started_at TEXT, finished_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS tagqueue (book_id INTEGER PRIMARY KEY);
   -- what a disk check found wrong with a book, so the list survives a restart
   CREATE TABLE IF NOT EXISTS broken (
     book_id INTEGER PRIMARY KEY, reason TEXT, detail TEXT, checked_at TEXT
