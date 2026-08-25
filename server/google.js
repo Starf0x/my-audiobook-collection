@@ -55,7 +55,12 @@ async function search_(book, search, key) {
     title: it.volumeInfo.title || '',
     author: (it.volumeInfo.authors || []).join(', '),
     year: (it.volumeInfo.publishedDate || '').slice(0, 4),
-    genre: (it.volumeInfo.categories || [])[0] || '',
+    // Google answers with categories like "Fiction / Fantasy / Epic": each part
+    // is a genre worth offering, so the admin picks which one this book is filed as
+    genres: [...new Set((it.volumeInfo.categories || [])
+      .flatMap((c) => c.split(/[/,]/))
+      .map((c) => c.trim())
+      .filter(Boolean))].slice(0, 6),
     description: it.volumeInfo.description || '',
     thumbnail: (it.volumeInfo.imageLinks || {}).thumbnail || '',
   }));
@@ -108,8 +113,8 @@ async function apply_(book, pick, writeTags) {
       artist: author,
       performerInfo: author, // TPE2, the album artist
       year: pick.year || book.year,
-      // the genre folder is what this library is organised by, so it wins over
-      // a Google category like "Fiction"
+      // the genre folder is what this library is organised by, and a Google
+      // category only becomes one once the admin picks it and the book moves there
       genre: book.genre,
       composer: pick.narrator || book.narrator || '',
       ...(description ? { comment: { language: 'eng', text: description } } : {}),
