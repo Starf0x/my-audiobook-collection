@@ -237,7 +237,10 @@ body.working #brokenList { opacity: .45; pointer-events: none; }
 #genres .twist {
   width: 11px; text-align: center; font-size: 10px; color: var(--dim);
   cursor: pointer; flex: none;
+  /* a small arrow needs a bigger target than it looks */
+  padding: 4px 5px; margin: -4px -5px;
 }
+#genres .twist:hover { color: #fff; }
 #genres li.active .twist { color: #e8e2ff; }
 #genres li.series-in-genre {
   padding: 6px 12px 6px 30px;

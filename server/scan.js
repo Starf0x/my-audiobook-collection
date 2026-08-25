@@ -48,6 +48,25 @@ async function firstFileTells(file) {
   }
 }
 
+// A volume number on the end of a name: "The Dark Tower V" is the fifth book of
+// The Dark Tower, whether that name came from a folder or from a tag. Splitting
+// it off is what keeps one series from becoming five.
+const VOLUME = /^(.*?)[\s,._-]*(?:(?:book|vol|volume|part|deel|boek)[\s.]*)?(\d{1,3}|[ivxlcdm]{1,7})$/i;
+const ROMAN = {
+  i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10,
+  xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20,
+};
+
+const splitVolume = (raw) => {
+  const name = (raw || '').trim();
+  const m = VOLUME.exec(name);
+  if (!m) return { name, no: 0 };
+  const prefix = m[1].trim().replace(/[,\-–:._]+$/, '').trim();
+  const token = m[2].toLowerCase();
+  const no = /^\d+$/.test(token) ? Number(token) : (ROMAN[token] || 0);
+  return prefix.length >= 3 && no ? { name: prefix, no } : { name, no: 0 };
+};
+
 // A book filed straight under its author has no series folder, but its files
 // often say which series it belongs to: iTunes and most audiobook taggers put it
 // in the movement name, others in the grouping or a SERIES text frame.
@@ -55,10 +74,12 @@ const seriesFromTags = (tags) => {
   const c = tags.common || {};
   const txxx = (tags.native?.['ID3v2.4'] || tags.native?.['ID3v2.3'] || [])
     .find((f) => f.id === 'TXXX' && /^(series|album series)$/i.test(f.value?.description || ''));
-  const name = [c.movement, c.grouping, txxx?.value?.text]
+  const said = [c.movement, c.grouping, txxx?.value?.text]
     .map((v) => (v || '').trim())
     .find((v) => v && v !== c.album && v !== c.title) || '';
-  return { name, no: Number(c.movementIndex?.no) || 0 };
+  // some taggers put the volume there rather than the series: "The Dark Tower V"
+  const v = splitVolume(said);
+  return { name: v.name, no: Number(c.movementIndex?.no) || v.no };
 };
 
 async function readMeta(files, bookPath) {
@@ -210,22 +231,12 @@ export async function scan(only = '') {
 // "The Dark Tower I", "The Dark Tower II", "The Dark Tower III" — one series,
 // split over folders that differ only by a volume number. Two of them are enough
 // to say so; one on its own is just a title that happens to end in a numeral.
-const VOLUME = /^(.*?)[\s,._-]*(?:(?:book|vol|volume|part|deel|boek)[\s.]*)?(\d{1,3}|[ivxlcdm]{1,7})$/i;
-const ROMAN = {
-  i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10,
-  xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20,
-};
-
 export function seriesFromSiblings(names) {
   const groups = new Map();
   for (const name of names) {
     if (DISC.test(name)) continue; // a disc marker is not a volume of a series
-    const m = VOLUME.exec(name.trim());
-    if (!m) continue;
-    const prefix = m[1].trim().replace(/[,\-–:._]+$/, '').trim();
-    const token = m[2].toLowerCase();
-    const no = /^\d+$/.test(token) ? Number(token) : (ROMAN[token] || 0);
-    if (prefix.length < 3 || !no) continue;
+    const { name: prefix, no } = splitVolume(name);
+    if (!no) continue;
     if (!groups.has(prefix)) groups.set(prefix, []);
     groups.get(prefix).push({ name, no });
   }
