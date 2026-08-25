@@ -14,6 +14,27 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
 
 const state = { user: localStorage.user || '', genre: null, author: null, book: null, track: 0 };
 
+// --- one job at a time --------------------------------------------------
+// A job that takes a while — a scan, an import, a tag write — greys the button
+// that started it, and everything else that would start work, until it is done.
+// Without that, a slow import invites a second click on the same book, and the
+// question about the copy already in the library comes back while it is running.
+let job = '';
+
+async function work(button, what, fn) {
+  if (job) { toast(`${job} is still running. Wait for it to finish.`); return null; }
+  job = what;
+  document.body.classList.add('working');
+  if (button) button.disabled = true;
+  try {
+    return await fn();
+  } finally {
+    job = '';
+    document.body.classList.remove('working');
+    if (button) button.disabled = false;
+  }
+}
+
 // --- admin or listener --------------------------------------------------
 // With no password set everyone is admin, which is how a private install works.
 // With one set, a browser that has not unlocked can browse, play and keep its
@@ -268,7 +289,7 @@ async function writeWithProgress(id, pick, genre) {
 }
 
 // Write what the app already knows about the book into its MP3 files.
-window.writeTags = (id) => writeWithProgress(id, {});
+window.writeTags = (id) => work(null, 'A tag write', () => writeWithProgress(id, {}));
 
 // A run of books, one at a time, so the bar can show where it is.
 async function writeMany(books) {
@@ -289,7 +310,7 @@ $('#tagAll').onclick = async () => {
   const books = await api('/api/allbooks');
   if (!confirm(`Write tags into every MP3 of all ${books.length} book(s)? This rewrites the files.`)) return;
   $('#settings').close();
-  await writeMany(books);
+  await work($('#tagAll'), 'The tag write', () => writeMany(books));
   if (state.author) selectAuthor(state.author, null);
 };
 
@@ -468,7 +489,7 @@ function importForm(d, c) {
     const clash = await api('/api/import/compare?' + new URLSearchParams(body)).catch(() => ({ exists: false }));
     if (clash.exists) return askConflict(body, clash);
     $('#importDlg').close();
-    await runImport(body);
+    await work($('#iGo'), 'The import', () => runImport(body));
   };
   $('#importDlg').showModal();
 }
@@ -476,14 +497,19 @@ $('#closeImport').onclick = () => $('#importDlg').close();
 
 async function runImport(body) {
   const { ok, r } = await fileWork('/api/import', body, 'Import');
-  if (ok) {
-    // the server files the book itself, so there is nothing to rescan
-    $('#progressText').textContent = r.replacedPath
-      ? `Imported into ${r.dest}, the copy that was there is now ${r.replacedPath}`
-      : `Imported into ${r.dest}`;
-    await refreshLibrary();
+  if (!ok) {
+    // the candidate is still there: back to the list so it can be tried again
+    $('#importList').onclick('keep');
+    return;
   }
-  $('#importList').onclick('keep');
+  // the server files the book as it moves it, so there is nothing to rescan;
+  // open the genre and author it landed under, which is where it now is
+  $('#progressText').textContent = r.replacedPath
+    ? `Imported into ${r.dest}, the copy that was there is now ${r.replacedPath}`
+    : `Imported into ${r.dest}`;
+  await refreshLibrary();
+  if (r.genre && r.author) await openInLibrary(r.genre, r.author);
+  toast(`${r.title} is now under ${r.genre} / ${r.author}. Import is in the left column for the next one.`);
 }
 
 // --- two copies of the same book ---------------------------------------
@@ -523,7 +549,7 @@ function askConflict(body, clash) {
   $('#cReplace').onclick = async () => {
     $('#conflict').close();
     $('#importDlg').close();
-    await runImport({ ...body, replace: true });
+    await work($('#cReplace'), 'The import', () => runImport({ ...body, replace: true }));
   };
   $('#cSkip').onclick = async () => {
     $('#conflict').close();
@@ -538,8 +564,7 @@ function askConflict(body, clash) {
 }
 
 // --- cover files no book uses any more ---------------------------------
-$('#tidyCovers').onclick = async () => {
-  $('#tidyCovers').disabled = true;
+$('#tidyCovers').onclick = () => work($('#tidyCovers'), 'The cover tidy-up', async () => {
   try {
     const r = await post('/api/covers/tidy', {});
     const where = `${r.duplicates} file(s) in covers/duplicates`;
@@ -555,10 +580,8 @@ $('#tidyCovers').onclick = async () => {
     }
   } catch (e) {
     toast(e.message);
-  } finally {
-    $('#tidyCovers').disabled = false;
   }
-};
+});
 
 // --- copies an import replaced -----------------------------------------
 async function loadReplaced() {
@@ -758,7 +781,8 @@ $('#needsTags').onclick = async () => {
       </div>
     </div>`).join('')}`;
   $('#tagFixable').onclick = () => {
-    if (confirm(`Write tags into ${fixable.length} book(s)?`)) writeMany(fixable).then(() => $('#needsTags').click());
+    if (!confirm(`Write tags into ${fixable.length} book(s)?`)) return;
+    work($('#tagFixable'), 'The tag write', () => writeMany(fixable)).then(() => $('#needsTags').click());
   };
 };
 
@@ -832,6 +856,20 @@ function genreChoice(i, current, suggested, known) {
     <div class="hint">Another genre moves the book into that genre's folder, and writes it into the tags.</div>`;
 }
 
+// Two people wrote this book, and only one name can be the folder. So the pair
+// is a choice about what goes into the files, and the folder is left alone.
+function authorChoice(i, current, authors) {
+  if (!authors || authors.length < 2) return '';
+  const both = authors.join(', ');
+  const options = [both, ...authors, current].filter((a, k, all) => a && all.indexOf(a) === k);
+  return `<label>Author</label>
+    <select id="ca${i}">
+      ${options.map((a) => `<option value="${esc(a)}"${a === both ? ' selected' : ''}>${esc(a)}${a === current ? ' — as filed now' : ''}</option>`).join('')}
+    </select>
+    <div class="hint">${authors.length} authors are credited. What you pick goes into the artist and
+      album artist tags; the author folder keeps its name.</div>`;
+}
+
 window.findMeta = async function (id, query) {
   $('#lookupBody').innerHTML = '';
   const book = await api(`/api/books/${id}`);
@@ -853,6 +891,7 @@ window.findMeta = async function (id, query) {
         <strong>${esc(c.title)}</strong>
         <div class="sub">${esc(c.author)}${c.year ? ' · ' + esc(c.year) : ''}</div>
         <div class="desc">${esc(c.description)}</div>
+        ${authorChoice(i, book.author, c.authors || [])}
         ${genreChoice(i, book.genre, c.genres || [], known)}
         <div class="row">
           <button onclick="applyMeta(${id},${i},false)">Use metadata</button>
@@ -869,7 +908,8 @@ window.findMeta = async function (id, query) {
 };
 
 window.applyMeta = async function (id, i, writeTags) {
-  const pick = window._cands[i];
+  const chosen = $(`#ca${i}`) ? $(`#ca${i}`).value : '';
+  const pick = chosen ? { ...window._cands[i], author: chosen } : window._cands[i];
   const genre = $(`#cg${i}`) ? $(`#cg${i}`).value : '';
   $('#lookup').close();
   if (writeTags) {
@@ -925,19 +965,12 @@ $('#addGenre').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
-function showPassState() {
-  $('#passState').textContent = perm.required
-    ? 'A password is set, so browsers that have not unlocked can only browse and play.'
-    : 'No password set: anyone who opens the app can change everything.';
-}
-
 $('#openSettings').onclick = async () => {
   const s = await api('/api/settings');
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
   $('#importPath').value = s.importPath || '';
   renderLibs();
-  showPassState();
   await loadGenreFolders();
   $('#browser').hidden = true;
   $('#settings').showModal();
@@ -951,7 +984,8 @@ $('#saveSettings').onclick = async () => {
   await post('/api/settings', { libraries: libs, importPath: $('#importPath').value.trim() });
   $('#settings').close();
   toast('Settings saved.');
-  if (JSON.stringify(libs) !== libsAtOpen) startScan();
+  await loadScanChoices();
+  if (JSON.stringify(libs) !== libsAtOpen) work($('#scan'), 'The scan', startScan);
 };
 
 let browsePath = '/';
@@ -1005,9 +1039,17 @@ function hideProgressSoon(ms = 3000) {
   setTimeout(() => { $('#progress').hidden = true; }, ms);
 }
 
+async function loadScanChoices() {
+  const s = await api('/api/settings').catch(() => ({ libraries: [] }));
+  const libs = s.libraries || [];
+  $('#scanWhich').innerHTML = ['<option value="">All libraries</option>']
+    .concat(libs.map((l) => `<option value="${esc(l.path)}">${esc(l.path)}</option>`)).join('');
+  $('#scanWhich').hidden = libs.length < 2;
+}
+
 async function startScan() {
   try {
-    await post('/api/scan', {});
+    await post('/api/scan', { path: $('#scanWhich').value });
   } catch (e) { return finishScan(e.message); }
   const p = await trackProgress('/api/scan/status', 'Looking for books…');
   finishScan(p.error, p);
@@ -1027,7 +1069,7 @@ function finishScan(error, p) {
   hideProgressSoon(p.warning ? 30000 : 3000);
 }
 
-$('#scan').onclick = startScan;
+$('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
 
 // A name first: the whole point of the app is remembering where you were.
 (async () => {
@@ -1037,7 +1079,13 @@ $('#scan').onclick = startScan;
   await loadPerm();
   const users = await loadUsers();
   await loadGenres();
-  await Promise.all([loadStats(), loadUntagged(), importCountOnly(), loadTrash(), loadReplaced()]);
+  await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(), loadReplaced()]);
   await loadHome();
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
+  // a scan another browser started is still running: follow it instead of
+  // offering a button that would only be refused
+  const scanning = await api('/api/scan/status').catch(() => null);
+  if (scanning && scanning.running) {
+    work($('#scan'), 'The scan', async () => finishScan(null, await trackProgress('/api/scan/status', 'Looking for books…')));
+  }
 })();
