@@ -210,7 +210,9 @@ async function selectSeries(genre, series, li) {
   state.series = series;
   state.author = null;
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
-  if (li) li.classList.add('active');
+  const row = li || [...document.querySelectorAll('#genres li[data-series]')]
+    .find((l) => l.dataset.genre === genre && l.dataset.series === series);
+  if (row) row.classList.add('active');
   const authors = await api('/api/authors?genre=' + encodeURIComponent(genre));
   $('#authors ul').innerHTML = authors.map((a) =>
     `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
@@ -224,7 +226,8 @@ async function selectAuthor(author, li) {
   state.series = '';
   document.querySelectorAll('#authors li').forEach((e) => e.classList.remove('active'));
   document.querySelectorAll('#genres li[data-series]').forEach((e) => e.classList.remove('active'));
-  if (li) li.classList.add('active');
+  const row = li || [...document.querySelectorAll('#authors li')].find((l) => l.dataset.name === author);
+  if (row) row.classList.add('active');
   const books = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`
     + `&user=${encodeURIComponent(state.user)}`);
   await drawBooks(books, '');
@@ -596,7 +599,10 @@ function importForm(d, c) {
     };
     // Never overwrite a book unseen: if one is already there, the two copies are
     // compared first and it is the admin who decides which one the library keeps.
+    // That reads every file of both, so it is not instant on a share.
+    const bar = newBar('Looking at what is already there…');
     const clash = await api('/api/import/compare?' + new URLSearchParams(body)).catch(() => ({ exists: false }));
+    bar.done(0);
     if (clash.exists) return askConflict(body, clash);
     $('#importDlg').close();
     await work($('#iGo'), 'The import', () => runImport(body));
@@ -829,7 +835,9 @@ $('#replacedList').onclick = async () => {
 // The shelves included: a book that just arrived belongs under Recently added.
 async function refreshLibrary() {
   await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), loadReplaced(), loadBroken(), importCountOnly()]);
-  if (state.author) selectAuthor(state.author, null);
+  // back to whatever was on screen: an author, a series, or the shelves
+  if (state.series) await selectSeries(state.genre, state.series, null);
+  else if (state.author) selectAuthor(state.author, null);
   else if (!document.body.classList.contains('maintenance')) await loadHome();
 }
 

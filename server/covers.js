@@ -10,7 +10,7 @@ const coversDir = () => path.join(DATA_DIR, 'covers');
 const dupesDir = () => path.join(coversDir(), 'duplicates');
 const isImage = (name) => /\.(jpe?g|png)$/i.test(name);
 
-export const ZIP_AT = 1000;
+const ZIP_AT = 1000;
 
 const loose = () => (fs.existsSync(dupesDir())
   ? fs.readdirSync(dupesDir(), { withFileTypes: true })
@@ -50,7 +50,7 @@ export function zipDuplicates(stamp) {
   const names = loose();
   if (!names.length) throw new Error('There is nothing in the duplicates folder to zip');
   const zip = path.join(dupesDir(), `covers-${stamp}.zip`);
-  writeZip(zip, names.map((name) => ({ name, body: fs.readFileSync(path.join(dupesDir(), name)) })));
+  writeZip(zip, names, (name) => fs.readFileSync(path.join(dupesDir(), name)));
   for (const name of names) fs.rmSync(path.join(dupesDir(), name), { force: true });
   return { zip, zipped: names.length, bytes: fs.statSync(zip).size };
 }
@@ -69,14 +69,17 @@ const crc32 = (buf) => {
   return (c ^ 0xFFFFFFFF) >>> 0;
 };
 
-function writeZip(out, files) {
+// bodyOf is called one file at a time: a thousand covers held in memory at once
+// is a lot to ask of a small container for no reason.
+function writeZip(out, names, bodyOf) {
   const parts = [];
   const dir = [];
   let offset = 0;
-  for (const f of files) {
-    const data = zlib.deflateRawSync(f.body);
-    const crc = crc32(f.body);
-    const name = Buffer.from(f.name, 'utf8');
+  for (const fileName of names) {
+    const body = bodyOf(fileName);
+    const data = zlib.deflateRawSync(body);
+    const crc = crc32(body);
+    const name = Buffer.from(fileName, 'utf8');
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
@@ -85,7 +88,7 @@ function writeZip(out, files) {
     local.writeUInt16LE(0x0021, 12);     // 1 Jan 1980, the format's zero date
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(f.body.length, 22);
+    local.writeUInt32LE(body.length, 22);
     local.writeUInt16LE(name.length, 26);
     parts.push(local, name, data);
 
@@ -97,7 +100,7 @@ function writeZip(out, files) {
     entry.writeUInt16LE(0x0021, 14);
     entry.writeUInt32LE(crc, 16);
     entry.writeUInt32LE(data.length, 20);
-    entry.writeUInt32LE(f.body.length, 24);
+    entry.writeUInt32LE(body.length, 24);
     entry.writeUInt16LE(name.length, 28);
     entry.writeUInt32LE(offset, 42);
     dir.push(entry, name);
@@ -107,8 +110,8 @@ function writeZip(out, files) {
   const central = Buffer.concat(dir);
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(files.length, 8);
-  end.writeUInt16LE(files.length, 10);
+  end.writeUInt16LE(names.length, 8);
+  end.writeUInt16LE(names.length, 10);
   end.writeUInt32LE(central.length, 12);
   end.writeUInt32LE(offset, 16);
   fs.writeFileSync(out, Buffer.concat([...parts, central, end]));
