@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Audiobook Collection</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🎧 My Audiobook Collection</h1>
+  <div class="spacer"></div>
+  <select id="user"></select>
+  <button id="addUser" class="ghost">+ User</button>
+  <button id="adminBtn" class="ghost">Admin</button>
+</header>
+
+<main>
+  <aside id="genres"><div class="col-title">Genres</div><ul></ul></aside>
+  <section id="authors"><div class="col-title">Authors</div><ul></ul></section>
+  <section id="books"><div class="col-title">Books <button id="home" class="linkish">Home</button></div><div class="list"></div></section>
+</main>
+
+<footer id="player" hidden>
+  <img id="pCover" alt="">
+  <div class="meta">
+    <strong id="pTitle"></strong>
+    <span id="pTrack"></span>
+  </div>
+  <audio id="audio" controls></audio>
+  <select id="trackSelect"></select>
+</footer>
+
+<div id="status"></div>
+
+<dialog id="admin">
+  <h2>Admin</h2>
+  <p class="hint" id="adminWhy"></p>
+  <label>Password</label><input id="adminPass" type="password" placeholder="Password">
+  <div class="row end"><button id="adminCancel" class="ghost">Cancel</button><button id="adminGo">Unlock</button></div>
+</dialog>
+
+<dialog id="who">
+  <h2>Who is listening?</h2>
+  <p class="hint">Where you got to in a book, and which books you have finished, are kept
+    per person. Names are stored on the server, so they are still here next time.</p>
+  <div id="whoList"></div>
+  <label>Add someone</label>
+  <div class="row"><input id="whoName" placeholder="Your name"><button id="whoGo">Start listening</button></div>
+  <div class="row end"><button id="whoClose" class="ghost" hidden>Cancel</button></div>
+</dialog>
+
+<div id="toast"></div>
+<script src="listen.js"></script>
+</body>
+</html>

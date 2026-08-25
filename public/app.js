@@ -14,6 +14,27 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
 
 const state = { user: localStorage.user || '', genre: null, author: null, book: null, track: 0 };
 
+// --- admin or listener --------------------------------------------------
+// With no password set everyone is admin, which is how a private install works.
+// With one set, a browser that has not unlocked can browse, play and keep its
+// own place, and the controls that change the collection are not drawn at all.
+const perm = { required: false, admin: true };
+
+// This is the page that changes things, so it is for an unlocked browser only.
+// Everyone else is sent to the listening page.
+async function loadPerm() {
+  const p = await api('/api/admin').catch(() => ({ required: false, admin: true }));
+  perm.required = p.required;
+  perm.admin = p.admin;
+  if (perm.required && !perm.admin) location.replace('listen.html');
+  $('#adminBtn').hidden = !perm.required;
+}
+
+$('#adminBtn').onclick = async () => {
+  await post('/api/admin/lock', {});
+  location.replace('listen.html');
+};
+
 // --- users -------------------------------------------------------------
 async function loadUsers() {
   const users = await api('/api/users');
@@ -69,7 +90,7 @@ const tile = (b, resumable) => {
   const pct = b.done ? 100 : b.tracks ? (at / b.tracks) * 100 : 0;
   return `<div class="tile" data-id="${b.id}" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
        data-resume="${resumable ? 1 : 0}" title="${esc(b.title)}">
-    <img src="/api/cover/${b.id}" onerror="this.src='icon-128.png'" alt="">
+    <img src="/api/cover/${b.id}?v=${b.coverV || 0}" onerror="this.src='icon-128.png'" alt="">
     <div class="t">${esc(b.title)}</div>
     <div class="a">${esc(b.author)}</div>
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
@@ -139,7 +160,7 @@ async function selectAuthor(author, li) {
     }
     html += `<div class="card" data-started="${b.started ? 1 : 0}">
       <div class="cover">
-        <img src="/api/cover/${b.id}" onerror="this.style.visibility='hidden'" alt="">
+        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" onerror="this.style.visibility='hidden'" alt="">
         <label class="listened">
           <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
         </label>
@@ -182,7 +203,7 @@ window.playBook = async function (id) {
   const book = await api(`/api/books/${id}?user=${encodeURIComponent(state.user)}`);
   state.book = book;
   $('#player').hidden = false;
-  $('#pCover').src = `/api/cover/${id}`;
+  $('#pCover').src = `/api/cover/${id}?v=${book.coverV || 0}`;
   $('#pTitle').textContent = book.title;
   $('#trackSelect').innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join('');
   // a saved track index can outlive the files it pointed at
@@ -276,6 +297,13 @@ $('#tagAll').onclick = async () => {
 // --- import: file a folder from the import path under a genre and author ---
 // Reading a tag per book takes a moment on a full import folder, so the bar
 // follows it. Errors are handed back rather than swallowed into "nothing found".
+// The count comes off the kept list without touching the folder, so opening the
+// app never starts a minute of tag reading.
+async function importCountOnly() {
+  const st = await api('/api/import/state').catch(() => null);
+  $('#importCount').textContent = st && st.cachedAt ? st.count : '–';
+}
+
 async function loadImport(showBar, refresh) {
   const until = { finished: false };
   const request = api('/api/import' + (refresh ? '?refresh=1' : ''))
@@ -452,7 +480,7 @@ $('#closeImport').onclick = () => $('#importDlg').close();
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
 async function refreshLibrary() {
-  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), loadImport(false)]);
+  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), importCountOnly()]);
   if (state.author) selectAuthor(state.author, null);
   else if (!document.body.classList.contains('maintenance')) await loadHome();
 }
@@ -748,6 +776,25 @@ $('#addGenre').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
+$('#savePass').onclick = async () => {
+  const password = $('#setPass').value;
+  if (password && password.length < 4) return toast('Use at least four characters.');
+  if (!password && !confirm('Remove the password, so anyone can change the collection?')) return;
+  try {
+    await post('/api/admin/password', { password });
+    $('#setPass').value = '';
+    toast(password ? 'Password set. Other browsers can only listen now.' : 'Password removed.');
+    await loadPerm();
+    showPassState();
+  } catch (e) { toast(e.message); }
+};
+
+function showPassState() {
+  $('#passState').textContent = perm.required
+    ? 'A password is set. Browsers that have not unlocked can only browse and play.'
+    : 'No password: anyone who opens the app can change everything.';
+}
+
 $('#openSettings').onclick = async () => {
   const s = await api('/api/settings');
   libs = s.libraries;
@@ -755,6 +802,7 @@ $('#openSettings').onclick = async () => {
   $('#apiKey').value = s.googleApiKey;
   $('#importPath').value = s.importPath || '';
   renderLibs();
+  showPassState();
   await loadGenreFolders();
   $('#browser').hidden = true;
   $('#settings').showModal();
@@ -851,9 +899,10 @@ $('#scan').onclick = startScan;
   // read the remembered name first: loadUsers falls back to the first name in
   // the list and writes that back, which would hide that this browser is new
   const remembered = localStorage.user || '';
+  await loadPerm();
   const users = await loadUsers();
   await loadGenres();
-  await Promise.all([loadStats(), loadUntagged(), loadImport(false), loadTrash()]);
+  await Promise.all([loadStats(), loadUntagged(), importCountOnly(), loadTrash()]);
   await loadHome();
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
 })();

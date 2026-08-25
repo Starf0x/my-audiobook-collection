@@ -8,9 +8,9 @@
   <Support>https://github.com/Starf0x/my-audiobook-collection/issues</Support>
   <Overview>Browse and play your audiobook collection, organised as Genre / Author / (Series) / Book. Reads MP3 metadata, fills gaps from the Google Books API and remembers the playback position per user.</Overview>
   <Category>MediaApp:Books MediaServer:Other</Category>
-  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <WebUI>http://[IP]:[PORT:8523]/</WebUI>
   <Icon>https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/public/icon-128.png</Icon>
-  <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Type="Port" Display="always" Required="true">8080</Config>
+  <Config Name="WebUI Port" Target="8523" Default="8523" Mode="tcp" Type="Port" Display="always" Required="true">8523</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/my-audiobook-collection" Mode="rw" Type="Path" Display="always" Required="true">/mnt/user/appdata/my-audiobook-collection</Config>
   <Config Name="Audiobooks" Target="/audiobooks" Default="/mnt/user/Audiobooks" Mode="rw" Type="Path" Display="always" Required="true">/mnt/user/Audiobooks</Config>
 </Container>
