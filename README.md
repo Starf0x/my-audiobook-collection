@@ -14,6 +14,7 @@ organised on disk as **Genre → Author → Book** or **Genre → Author → Ser
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
 * Runs as a single Docker container, SQLite storage, no external services
+* One job at a time: the button that started a scan, an import or a tag write greys out until it is done
 
 ## Folder layout it expects
 
@@ -79,7 +80,9 @@ The last three are optional, and the two variables are masked in the form. Then
    the container's own view of the disk) → **Save**.
    If `/audiobooks` also holds folders you do not want scanned, add the genre
    folders one by one instead and tick *Is a Genre* behind each.
-3. **Scan library**. The bar at the bottom shows how far it is.
+3. **Scan library**. The bar at the bottom shows how far it is, and the button
+   stays grey until the scan is done. With more than one library folder, the
+   pulldown beside it picks which one to scan, or all of them.
 
 Set an admin password before you share the address with anyone: until one is
 set, whoever opens the app may change the collection.
@@ -133,7 +136,8 @@ discs. The author and series are guessed from the folders around it and from the
 tags. Pick one, choose the genre, and correct the author, optional
 series and title; the line underneath shows exactly where it will land. *Move*
 files the folder into `<genre>/<author>/[series]/<title>` and files it straight
-into the library, so it turns up at once without a rescan of everything else.
+into the library, so it turns up at once without a rescan of everything else —
+the page then opens the genre and author it landed under, with the book in it.
 The list is kept after the first read and handed back at once next time, ten per
 page, while a background pass checks the folder for changes.
 
@@ -183,6 +187,10 @@ they are zipped into one archive beside them and the loose files removed.
 Google Cloud Console → *APIs & Services* → enable **Books API** → *Credentials* →
 *Create credentials* → *API key*. It goes on the container, as `GOOGLE_API_KEY`
 (the Unraid template has a masked field for it), and nowhere else. Then use
+A result that credits more than one author offers the pair as a choice: both
+names, or either one. What you pick goes into the artist and album artist tags,
+and the author folder keeps its name.
+
 **Find metadata** on a book and pick a result, or type your own search when the
 folder name finds nothing. A result that comes with categories offers them as
 genres next to the one the book is filed under now; since a genre is a folder,

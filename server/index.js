@@ -151,7 +151,10 @@ app.post('/api/trash/:id', requireAdmin, wrap(async (req, res) => res.json(await
 app.post('/api/trash/:id/restore', requireAdmin, wrap(async (req, res) => res.json(await restoreFromTrash(req.params.id))));
 app.post('/api/trash/:id/purge', requireAdmin, wrap(async (req, res) => res.json(purge(req.params.id))));
 
-app.post('/api/scan', requireAdmin, (req, res) => { if (!progress.running) scan(); res.json({ started: true }); });
+app.post('/api/scan', requireAdmin, (req, res) => {
+  if (!progress.running) scan(req.body.path || '');
+  res.json({ started: true });
+});
 app.get('/api/scan/status', (req, res) => res.json(progress));
 
 // --- library -----------------------------------------------------------
