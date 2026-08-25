@@ -13,7 +13,7 @@ organised on disk as **Genre → Author → Book** or **Genre → Author → Ser
 * Files new audiobooks from an **import folder** into the right genre, author and series
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
-* Runs as a single Docker container, ~700 lines of code, SQLite storage, no external services
+* Runs as a single Docker container, SQLite storage, no external services
 
 ## Folder layout it expects
 
@@ -55,42 +55,53 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 
 ## Run it on Unraid
 
-1. Docker → **Add Container** → fill in:
-   * Repository: `starf0x/my-audiobook-collection:latest`
-   * Port: `8523` → `8523`
-   * Path: `/data` → `/mnt/user/appdata/my-audiobook-collection` (database + covers)
-   * Path: `/audiobooks` → `/mnt/user/Audiobooks` (read/write if you want to write tags)
-2. Open `http://TOWER-IP:8523`
-3. The first visit asks who is listening; the name is kept on the server, so
-   the next visit and any other browser can pick it again
-4. **Settings** → add `/audiobooks` as a library folder (use *Browse…* to pick it),
-   paste your Google Books API key, **Save**. If `/audiobooks` also holds folders you do not
-   want scanned, add the genre folders one by one instead and tick *Is a Genre* behind each.
-5. **Scan library**
+The template does the whole form for you. Copy
+`my-My-Audiobook-Collection.xml` to
+`/boot/config/plugins/dockerMan/templates-user/` on the server, then Docker →
+**Add Container** → pick **My-Audiobook-Collection** under *User templates*, and
+check the paths it filled in:
 
-### The template, and Force update
+| Setting | Default | What it is |
+| --- | --- | --- |
+| WebUI Port | `8523` | change it if the port is taken; the WebUI link follows |
+| Appdata | `/mnt/user/appdata/my-audiobook-collection` → `/data` | database and cover images |
+| Audiobooks | `/mnt/user/Audiobooks` → `/audiobooks` | the collection, read/write so tags can be written |
+| Import folder | empty → `/import` | where new audiobooks arrive; leave empty if you do not import |
+| Admin password | empty | guards everything that changes the collection |
+| Google Books API key | empty | for looking up missing metadata |
 
-Drop `my-My-Audiobook-Collection.xml` into
-`/boot/config/plugins/dockerMan/templates-user/`. Unraid names a user template
-after the container it belongs to, `my-<container name>.xml`, and the `<Name>` in
-the file has to match that name as well — that is what makes Unraid manage the
-container as a template, so updating is one click instead of filling the form
-again. Rename both if you call your container something else.
+The last three are optional, and the two variables are masked in the form. Then
+**Apply**, and open the WebUI:
 
-**Force update** lives in the Docker tab's *Advanced View* — switch the toggle at
-the top right, and the container row gains a version column and the menu gains
-*Force update*. In Basic View neither is shown.
+1. The first visit asks who is listening. The name is kept on the server, so the
+   next visit, and any other browser, can pick it from the list.
+2. **Settings** → add `/audiobooks` as a library folder (*Browse…* picks it from
+   the container's own view of the disk) → **Save**.
+   If `/audiobooks` also holds folders you do not want scanned, add the genre
+   folders one by one instead and tick *Is a Genre* behind each.
+3. **Scan library**. The bar at the bottom shows how far it is.
+
+Set an admin password before you share the address with anyone: until one is
+set, whoever opens the app may change the collection.
+
+### Updating
+
+Because the container comes from a user template, an update is one click. Unraid
+names a user template after the container it belongs to, `my-<container name>.xml`,
+and the `<Name>` inside the file has to match that name too — that pairing is what
+makes the Docker tab treat it as managed. Rename both if you call your container
+something else.
+
+**Force update** is in the Docker tab's *Advanced View*: switch the toggle at the
+top right and the container row gains a version column, the context menu a *Force
+update* entry. Neither is shown in Basic View.
 
 ### Two settings the template can own
 
-| Variable | What it does |
-| --- | --- |
-| `ADMIN_PASSWORD` | guards everything that changes the collection, from the container's first start |
-| `GOOGLE_API_KEY` | the Books API key |
-
-Either may be left empty and set in Settings instead. When the template sets one
-it wins over the stored value and Settings shows the field as owned by the
-template, so the two cannot drift apart and both survive an empty appdata folder.
+`ADMIN_PASSWORD` and `GOOGLE_API_KEY` may be left empty and set in Settings
+instead. When the template fills one in it wins over the stored value, and
+Settings shows the field as owned by the template — so the two cannot drift
+apart, and both survive an emptied appdata folder.
 
 ### Or with docker compose
 
@@ -171,38 +182,3 @@ the book:
 Values the app does not have are left out rather than written empty, so a book
 with no description keeps no empty comment frame. The badge on each card lists
 what the files actually carry.
-
-## Development
-
-```bash
-npm install
-DATA_DIR=./data PORT=8523 npm start
-```
-
-## Versions
-
-The patch number goes up in steps of eight. Once it would pass 75 the minor
-number goes up instead and the patch returns to zero: 1.6.0, 1.6.8, 1.6.16, …,
-1.6.72, 1.7.0.
-
-## Publishing
-
-Pushes to `main` build and push a multi-arch image to Docker Hub through
-`.github/workflows/docker.yml`. Add these GitHub repository secrets:
-
-| Secret | Value |
-| --- | --- |
-| `DOCKERHUB_USERNAME` | your Docker Hub username |
-| `DOCKERHUB_TOKEN` | a Docker Hub access token |
-
-## Layout
-
-```
-server/index.js   HTTP API (express)
-server/db.js      SQLite schema + settings
-server/scan.js    library scanner + tag reader
-server/google.js  Google Books lookup + ID3 writer
-server/import.js  import folder: candidates and moving a book into place
-server/trash.js   move a book, delete to trash, put back, empty
-public/           UI (index.html, style.css, app.js)
-```
