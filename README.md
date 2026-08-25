@@ -80,8 +80,10 @@ it sits: a folder holding audio is a book, and so is one whose sub-folders are a
 discs. The author and series are guessed from the folders around it and from the
 tags. Pick one, choose the genre, and correct the author, optional
 series and title; the line underneath shows exactly where it will land. *Move*
-files the folder into `<genre>/<author>/[series]/<title>` and rescans, so the book
-appears in the library straight away.
+files the folder into `<genre>/<author>/[series]/<title>` and files it straight
+into the library, so it turns up at once without a rescan of everything else.
+The list is kept after the first read and handed back at once next time, ten per
+page, while a background pass checks the folder for changes.
 
 The folder is moved, not copied, so the import folder empties as you work through
 it. If the import folder sits on a different mount than the library, the files are
@@ -120,7 +122,7 @@ the book:
 
 | Frame | From |
 | --- | --- |
-| `TALB` album | the book title |
+| `TALB` album and `TIT2` title | the book title |
 | `TPE1` artist and `TPE2` album artist | the author |
 | `TCON` genre | the genre folder |
 | `TYER` year, `COMM` description, `APIC` cover | the book's metadata |
@@ -137,6 +139,12 @@ what the files actually carry.
 npm install
 DATA_DIR=./data PORT=8080 npm start
 ```
+
+## Versions
+
+The patch number goes up in steps of eight. Once it would pass 75 the minor
+number goes up instead and the patch returns to zero: 1.6.0, 1.6.8, 1.6.16, …,
+1.6.72, 1.7.0.
 
 ## Publishing
 

@@ -5,7 +5,7 @@ import url from 'node:url';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
-import { candidates, genreFolders, importBook, fileProgress } from './import.js';
+import { candidates, genreFolders, importBook, fileProgress, importState } from './import.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
@@ -47,11 +47,17 @@ app.get('/api/browse', (req, res) => {
 
 // --- import ------------------------------------------------------------
 app.get('/api/files/status', (req, res) => res.json(fileProgress));
-app.get('/api/import', wrap(async (req, res) => res.json({
-  path: getSetting('importPath'),
-  genres: genreFolders().map((g) => g.genre),
-  candidates: await candidates(),
-})));
+app.get('/api/import/state', (req, res) => res.json(importState));
+app.get('/api/import', wrap(async (req, res) => {
+  const c = await candidates({ refresh: req.query.refresh === '1' });
+  res.json({
+    path: getSetting('importPath'),
+    genres: genreFolders().map((g) => g.genre),
+    candidates: c.items,
+    cachedAt: c.cachedAt,
+    fromCache: c.fromCache,
+  });
+}));
 app.post('/api/import', wrap(async (req, res) => res.json(await importBook(req.body))));
 
 // --- move and delete ---------------------------------------------------
@@ -79,7 +85,7 @@ app.get('/api/stats', (req, res) => {
 app.get('/api/allbooks', (req, res) => res.json(
   db.prepare('SELECT id, title FROM books ORDER BY genre, author, title').all()));
 
-const REQUIRED_TAGS = ['album', 'artist', 'album artist', 'genre', 'year', 'description', 'cover', 'track no'];
+const REQUIRED_TAGS = ['album', 'title', 'artist', 'album artist', 'genre', 'year', 'description', 'cover', 'track no'];
 
 // books whose files miss one of the required tags, split into what writing can
 // fix now and what has to be looked up first
@@ -91,7 +97,7 @@ app.get('/api/untagged', (req, res) => {
     const missing = REQUIRED_TAGS.filter((f) => !inFile.has(f));
     if (!missing.length) return [];
     const known = {
-      album: b.title, artist: b.author, 'album artist': b.author, genre: b.genre,
+      album: b.title, title: b.title, artist: b.author, 'album artist': b.author, genre: b.genre,
       year: b.year, description: b.description, cover: b.cover, 'track no': 1,
     };
     return [{
