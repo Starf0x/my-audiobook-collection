@@ -57,12 +57,14 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 
 ## Series
 
-A series shows up under its genre in the left column, with the number of books
-in it, and opens as one list in reading order. Genres fold their series away:
-the arrow beside a genre opens and closes it, the name selects the genre and
-leaves the list as it was, and the column comes back the way you left it. Every book card names its series next to the cover, and so does
-every tile on the shelves. It comes from any of three
-places:
+A series shows up under its genre in the left column, with the number of books in
+it, and opens as one list in reading order. Genres fold their series away: the
+arrow beside a genre opens and closes it, while the name selects the genre and
+leaves the list as it was, and the column comes back the way you left it. Every
+book card names its series next to the cover, and so does every tile on the
+shelves.
+
+A series comes from any of three places:
 
 * a **series folder** — `Fantasy / Brandon Sanderson / Mistborn / The Final Empire`
 * **sibling folder names**, when two or more folders under one author differ
