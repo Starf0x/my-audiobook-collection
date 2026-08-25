@@ -4,7 +4,7 @@ A small, self-hosted web app to browse and play an audiobook collection that is
 organised on disk as **Genre → Author → Book** or **Genre → Author → Series → Book**.
 
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
-* Each genre lists its series underneath it, from a series folder or from what the files themselves say
+* Each genre lists its series underneath it, from a series folder, from sibling volume names, or from the tags
 * Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
 * Scans one or more library folders on the server (with a built-in folder browser)
 * Reads ID3 / audio metadata from the files (title, narrator, year, description, embedded cover art)
@@ -58,18 +58,22 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 ## Series
 
 A series shows up under its genre in the left column, with the number of books
-in it, and opens as one list in reading order. It comes from either of two
+in it, and opens as one list in reading order. It comes from any of three
 places:
 
 * a **series folder** — `Fantasy / Brandon Sanderson / Mistborn / The Final Empire`
+* **sibling folder names**, when two or more folders under one author differ
+  only by a volume number — `The Dark Tower I`, `The Dark Tower II`, … make the
+  series *The Dark Tower*, numbered in that order. One such folder on its own is
+  just a title that ends in a numeral, and disc folders are never volumes.
 * the **files themselves**, for a book filed straight under its author: the
   movement name (`MVNM`), the grouping frame (`TIT1`) or a `SERIES` text frame,
   which is where audiobook taggers put it, with the movement index deciding the
   order
 
-Both are shown the same way, on the cards and as a heading in the author view.
-A series read from the tags never moves a file: the folders stay as they are,
-and *Move…* and the **Series** field still work on the folder alone.
+All three are shown the same way, on the cards and as a heading in the author
+view. A series that was not a folder never moves a file: the folders stay as they
+are, and *Move…* and the **Series** field still work on the folder alone.
 
 ## Run it on Unraid
 
