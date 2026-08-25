@@ -94,5 +94,14 @@ export const googleKey = () => process.env.GOOGLE_API_KEY || '';
 
 // A library entry is either a folder holding genre folders, or a single genre
 // folder itself. Plain strings are entries stored before that choice existed.
-export const getLibraries = () => JSON.parse(getSetting('libraries', '[]'))
-  .map((l) => (typeof l === 'string' ? { path: l, asGenre: false } : l));
+export const getLibraries = () => {
+  let saved = [];
+  try {
+    saved = JSON.parse(getSetting('libraries', '[]'));
+  } catch {
+    return []; // rather no libraries for a moment than every request failing
+  }
+  return (Array.isArray(saved) ? saved : [])
+    .map((l) => (typeof l === 'string' ? { path: l, asGenre: false } : l))
+    .filter((l) => l && typeof l.path === 'string' && l.path);
+};

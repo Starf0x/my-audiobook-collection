@@ -10,10 +10,12 @@ export const DISC = /^(disc|disk|cd|part|tape)[\s._-]*\d+$/i;
 
 // A dot hides a folder from the app (the trash uses that), and so do the two
 // names an import gives a copy it set aside: neither is a book to list.
-export const SET_ASIDE = /^(Replaced|Not Imported) - /;
+export const NOT_IMPORTED = 'Not Imported - ';
+export const REPLACED = 'Replaced - ';
+const setAside = (name) => name.startsWith(NOT_IMPORTED) || name.startsWith(REPLACED);
 
 export const dirs = (p) => fs.readdirSync(p, { withFileTypes: true })
-  .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !SET_ASIDE.test(e.name))
+  .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !setAside(e.name))
   .map((e) => path.join(p, e.name));
 
 export const audioFiles = (p) => fs.readdirSync(p, { withFileTypes: true })
