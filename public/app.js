@@ -253,29 +253,44 @@ $('#tagAll').onclick = async () => {
 // --- import: file a folder from the import path under a genre and author ---
 // Reading a tag per book takes a moment on a full import folder, so the bar
 // follows it. Errors are handed back rather than swallowed into "nothing found".
-async function loadImport(showBar) {
+async function loadImport(showBar, refresh) {
   const until = { finished: false };
-  const request = api('/api/import')
+  const request = api('/api/import' + (refresh ? '?refresh=1' : ''))
     .then((d) => ({ d }), (e) => ({ error: e.message }))
     .then((r) => { until.finished = true; return r; });
+  // The bar only means anything while the list is actually being read: handed
+  // back from the kept list, the answer is there before the first poll.
   if (showBar) await trackProgress('/api/files/status', 'Reading the import folder…', until);
   const r = await request;
-  if (showBar) { $('#progress').hidden = true; }
+  if (showBar) $('#progress').hidden = true;
   $('#importCount').textContent = r.d ? r.d.candidates.length : '!';
   return r;
 }
 
-$('#importList').onclick = async () => {
+const PER_PAGE = 10;
+let importPage = 0;
+let importData = null;
+let importWatch = null;
+
+$('#importList').onclick = async (e) => {
   document.body.classList.add('maintenance');
-  document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
   $('#importList').classList.add('active');
   $('#authors ul').innerHTML = '';
+  if (e !== 'keep') importPage = 0;
   $('#books .list').innerHTML = '<div class="empty">Looking in the import folder…</div>';
   const { d, error } = await loadImport(true);
   if (error) {
     $('#books .list').innerHTML = `<div class="empty missing">${esc(error)}</div>`;
     return;
   }
+  importData = d;
+  drawImportPage();
+  watchImportFolder();
+};
+
+function drawImportPage() {
+  const d = importData;
   if (!d.genres.length) {
     $('#books .list').innerHTML = '<div class="empty missing">No genre folders to import into. '
       + 'Add a library folder in Settings and scan first.</div>';
@@ -285,18 +300,68 @@ $('#importList').onclick = async () => {
     $('#books .list').innerHTML = `<div class="empty">No audiobook folders found in ${esc(d.path)}.</div>`;
     return;
   }
-  $('#books .list').innerHTML = d.candidates.map((c, i) => `<div class="fix" data-i="${i}">
+  const pages = Math.max(1, Math.ceil(d.candidates.length / PER_PAGE));
+  importPage = Math.min(importPage, pages - 1);
+  const from = importPage * PER_PAGE;
+  const page = d.candidates.slice(from, from + PER_PAGE);
+  const pager = `<div class="row pager">
+    <button id="iPrev" class="ghost"${importPage ? '' : ' disabled'}>‹ Previous</button>
+    <span class="hint">${from + 1}–${from + page.length} of ${d.candidates.length} · page ${importPage + 1} of ${pages}</span>
+    <button id="iNext" class="ghost"${importPage + 1 < pages ? '' : ' disabled'}>Next ›</button>
+    <div class="spacer"></div>
+    <span class="hint" id="iFresh"></span>
+    <button id="iReread" class="ghost">Read again</button>
+  </div>`;
+  $('#books .list').innerHTML = pager + page.map((c, i) => `<div class="fix">
     <div>
       <strong>${esc(c.name)}</strong>
       <div class="sub">${esc(c.where)}</div>
       <div class="sub">${c.files} file(s)${c.album ? ' · album: ' + esc(c.album) : ''}${c.artist ? ' · author: ' + esc(c.artist) : ''}</div>
     </div>
-    <div class="actions"><button data-pick="${i}">Import this</button></div>
-  </div>`).join('');
-  $('#books .list').querySelectorAll('button[data-pick]').forEach((b) => {
+    <div class="actions"><button data-pick="${from + i}">Import this</button></div>
+  </div>`).join('') + pager;
+  document.querySelectorAll('#books button[data-pick]').forEach((b) => {
     b.onclick = () => importForm(d, d.candidates[Number(b.dataset.pick)]);
   });
-};
+  document.querySelectorAll('#books #iPrev').forEach((b) => { b.onclick = () => { importPage--; drawImportPage(); }; });
+  document.querySelectorAll('#books #iNext').forEach((b) => { b.onclick = () => { importPage++; drawImportPage(); }; });
+  document.querySelectorAll('#books #iReread').forEach((b) => {
+    b.onclick = async () => {
+      const { d: fresh, error } = await loadImport(true, true);
+      if (error) return toast(error);
+      importData = fresh;
+      drawImportPage();
+    };
+  });
+  showFreshness();
+}
+
+function showFreshness(state) {
+  const when = importData && importData.cachedAt
+    ? new Date(importData.cachedAt).toTimeString().slice(0, 5) : '';
+  document.querySelectorAll('#books #iFresh').forEach((s) => {
+    s.textContent = state && state.checking ? 'checking the folder…' : (when ? `list read at ${when}` : '');
+  });
+}
+
+// While the panel is open, ask the server whether it found the folder changed;
+// it re-reads on its own, so all this does is pick the new list up.
+function watchImportFolder() {
+  clearInterval(importWatch);
+  let seen = null;
+  importWatch = setInterval(async () => {
+    if (!$('#importList').classList.contains('active')) return clearInterval(importWatch);
+    const state = await api('/api/import/state').catch(() => null);
+    if (!state) return;
+    showFreshness(state);
+    if (seen === null) seen = state.changed;
+    if (state.changed !== seen && !state.building) {
+      seen = state.changed;
+      const { d } = await loadImport(false);
+      if (d) { importData = d; drawImportPage(); toast('The import folder changed — list updated.'); }
+    }
+  }, 2000);
+}
 
 // A dialog rather than a panel: with a long candidate list a form appended below
 // it lands off screen, which looks exactly like the button doing nothing.
@@ -355,7 +420,7 @@ function importForm(d, c) {
       $('#progressText').textContent = `Imported into ${r.dest}`;
       await refreshLibrary();
     }
-    $('#importList').click();
+    $('#importList').onclick('keep');
   };
   $('#importDlg').showModal();
 }
