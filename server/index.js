@@ -2,17 +2,49 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, fileProgress, importState, clean } from './import.js';
+import { adminRequired, setPassword, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(path.dirname(url.fileURLToPath(import.meta.url)), '../public')));
 
+// Covers are named after the image itself, so this marker in the URL changes
+// exactly when the picture does, and a browser may then keep it for a week.
+const coverV = (cover) => (cover ? crypto.createHash('md5').update(cover).digest('hex').slice(0, 12) : '');
+
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => res.status(400).json({ error: e.message }));
+
+// --- who may change things ---------------------------------------------
+app.get('/api/admin', (req, res) => res.json({ required: adminRequired(), admin: isAdmin(req) }));
+
+app.post('/api/admin/unlock', wrap(async (req, res) => {
+  const { token } = unlock(req.body.password);
+  if (token) res.setHeader('Set-Cookie', `admin=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+  res.json({ admin: true });
+}));
+
+app.post('/api/admin/lock', (req, res) => {
+  lock(tokenOf(req));
+  res.setHeader('Set-Cookie', 'admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+  res.json({ admin: false });
+});
+
+// Setting the first password needs no password: an unguarded app is being closed.
+app.post('/api/admin/password', wrap(async (req, res) => {
+  if (adminRequired() && !isAdmin(req)) return res.status(403).json({ error: 'Unlock first' });
+  const r = setPassword(req.body.password || '');
+  if (r.required) {
+    const { token } = unlock(req.body.password);
+    res.setHeader('Set-Cookie', `admin=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+  }
+  res.json(r);
+}));
 
 // --- users -------------------------------------------------------------
 app.get('/api/users', (req, res) => res.json(db.prepare('SELECT name FROM users ORDER BY name').all().map((u) => u.name)));
@@ -23,12 +55,12 @@ app.post('/api/users', (req, res) => {
 });
 
 // --- settings ----------------------------------------------------------
-app.get('/api/settings', (req, res) => res.json({
+app.get('/api/settings', requireAdmin, (req, res) => res.json({
   libraries: getLibraries(),
   googleApiKey: getSetting('googleApiKey'),
   importPath: getSetting('importPath'),
 }));
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', requireAdmin, (req, res) => {
   setSetting('libraries', JSON.stringify(req.body.libraries || []));
   setSetting('googleApiKey', req.body.googleApiKey || '');
   setSetting('importPath', req.body.importPath || '');
@@ -36,7 +68,7 @@ app.post('/api/settings', (req, res) => {
 });
 
 // folder picker: list sub-directories of a server path
-app.get('/api/browse', (req, res) => {
+app.get('/api/browse', requireAdmin, (req, res) => {
   const dir = req.query.path || '/';
   const entries = fs.readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
@@ -56,12 +88,12 @@ const genreParent = () => {
   return libs.length ? path.dirname(path.resolve(libs[0].path)) : '';
 };
 
-app.get('/api/genrefolders', (req, res) => res.json({
+app.get('/api/genrefolders', requireAdmin, (req, res) => res.json({
   folders: genreFolders(),
   suggestedParent: genreParent(),
 }));
 
-app.post('/api/genres', wrap(async (req, res) => {
+app.post('/api/genres', requireAdmin, wrap(async (req, res) => {
   const name = clean(req.body.name || '');
   if (!name) throw new Error('A genre needs a name');
   const parent = (req.body.parent || genreParent()).trim();
@@ -85,8 +117,8 @@ app.post('/api/genres', wrap(async (req, res) => {
 
 // --- import ------------------------------------------------------------
 app.get('/api/files/status', (req, res) => res.json(fileProgress));
-app.get('/api/import/state', (req, res) => res.json(importState));
-app.get('/api/import', wrap(async (req, res) => {
+app.get('/api/import/state', requireAdmin, (req, res) => res.json(importState));
+app.get('/api/import', requireAdmin, wrap(async (req, res) => {
   const c = await candidates({ refresh: req.query.refresh === '1' });
   res.json({
     path: getSetting('importPath'),
@@ -96,19 +128,19 @@ app.get('/api/import', wrap(async (req, res) => {
     fromCache: c.fromCache,
   });
 }));
-app.post('/api/import', wrap(async (req, res) => res.json(await importBook(req.body))));
+app.post('/api/import', requireAdmin, wrap(async (req, res) => res.json(await importBook(req.body))));
 
 // --- move and delete ---------------------------------------------------
-app.post('/api/move/:id', wrap(async (req, res) => res.json(await moveBook(req.params.id, req.body))));
+app.post('/api/move/:id', requireAdmin, wrap(async (req, res) => res.json(await moveBook(req.params.id, req.body))));
 
-app.get('/api/trash', (req, res) => res.json({ keepDays: KEEP_DAYS, items: listTrash(Date.now()) }));
+app.get('/api/trash', requireAdmin, (req, res) => res.json({ keepDays: KEEP_DAYS, items: listTrash(Date.now()) }));
 // before /api/trash/:id, which would otherwise read "empty" as a book id
-app.post('/api/trash/empty', wrap(async (req, res) => res.json(emptyTrash())));
-app.post('/api/trash/:id', wrap(async (req, res) => res.json(await deleteToTrash(req.params.id, Date.now()))));
-app.post('/api/trash/:id/restore', wrap(async (req, res) => res.json(await restoreFromTrash(req.params.id))));
-app.post('/api/trash/:id/purge', wrap(async (req, res) => res.json(purge(req.params.id))));
+app.post('/api/trash/empty', requireAdmin, wrap(async (req, res) => res.json(emptyTrash())));
+app.post('/api/trash/:id', requireAdmin, wrap(async (req, res) => res.json(await deleteToTrash(req.params.id, Date.now()))));
+app.post('/api/trash/:id/restore', requireAdmin, wrap(async (req, res) => res.json(await restoreFromTrash(req.params.id))));
+app.post('/api/trash/:id/purge', requireAdmin, wrap(async (req, res) => res.json(purge(req.params.id))));
 
-app.post('/api/scan', (req, res) => { if (!progress.running) scan(); res.json({ started: true }); });
+app.post('/api/scan', requireAdmin, (req, res) => { if (!progress.running) scan(); res.json({ started: true }); });
 app.get('/api/scan/status', (req, res) => res.json(progress));
 
 // --- library -----------------------------------------------------------
@@ -120,14 +152,14 @@ app.get('/api/stats', (req, res) => {
 });
 
 // ids for the "write tags into every book" run, which the browser drives one by one
-app.get('/api/allbooks', (req, res) => res.json(
+app.get('/api/allbooks', requireAdmin, (req, res) => res.json(
   db.prepare('SELECT id, title FROM books ORDER BY genre, author, title').all()));
 
 const REQUIRED_TAGS = ['album', 'title', 'artist', 'album artist', 'genre', 'year', 'description', 'cover', 'track no'];
 
 // books whose files miss one of the required tags, split into what writing can
 // fix now and what has to be looked up first
-app.get('/api/untagged', (req, res) => {
+app.get('/api/untagged', requireAdmin, (req, res) => {
   const rows = db.prepare(`SELECT id, genre, author, title, year, description, cover, tagged
                            FROM books ORDER BY genre, author, title`).all();
   res.json(rows.flatMap((b) => {
@@ -148,12 +180,14 @@ app.get('/api/untagged', (req, res) => {
 
 // the landing view: what this user was listening to, and what turned up last
 app.get('/api/home', (req, res) => res.json({
-  continue: db.prepare(`SELECT b.id, b.title, b.author, b.genre, p.track_idx, p.done,
+  continue: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, p.track_idx, p.done,
                                (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks
                         FROM progress p JOIN books b ON b.id = p.book_id
                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
-                        ORDER BY p.updated DESC LIMIT 12`).all(req.query.user || ''),
-  recent: db.prepare('SELECT id, title, author, genre FROM books ORDER BY id DESC LIMIT 12').all(),
+                        ORDER BY p.updated DESC LIMIT 12`).all(req.query.user || '')
+    .map((b) => ({ ...b, coverV: coverV(b.cover) })),
+  recent: db.prepare('SELECT id, title, author, genre, cover FROM books ORDER BY id DESC LIMIT 12').all()
+    .map((b) => ({ ...b, coverV: coverV(b.cover) })),
 }));
 
 app.get('/api/genres', (req, res) => res.json(
@@ -169,7 +203,8 @@ app.get('/api/books', (req, res) => res.json(
               FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
               WHERE b.genre = ? AND b.author = ?
               ORDER BY b.series IS NULL, b.series, b.title`)
-    .all(req.query.user || '', req.query.genre, req.query.author)));
+    .all(req.query.user || '', req.query.genre, req.query.author)
+    .map((b) => ({ ...b, coverV: coverV(b.cover) }))));
 
 app.post('/api/listened', (req, res) => {
   const { user, bookId, done } = req.body;
@@ -194,6 +229,7 @@ app.get('/api/books/:id', (req, res) => {
   const gf = genreFolders().find((g) => here.startsWith(path.resolve(g.path) + path.sep));
   const rel = gf ? path.relative(path.resolve(gf.path), here).split(path.sep) : [];
   book.folderSeries = rel.length >= 3 ? rel[1] : '';
+  book.coverV = coverV(book.cover);
   res.json(book);
 });
 
@@ -201,7 +237,9 @@ app.get('/api/cover/:id', (req, res) => {
   const cover = db.prepare('SELECT cover FROM books WHERE id = ?').get(Number(req.params.id))?.cover;
   if (!cover) return res.status(404).end();
   const file = cover.startsWith('file:') ? cover.slice(5) : path.join(DATA_DIR, 'covers', cover);
-  fs.existsSync(file) ? res.sendFile(file) : res.status(404).end();
+  if (!fs.existsSync(file)) return res.status(404).end();
+  // with the marker the URL names one picture, so it need not be asked for again
+  res.sendFile(file, req.query.v ? { maxAge: '7d', immutable: true } : {});
 });
 
 // --- playback ----------------------------------------------------------
@@ -229,12 +267,12 @@ app.get('/api/lookup/status', (req, res) => res.json({
 }));
 
 // a lookup for something not in the library yet, such as a book being imported
-app.get('/api/lookup', wrap(async (req, res) => {
+app.get('/api/lookup', requireAdmin, wrap(async (req, res) => {
   if (!req.query.q) return res.status(400).json({ error: 'Nothing to search for' });
   res.json(await lookup({ title: '', author: '' }, req.query.q));
 }));
 
-app.get('/api/lookup/:id', wrap(async (req, res) => {
+app.get('/api/lookup/:id', requireAdmin, wrap(async (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Book not found' });
   res.json(await lookup(book, req.query.q));
@@ -242,7 +280,7 @@ app.get('/api/lookup/:id', wrap(async (req, res) => {
 
 app.get('/api/apply/status', (req, res) => res.json(tagProgress));
 
-app.post('/api/apply/:id', wrap(async (req, res) => {
+app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Book not found' });
   res.json(await applyMetadata(book, req.body.pick, !!req.body.writeTags));
@@ -253,5 +291,5 @@ app.post('/api/apply/:id', wrap(async (req, res) => {
 purgeExpired(Date.now());
 setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
 
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 8523;
 app.listen(port, () => console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR})`));

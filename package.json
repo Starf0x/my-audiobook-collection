@@ -1,6 +1,6 @@
 {
   "name": "my-audiobook-collection",
-  "version": "1.6.32",
+  "version": "1.6.40",
   "description": "Web based audiobook collection manager",
   "type": "module",
   "main": "server/index.js",

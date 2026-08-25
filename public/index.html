@@ -13,6 +13,7 @@
   <div class="spacer"></div>
   <select id="user"></select>
   <button id="addUser" class="ghost">+ User</button>
+  <button id="adminBtn" class="ghost" hidden>Lock</button>
   <button id="scan" class="ghost">Scan library</button>
   <button id="openSettings" class="ghost">Settings</button>
 </header>
@@ -66,6 +67,13 @@
       <button id="browseImportPick" class="ghost">Use as import folder</button></div>
     <ul id="browserList"></ul>
   </div>
+  <label>Admin password</label>
+  <p class="hint">With a password set, anyone opening the app can browse, play and keep their own
+    place in a book, but only an unlocked browser can scan, import, tag, move or delete. Leave the
+    field empty and save to remove the password again.</p>
+  <div class="row"><input id="setPass" type="password" placeholder="New password"><button id="savePass">Set password</button></div>
+  <p class="hint" id="passState"></p>
+
   <label>Genres</label>
   <p class="hint">A genre is a folder. Creating one makes the folder, and adds it as a library
     folder when your libraries are single genre folders.</p>
