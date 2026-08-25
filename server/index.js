@@ -8,7 +8,7 @@ import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
-import { adminRequired, setPassword, unlock, lock, isAdmin, requireAdmin, tokenOf, passwordFromEnv } from './admin.js';
+import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
@@ -24,7 +24,7 @@ const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => re
 
 // --- who may change things ---------------------------------------------
 app.get('/api/admin', (req, res) => res.json({
-  required: adminRequired(), admin: isAdmin(req), fromEnv: passwordFromEnv(),
+  required: adminRequired(), admin: isAdmin(req),
 }));
 
 app.post('/api/admin/unlock', wrap(async (req, res) => {
@@ -39,17 +39,6 @@ app.post('/api/admin/lock', (req, res) => {
   res.json({ admin: false });
 });
 
-// Setting the first password needs no password: an unguarded app is being closed.
-app.post('/api/admin/password', wrap(async (req, res) => {
-  if (adminRequired() && !isAdmin(req)) return res.status(403).json({ error: 'Unlock first' });
-  const r = setPassword(req.body.password || '');
-  if (r.required) {
-    const { token } = unlock(req.body.password);
-    res.setHeader('Set-Cookie', `admin=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
-  }
-  res.json(r);
-}));
-
 // --- users -------------------------------------------------------------
 app.get('/api/users', (req, res) => res.json(db.prepare('SELECT name FROM users ORDER BY name').all().map((u) => u.name)));
 app.post('/api/users', (req, res) => {
@@ -61,7 +50,6 @@ app.post('/api/users', (req, res) => {
 // --- settings ----------------------------------------------------------
 app.get('/api/settings', requireAdmin, (req, res) => res.json({
   libraries: getLibraries(),
-  passwordFromEnv: passwordFromEnv(),
   importPath: getSetting('importPath'),
 }));
 app.post('/api/settings', requireAdmin, (req, res) => {
