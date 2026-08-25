@@ -146,8 +146,8 @@ async function loadGenres() {
     || '<li class="empty">Nothing here yet.</li>';
   $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => {
     li.onclick = (e) => {
+      // only the arrow folds and unfolds; the name just selects the genre
       if (e.target.classList.contains('twist')) return showSeriesOf(li.dataset.name, !openGenres.has(li.dataset.name));
-      showSeriesOf(li.dataset.name, true);
       selectGenre(li.dataset.name, li);
     };
   });
