@@ -192,3 +192,9 @@ button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
 .empty.missing { color: #ffa8a8; }
 .hint.missing { color: #ffa8a8; }
 #iFound { max-height: 260px; overflow: auto; margin-top: 10px; }
+
+.pager { gap: 10px; margin: 0 0 6px; flex-wrap: wrap; }
+.pager button, .pager .hint { white-space: nowrap; }
+.pager .spacer { flex: 1; }
+.pager button[disabled] { opacity: .4; cursor: default; }
+#books .fix + .pager { margin-top: 8px; }
