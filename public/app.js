@@ -21,16 +21,39 @@ async function loadUsers() {
     || '<option value="">(no user)</option>';
   state.user = $('#user').value || '';
   localStorage.user = state.user;
+  return users;
 }
+
+// Asked on a first visit, and whenever this browser remembers a name the server
+// does not know: without a name there is nowhere to keep a playback position.
+async function askWho(users, cancellable) {
+  $('#whoList').innerHTML = users.length
+    ? `<label>Pick a name</label><div class="row" style="flex-wrap:wrap">${users
+      .map((u) => `<button data-who="${esc(u)}">${esc(u)}</button>`).join('')}</div>`
+    : '';
+  $('#whoClose').hidden = !cancellable;
+  const pick = async (name) => {
+    state.user = localStorage.user = name;
+    $('#who').close();
+    await loadUsers();
+    $('#user').value = name;
+    await Promise.all([loadStats(), loadHome()]);
+  };
+  $('#whoList').querySelectorAll('button[data-who]').forEach((b) => { b.onclick = () => pick(b.dataset.who); });
+  $('#whoGo').onclick = async () => {
+    const name = $('#whoName').value.trim();
+    if (!name) return toast('Fill in a name first.');
+    try { await post('/api/users', { name }); } catch (e) { return toast(e.message); }
+    $('#whoName').value = '';
+    await pick(name);
+  };
+  $('#whoClose').onclick = () => $('#who').close();
+  $('#who').showModal();
+}
+
 $('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
 $('#home').onclick = loadHome;
-$('#addUser').onclick = async () => {
-  const name = prompt('User name');
-  if (!name) return;
-  await post('/api/users', { name });
-  state.user = name;
-  await loadUsers();
-};
+$('#addUser').onclick = async () => askWho(await api('/api/users').catch(() => []), true);
 
 async function loadStats() {
   const s = await api('/api/stats?user=' + encodeURIComponent(state.user));
@@ -823,4 +846,14 @@ function finishScan(error, p) {
 
 $('#scan').onclick = startScan;
 
-loadUsers().then(loadGenres).then(loadStats).then(loadUntagged).then(() => loadImport(false)).then(loadTrash).then(loadHome);
+// A name first: the whole point of the app is remembering where you were.
+(async () => {
+  // read the remembered name first: loadUsers falls back to the first name in
+  // the list and writes that back, which would hide that this browser is new
+  const remembered = localStorage.user || '';
+  const users = await loadUsers();
+  await loadGenres();
+  await Promise.all([loadStats(), loadUntagged(), loadImport(false), loadTrash()]);
+  await loadHome();
+  if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
+})();
