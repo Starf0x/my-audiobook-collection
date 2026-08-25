@@ -204,3 +204,4 @@ button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
 #genreList .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 
 #whoList button { margin: 0; }
+

@@ -59,7 +59,9 @@ async function readMeta(files, bookPath) {
     meta.tagged = taggedFields(c);
     const pic = c.picture?.[0];
     if (pic) {
-      const name = crypto.createHash('md5').update(bookPath).digest('hex') + '.jpg';
+      // named after the image itself: the same art keeps its name, new art gets
+      // a new one, so a browser may cache it for a long time
+      const name = crypto.createHash('md5').update(pic.data).digest('hex') + '.jpg';
       fs.writeFileSync(path.join(DATA_DIR, 'covers', name), Buffer.from(pic.data));
       meta.cover = name;
     }

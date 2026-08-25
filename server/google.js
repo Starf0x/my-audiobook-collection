@@ -82,7 +82,7 @@ async function apply_(book, pick, writeTags) {
       const res = await fetch(pick.thumbnail.replace('http://', 'https://'));
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer());
-        cover = crypto.createHash('md5').update(book.path).digest('hex') + '.jpg';
+        cover = crypto.createHash('md5').update(buf).digest('hex') + '.jpg';
         fs.writeFileSync(path.join(DATA_DIR, 'covers', cover), buf);
       }
     } catch { /* keep the cover the book already had */ }

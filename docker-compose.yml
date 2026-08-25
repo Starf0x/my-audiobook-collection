@@ -3,7 +3,7 @@ services:
     image: starf0x/my-audiobook-collection:latest
     container_name: my-audiobook-collection
     ports:
-      - "8080:8080"
+      - "8523:8523"
     volumes:
       - ./data:/data
       - /mnt/user/Audiobooks:/audiobooks

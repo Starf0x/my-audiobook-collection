@@ -57,10 +57,10 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 
 1. Docker → **Add Container** → fill in:
    * Repository: `starf0x/my-audiobook-collection:latest`
-   * Port: `8080` → `8080`
+   * Port: `8523` → `8523`
    * Path: `/data` → `/mnt/user/appdata/my-audiobook-collection` (database + covers)
    * Path: `/audiobooks` → `/mnt/user/Audiobooks` (read/write if you want to write tags)
-2. Open `http://TOWER-IP:8080`
+2. Open `http://TOWER-IP:8523`
 3. The first visit asks who is listening; the name is kept on the server, so
    the next visit and any other browser can pick it again
 4. **Settings** → add `/audiobooks` as a library folder (use *Browse…* to pick it),
@@ -76,6 +76,19 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
 ```bash
 docker compose up -d
 ```
+
+## Two pages, and who may change things
+
+`index.html` is the page that changes the collection: scanning, importing,
+tagging, moving, deleting. `listen.html` only browses, plays and keeps each
+person's place, and is the one to share. It carries an **Admin** button that asks
+for the password and then opens the other page.
+
+Set the password under **Admin password** in Settings. Until one is set the app
+behaves as a private install: whoever opens it may do anything. Once set, every
+request that changes something is refused unless the browser has unlocked, so
+hiding the buttons is not what protects it — the server does. A visitor who types
+the admin address is sent to the listening page.
 
 ## Importing new audiobooks
 
@@ -142,7 +155,7 @@ what the files actually carry.
 
 ```bash
 npm install
-DATA_DIR=./data PORT=8080 npm start
+DATA_DIR=./data PORT=8523 npm start
 ```
 
 ## Versions
