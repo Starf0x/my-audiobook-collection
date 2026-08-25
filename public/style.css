@@ -212,3 +212,18 @@ table.cmp th, table.cmp td { text-align: left; padding: 5px 8px; border-bottom: 
 table.cmp th { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 table.cmp td:first-child { color: var(--dim); }
 table.cmp td.better { color: #7ee2a8; font-weight: 600; }
+
+/* while a job runs: its own button is disabled, and so is anything that would
+   start a second one. Playing and marking listened stay available. */
+button:disabled { opacity: .45; cursor: default; }
+body.working #books button[data-pick],
+body.working #books button[data-restore],
+body.working #books button[data-purge],
+body.working #books button[data-del],
+body.working #books .actions button:not([onclick^="playBook"]),
+body.working #scan, body.working #tagAll, body.working #tidyCovers,
+body.working #iGo, body.working #cReplace, body.working #cSkip,
+body.working #needsTags, body.working #importList, body.working #trashList, body.working #replacedList {
+  opacity: .45;
+  pointer-events: none;
+}

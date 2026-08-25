@@ -13,6 +13,7 @@
   <div class="spacer"></div>
   <select id="user"></select>
   <button id="adminBtn" class="ghost" hidden>Lock</button>
+  <select id="scanWhich" title="Which library folder to scan"></select>
   <button id="scan" class="ghost">Scan library</button>
   <button id="openSettings" class="ghost">Settings</button>
 </header>
@@ -67,12 +68,6 @@
       <button id="browseImportPick" class="ghost">Use as import folder</button></div>
     <ul id="browserList"></ul>
   </div>
-  <label>Admin password</label>
-  <p class="hint">Set on the container as <code>ADMIN_PASSWORD</code> — the Unraid template has a
-    field for it. With one set, anyone opening the app can browse, play and keep their own place in
-    a book, but only an unlocked browser can scan, import, tag, move or delete.</p>
-  <p class="hint" id="passState"></p>
-
   <label>Genres</label>
   <p class="hint">A genre is a folder. Creating one makes the folder, and adds it as a library
     folder when your libraries are single genre folders.</p>
