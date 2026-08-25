@@ -99,7 +99,8 @@ The last three are optional, and the two variables are masked in the form. Then
    folders one by one instead and tick *Is a Genre* behind each.
 3. **Scan library**. The bar at the bottom shows how far it is, and the button
    stays grey until the scan is done. With more than one library folder, the
-   pulldown beside it picks which one to scan, or all of them.
+   pulldown beside it picks which one to scan, or all of them — each option says
+   what the button will do: *Scan all libraries*, *Scan /audiobooks/Fantasy*.
 
 Set an admin password before you share the address with anyone: until one is
 set, whoever opens the app may change the collection.
