@@ -789,7 +789,13 @@ $('#savePass').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
+let fromEnv = { key: false, password: false };
+
 function showPassState() {
+  if (fromEnv.password) {
+    $('#passState').textContent = 'The password comes from the container template (ADMIN_PASSWORD). Change it there.';
+    return;
+  }
   $('#passState').textContent = perm.required
     ? 'A password is set. Browsers that have not unlocked can only browse and play.'
     : 'No password: anyone who opens the app can change everything.';
@@ -800,6 +806,11 @@ $('#openSettings').onclick = async () => {
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
   $('#apiKey').value = s.googleApiKey;
+  $('#apiKey').disabled = !!s.keyFromEnv;
+  $('#apiKey').placeholder = s.keyFromEnv ? 'set in the container template' : 'AIza…';
+  $('#setPass').disabled = !!s.passwordFromEnv;
+  $('#savePass').disabled = !!s.passwordFromEnv;
+  fromEnv = { key: !!s.keyFromEnv, password: !!s.passwordFromEnv };
   $('#importPath').value = s.importPath || '';
   renderLibs();
   showPassState();
