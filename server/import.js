@@ -46,22 +46,69 @@ function findBooks(dir, depth, out) {
   for (const s of subs) findBooks(s, depth + 1, out);
 }
 
-export async function candidates() {
+// Walking the folders is cheap; reading a tag per book is not. So the list is
+// kept, handed back at once next time, and checked against the folders in the
+// background: same book folders, same list.
+let cache = null; // { root, sig, items, at }
+let checking = false;
+export const importState = { building: false, checking: false, changed: 0, cachedAt: 0, count: 0 };
+
+const bookFolders = (root) => {
+  const found = [];
+  for (const d of dirs(root)) findBooks(d, 1, found);
+  return found;
+};
+
+const signature = (found) => found.map((b) => `${b.dir}|${b.files.length}`).sort().join('\n');
+
+const importRoot = () => {
   const root = getSetting('importPath');
   if (!root) throw new Error('No import folder set yet. Add one in Settings.');
   if (!fs.existsSync(root)) throw new Error(`The import folder is not there: ${root}`);
+  return root;
+};
 
-  const found = [];
-  for (const d of dirs(root)) findBooks(d, 1, found);
+export async function candidates({ refresh = false } = {}) {
+  const root = importRoot();
+  if (!refresh && cache && cache.root === root) {
+    checkInBackground(root);
+    return { items: cache.items, cachedAt: cache.at, fromCache: true };
+  }
+  const items = await build(root, false);
+  return { items, cachedAt: cache.at, fromCache: false };
+}
+
+// Re-read only when the set of book folders differs from what the list was built
+// from, and never touch the progress bar: nobody asked for this pass.
+function checkInBackground(root) {
+  if (checking || importState.building) return;
+  checking = true;
+  importState.checking = true;
+  setImmediate(async () => {
+    try {
+      if (signature(bookFolders(root)) !== cache.sig) {
+        await build(root, true);
+        importState.changed++;
+      }
+    } catch { /* the folder went away or is unreadable; leave the list as it is */ } finally {
+      checking = false;
+      importState.checking = false;
+    }
+  });
+}
+
+async function build(root, quiet) {
+  const found = bookFolders(root);
   const known = new Set(genreFolders().map((g) => g.genre));
-
-  // reading one tag per book is the slow part, so it reports progress
-  beginFileWork();
-  fileProgress.total = found.length;
+  importState.building = true;
+  if (!quiet) {
+    beginFileWork();
+    fileProgress.total = found.length;
+  }
   try {
     const out = [];
     for (const b of found) {
-      fileProgress.current = path.basename(b.dir);
+      if (!quiet) fileProgress.current = path.basename(b.dir);
       let album = '';
       let artist = '';
       try {
@@ -85,13 +132,27 @@ export async function candidates() {
         artist: artist || (p.length >= 3 ? p[p.length - 3] : (p[p.length - 2] || '')),
         series: p.length >= 3 ? p[p.length - 2] : '',
       });
-      fileProgress.done++;
+      if (!quiet) fileProgress.done++;
       await new Promise((r) => setImmediate(r));
     }
+    cache = { root, sig: signature(found), items: out, at: Date.now() };
+    Object.assign(importState, { cachedAt: cache.at, count: out.length });
     return out;
   } finally {
-    fileProgress.running = false;
+    importState.building = false;
+    if (!quiet) fileProgress.running = false;
   }
+}
+
+// A book that has just been imported is gone from the folder. Drop that one line
+// from the kept list and from its signature, so the rest stays usable and the
+// background check does not think everything changed.
+export function forgetCandidate(dir) {
+  if (!cache) return;
+  cache.items = cache.items.filter((i) => i.path !== dir);
+  cache.sig = cache.sig.split('\n').filter((l) => !l.startsWith(`${dir}|`)).join('\n');
+  cache.at = Date.now();
+  Object.assign(importState, { cachedAt: cache.at, count: cache.items.length });
 }
 
 // Which folder each genre lives in, so an import knows where to put a book.
@@ -126,6 +187,7 @@ export async function importBook({ source, genre, author, series, title }) {
     pruneEmptyParents(source);
     // put it in the library now: a full rescan of a big share takes minutes
     await addOne({ genre, author: clean(author), series: clean(series), dir: dest });
+    forgetCandidate(source);
     return { dest };
   } catch (e) {
     fileProgress.error = e.message;

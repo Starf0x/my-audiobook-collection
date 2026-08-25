@@ -102,10 +102,15 @@ async function apply_(book, pick, writeTags) {
     const description = pick.description || book.description || '';
     const tags = {
       album: pick.title || book.title,
+      // every file of a book carries the book title, not "018 of 132"; the track
+      // number orders them and the player numbers the list itself
+      title: pick.title || book.title,
       artist: author,
       performerInfo: author, // TPE2, the album artist
       year: pick.year || book.year,
-      genre: pick.genre || book.genre,
+      // the genre folder is what this library is organised by, so it wins over
+      // a Google category like "Fiction"
+      genre: book.genre,
       composer: pick.narrator || book.narrator || '',
       ...(description ? { comment: { language: 'eng', text: description } } : {}),
       ...(coverFile && fs.existsSync(coverFile) ? { APIC: coverFile } : {}),
@@ -132,7 +137,7 @@ async function apply_(book, pick, writeTags) {
     }
     if (tagProgress.written) {
       const present = [
-        ['album', tags.album], ['artist', tags.artist], ['album artist', tags.performerInfo],
+        ['album', tags.album], ['title', tags.title], ['artist', tags.artist], ['album artist', tags.performerInfo],
         ['narrator', tags.composer], ['genre', tags.genre], ['year', tags.year],
         ['description', tags.comment?.text], ['cover', tags.APIC], ['track no', true],
       ].filter(([, v]) => v).map(([k]) => k).join(',');
