@@ -4,6 +4,7 @@ A small, self-hosted web app to browse and play an audiobook collection that is
 organised on disk as **Genre → Author → Book** or **Genre → Author → Series → Book**.
 
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
+* Each genre lists its series underneath it, from a series folder or from what the files themselves say
 * Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
 * Scans one or more library folders on the server (with a built-in folder browser)
 * Reads ID3 / audio metadata from the files (title, narrator, year, description, embedded cover art)
@@ -53,6 +54,22 @@ A scan warns when a folder looks like a genre but is not marked as one, since it
 authors would otherwise be filed as genres.
 
 Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
+
+## Series
+
+A series shows up under its genre in the left column, with the number of books
+in it, and opens as one list in reading order. It comes from either of two
+places:
+
+* a **series folder** — `Fantasy / Brandon Sanderson / Mistborn / The Final Empire`
+* the **files themselves**, for a book filed straight under its author: the
+  movement name (`MVNM`), the grouping frame (`TIT1`) or a `SERIES` text frame,
+  which is where audiobook taggers put it, with the movement index deciding the
+  order
+
+Both are shown the same way, on the cards and as a heading in the author view.
+A series read from the tags never moves a file: the folders stay as they are,
+and *Move…* and the **Series** field still work on the folder alone.
 
 ## Run it on Unraid
 
