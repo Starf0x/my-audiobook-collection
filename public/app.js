@@ -925,38 +925,16 @@ $('#addGenre').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
-$('#savePass').onclick = async () => {
-  const password = $('#setPass').value;
-  if (password && password.length < 4) return toast('Use at least four characters.');
-  if (!password && !confirm('Remove the password, so anyone can change the collection?')) return;
-  try {
-    await post('/api/admin/password', { password });
-    $('#setPass').value = '';
-    toast(password ? 'Password set. Other browsers can only listen now.' : 'Password removed.');
-    await loadPerm();
-    showPassState();
-  } catch (e) { toast(e.message); }
-};
-
-let fromEnv = { password: false };
-
 function showPassState() {
-  if (fromEnv.password) {
-    $('#passState').textContent = 'The password comes from the container template (ADMIN_PASSWORD). Change it there.';
-    return;
-  }
   $('#passState').textContent = perm.required
-    ? 'A password is set. Browsers that have not unlocked can only browse and play.'
-    : 'No password: anyone who opens the app can change everything.';
+    ? 'A password is set, so browsers that have not unlocked can only browse and play.'
+    : 'No password set: anyone who opens the app can change everything.';
 }
 
 $('#openSettings').onclick = async () => {
   const s = await api('/api/settings');
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
-  $('#setPass').disabled = !!s.passwordFromEnv;
-  $('#savePass').disabled = !!s.passwordFromEnv;
-  fromEnv = { password: !!s.passwordFromEnv };
   $('#importPath').value = s.importPath || '';
   renderLibs();
   showPassState();
