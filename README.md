@@ -149,7 +149,9 @@ emptying it moves the book back up. The folder keeps its own name.
 
 *Move…* on a book card shifts its folder to where a new genre, author, series and
 title say it belongs. The book keeps its row, so the listened state and playback
-position travel with it.
+position travel with it. Taking the last book out of an author or series folder
+drops that folder with it, so no empty author is left listed; the genre folder
+itself always stays. A restore from the trash puts back whatever folders it needs.
 
 *Delete…* moves the folder into a `.trash` folder inside the same library folder,
 which keeps it on the same filesystem and out of the scanner's way, and records
