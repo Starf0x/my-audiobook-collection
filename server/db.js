@@ -54,6 +54,12 @@ for (const b of db.prepare("SELECT id, description FROM books WHERE description 
   }
 }
 
+// The admin password used to be settable in the app; it comes from the
+// container now, so a hash left in here means nothing and is dropped.
+for (const key of ['adminHash', 'adminSalt']) {
+  db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+}
+
 export const getSetting = (key, def = '') =>
   db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? def;
 
