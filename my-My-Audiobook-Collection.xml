@@ -13,7 +13,7 @@
   <Config Name="WebUI Port" Target="8523" Default="8523" Mode="tcp" Type="Port" Display="always" Required="true">8523</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/my-audiobook-collection" Mode="rw" Type="Path" Display="always" Required="true">/mnt/user/appdata/my-audiobook-collection</Config>
   <Config Name="Import folder" Target="/import" Default="" Mode="rw" Description="Where new audiobooks arrive, to file with Import" Type="Path" Display="always" Required="false"></Config>
-  <Config Name="Admin password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Guards everything that changes the collection. Leave empty to set it in Settings instead." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Admin password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Guards everything that changes the collection. This is the only place it is set. Leave empty for an install nobody has to unlock." Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Google Books API key" Target="GOOGLE_API_KEY" Default="" Mode="" Description="Used to look up missing metadata. This is the only place the key is set." Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Audiobooks" Target="/audiobooks" Default="/mnt/user/Audiobooks" Mode="rw" Type="Path" Display="always" Required="true">/mnt/user/Audiobooks</Config>
 </Container>

@@ -67,7 +67,7 @@ check the paths it filled in:
 | Appdata | `/mnt/user/appdata/my-audiobook-collection` → `/data` | database and cover images |
 | Audiobooks | `/mnt/user/Audiobooks` → `/audiobooks` | the collection, read/write so tags can be written |
 | Import folder | empty → `/import` | where new audiobooks arrive; leave empty if you do not import |
-| Admin password | empty | guards everything that changes the collection |
+| Admin password | empty | guards everything that changes the collection; the only place it is set |
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
 
 The last three are optional, and the two variables are masked in the form. Then
@@ -98,11 +98,11 @@ update* entry. Neither is shown in Basic View.
 
 ### The two variables
 
-`GOOGLE_API_KEY` lives here and nowhere else — there is no field for it in
-Settings, so there is no second copy to drift out of step, and it survives an
-emptied appdata folder. `ADMIN_PASSWORD` may be left empty and set in Settings
-instead; when the template fills it in it wins, and Settings shows the field as
-owned by the template.
+`ADMIN_PASSWORD` and `GOOGLE_API_KEY` live here and nowhere else. Neither has a
+field in Settings, so there is no second copy to drift out of step and both
+survive an emptied appdata folder. Leave the password empty for an install that
+nobody has to unlock; fill it in and every browser has to unlock before it can
+change anything.
 
 ### Or with docker compose
 
@@ -117,8 +117,9 @@ tagging, moving, deleting. `listen.html` only browses, plays and keeps each
 person's place, and is the one to share. It carries an **Admin** button that asks
 for the password and then opens the other page.
 
-Set the password under **Admin password** in Settings. Until one is set the app
-behaves as a private install: whoever opens it may do anything. Once set, every
+The password is `ADMIN_PASSWORD` on the container, and changing it means changing
+it there and restarting. Until one is set the app behaves as a private install:
+whoever opens it may do anything. Once set, every
 request that changes something is refused unless the browser has unlocked, so
 hiding the buttons is not what protects it — the server does. A visitor who types
 the admin address is sent to the listening page.
