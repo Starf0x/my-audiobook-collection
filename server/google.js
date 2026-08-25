@@ -20,7 +20,7 @@ export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTE
 
 export async function lookup(book, search) {
   const key = googleKey();
-  if (!key) throw new Error('No Google Books API key set yet. Put one in the container template or in Settings.');
+  if (!key) throw new Error('No Google Books API key. Set GOOGLE_API_KEY on the container (the Unraid template has a field for it) and restart.');
   Object.assign(lookupProgress, { running: true, attempt: 0, retryUntil: 0 });
   try {
     return await search_(book, search, key);
