@@ -117,7 +117,7 @@ const q = {
   dropBook: db.prepare('DELETE FROM books WHERE id = ?'),
 };
 
-async function addBook(genre, author, series, bookPath, files = null, force = false) {
+async function addBook(genre, author, series, bookPath, files = null, force = false, guess = null) {
   files = files || audioFiles(bookPath);
   if (!files.length) return 0;
   const folderTitle = path.basename(bookPath);
@@ -141,7 +141,9 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
     // Folder name wins over the album tag: album tags repeat across a series
     // ("The Belgariad" for all ten books) while folder names identify the book.
     .run(bookPath, genre, author, series, folderTitle || m.title, m.narrator, m.year, m.description,
-         m.cover, m.duration, m.tagged || '', m.tagSeries || '', m.seriesNo || 0);
+         m.cover, m.duration, m.tagged || '',
+         m.tagSeries || (guess ? guess.name : ''),
+         m.seriesNo || (guess ? guess.no : 0));
 
   const id = q.idByPath.get(bookPath).id;
   q.dropTracks.run(id);
@@ -195,6 +197,39 @@ export async function scan(only = '') {
   return { books: progress.books };
 }
 
+// "The Dark Tower I", "The Dark Tower II", "The Dark Tower III" — one series,
+// split over folders that differ only by a volume number. Two of them are enough
+// to say so; one on its own is just a title that happens to end in a numeral.
+const VOLUME = /^(.*?)[\s,._-]*(?:(?:book|vol|volume|part|deel|boek)[\s.]*)?(\d{1,3}|[ivxlcdm]{1,7})$/i;
+const ROMAN = {
+  i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10,
+  xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20,
+};
+
+export function seriesFromSiblings(names) {
+  const groups = new Map();
+  for (const name of names) {
+    if (DISC.test(name)) continue; // a disc marker is not a volume of a series
+    const m = VOLUME.exec(name.trim());
+    if (!m) continue;
+    const prefix = m[1].trim().replace(/[,\-–:._]+$/, '').trim();
+    const token = m[2].toLowerCase();
+    const no = /^\d+$/.test(token) ? Number(token) : (ROMAN[token] || 0);
+    if (prefix.length < 3 || !no) continue;
+    if (!groups.has(prefix)) groups.set(prefix, []);
+    groups.get(prefix).push({ name, no });
+  }
+  const out = new Map();
+  for (const [prefix, members] of groups) {
+    if (members.length < 2) continue;
+    for (const m of members) out.set(m.name, { name: prefix, no: m.no });
+    // a first volume is often just the series name, with no number at all
+    const bare = names.find((n) => n.trim() === prefix);
+    if (bare && !out.has(bare)) out.set(bare, { name: prefix, no: 1 });
+  }
+  return out;
+}
+
 async function walkAndScan(only) {
   const jobs = [];
   const tooDeep = [];
@@ -210,17 +245,23 @@ async function walkAndScan(only) {
       const genre = path.basename(genreDir);
       for (const authorDir of dirs(genreDir)) {
         const author = path.basename(authorDir);
-        for (const level3 of dirs(authorDir)) {
-          if (audioFiles(level3).length) jobs.push({ genre, author, series: null, dir: level3 });
+        const level3s = dirs(authorDir);
+        // What the folder names say about series, for the books that are not in a
+        // series folder. A guess from names, so it names the series and never
+        // moves a file: it goes where a series read from the tags goes.
+        const guessed = seriesFromSiblings(level3s.map((d) => path.basename(d)));
+        for (const level3 of level3s) {
+          const guess = guessed.get(path.basename(level3)) || null;
+          if (audioFiles(level3).length) jobs.push({ genre, author, series: null, dir: level3, guess });
           else if (discFiles(level3)) {
-            jobs.push({ genre, author, series: null, dir: level3, files: discFiles(level3) });
+            jobs.push({ genre, author, series: null, dir: level3, files: discFiles(level3), guess });
           } else {
             // A folder holding a single sub-folder is a redundantly nested book,
             // not a series: there is nothing to group.
             const books = dirs(level3).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
             const series = books.length > 1 ? path.basename(level3) : null;
             for (const bookDir of books) {
-              jobs.push({ genre, author, series, dir: bookDir, files: discFiles(bookDir) });
+              jobs.push({ genre, author, series, dir: bookDir, files: discFiles(bookDir), guess: series ? null : guess });
             }
           }
         }
@@ -237,7 +278,7 @@ async function walkAndScan(only) {
   progress.total = jobs.length;
   for (const j of jobs) {
     progress.current = path.basename(j.dir);
-    progress.books += await addBook(j.genre, j.author, j.series, j.dir, j.files);
+    progress.books += await addBook(j.genre, j.author, j.series, j.dir, j.files, false, j.guess);
     progress.done++;
   }
   // Books whose folder is gone are dropped — but only from what was walked, or
