@@ -35,6 +35,25 @@ export async function moveToGenre(id, genre) {
     { genre, author: book.author, series: book.series, title: book.title });
 }
 
+// Taking the last book out of an author or series folder leaves that folder
+// standing empty, where it would still be listed as an author with nothing in
+// it. Drop those, never the genre folder: that one is the library's top level.
+function dropEmptyParents(bookPath) {
+  const here = path.resolve(bookPath);
+  const gf = genreFolders().find((g) => here.startsWith(path.resolve(g.path) + path.sep));
+  if (!gf) return;
+  const stop = path.resolve(gf.path);
+  let dir = path.dirname(here);
+  while (dir !== stop && dir.startsWith(stop + path.sep)) {
+    try {
+      fs.rmdirSync(dir); // throws while anything at all is still in it
+    } catch {
+      return;
+    }
+    dir = path.dirname(dir);
+  }
+}
+
 async function relocate(book, dest, { genre, author, series, title }) {
   if (dest === book.path) throw new Error('That is where the book already is');
   if (fs.existsSync(dest)) throw new Error(`There is already a folder at ${dest}`);
@@ -50,6 +69,7 @@ async function relocate(book, dest, { genre, author, series, title }) {
     for (const t of db.prepare('SELECT id, path FROM tracks WHERE book_id = ?').all(book.id)) {
       move.run(path.join(dest, path.relative(book.path, t.path)), t.id);
     }
+    dropEmptyParents(book.path);
     return { dest };
   } catch (e) {
     fileProgress.error = e.message;
@@ -90,6 +110,8 @@ export async function deleteToTrash(id, stamp) {
     db.prepare('DELETE FROM tracks WHERE book_id = ?').run(book.id);
     db.prepare('DELETE FROM progress WHERE book_id = ?').run(book.id);
     db.prepare('DELETE FROM books WHERE id = ?').run(book.id);
+    // a restore recreates whatever folders it needs, so these may go
+    dropEmptyParents(book.path);
     return { dest };
   } catch (e) {
     fileProgress.error = e.message;
