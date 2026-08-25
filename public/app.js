@@ -459,27 +459,134 @@ function importForm(d, c) {
   };
 
   $('#iGo').onclick = async () => {
-    $('#importDlg').close();
     const body = {
       source: c.path, genre: $('#iGenre').value, author: $('#iAuthor').value.trim(),
       series: $('#iSeries').value.trim(), title: $('#iTitle').value.trim(),
     };
-    const { ok, r } = await fileWork('/api/import', body, 'Import');
-    if (ok) {
-      // the server files the book itself, so there is nothing to rescan
-      $('#progressText').textContent = `Imported into ${r.dest}`;
-      await refreshLibrary();
-    }
-    $('#importList').onclick('keep');
+    // Never overwrite a book unseen: if one is already there, the two copies are
+    // compared first and it is the admin who decides which one the library keeps.
+    const clash = await api('/api/import/compare?' + new URLSearchParams(body)).catch(() => ({ exists: false }));
+    if (clash.exists) return askConflict(body, clash);
+    $('#importDlg').close();
+    await runImport(body);
   };
   $('#importDlg').showModal();
 }
 $('#closeImport').onclick = () => $('#importDlg').close();
 
+async function runImport(body) {
+  const { ok, r } = await fileWork('/api/import', body, 'Import');
+  if (ok) {
+    // the server files the book itself, so there is nothing to rescan
+    $('#progressText').textContent = r.replacedPath
+      ? `Imported into ${r.dest}, the copy that was there is now ${r.replacedPath}`
+      : `Imported into ${r.dest}`;
+    await refreshLibrary();
+  }
+  $('#importList').onclick('keep');
+}
+
+// --- two copies of the same book ---------------------------------------
+const kb = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : (n / 1e6).toFixed(0) + ' MB');
+const hm = (s) => (!s ? '—' : `${Math.floor(s / 3600)}h ${String(Math.round(s % 3600 / 60)).padStart(2, '0')}m`);
+
+function askConflict(body, clash) {
+  const { existing: a, incoming: b } = clash;
+  // the numbers that decide it: bit rate first, then how complete the copy is
+  const rows = [
+    ['Bit rate', `${a.bitrate || '—'} kbps`, `${b.bitrate || '—'} kbps`, Math.sign(b.bitrate - a.bitrate)],
+    ['Sample rate', `${a.sampleRate ? (a.sampleRate / 1000).toFixed(1) + ' kHz' : '—'}`,
+      `${b.sampleRate ? (b.sampleRate / 1000).toFixed(1) + ' kHz' : '—'}`, Math.sign(b.sampleRate - a.sampleRate)],
+    ['Channels', a.channels || '—', b.channels || '—', Math.sign(b.channels - a.channels)],
+    ['Format', `${esc(a.codec || '—')}${a.lossless ? ' · lossless' : ''}`,
+      `${esc(b.codec || '—')}${b.lossless ? ' · lossless' : ''}`, Math.sign(b.lossless - a.lossless)],
+    ['Playing time', hm(a.duration), hm(b.duration), Math.sign(Math.round(b.duration / 60) - Math.round(a.duration / 60))],
+    ['Files', a.files, b.files, 0],
+    ['Size', kb(a.bytes), kb(b.bytes), 0],
+  ];
+  $('#cWhere').textContent = `A book already sits in ${clash.dest}`;
+  $('#cTable').innerHTML = `<table class="cmp">
+    <tr><th></th><th>In the library now</th><th>The new copy</th></tr>
+    ${rows.map(([label, l, r, better]) => `<tr><td>${label}</td>
+      <td class="${better < 0 ? 'better' : ''}">${l}</td>
+      <td class="${better > 0 ? 'better' : ''}">${r}</td></tr>`).join('')}
+  </table>`;
+  const d = (b.bitrate || 0) - (a.bitrate || 0);
+  const mins = Math.round((b.duration - a.duration) / 60);
+  $('#cVerdict').textContent = [
+    d > 0 ? `The new copy is ${d} kbps higher.` : d < 0 ? `The new copy is ${-d} kbps lower.` : 'Both are the same bit rate.',
+    mins > 1 ? `It is ${mins} minutes longer.` : mins < -1 ? `It is ${-mins} minutes shorter.` : 'The playing time matches.',
+  ].join(' ');
+
+  $('#cCancel').onclick = () => $('#conflict').close();
+  $('#cReplace').onclick = async () => {
+    $('#conflict').close();
+    $('#importDlg').close();
+    await runImport({ ...body, replace: true });
+  };
+  $('#cSkip').onclick = async () => {
+    $('#conflict').close();
+    $('#importDlg').close();
+    try {
+      const r = await post('/api/import/skip', { source: body.source });
+      toast(`Left in the import folder as ${r.skipped.split(/[\\/]/).pop()}`);
+    } catch (e) { toast(e.message); }
+    $('#importList').onclick('keep');
+  };
+  $('#conflict').showModal();
+}
+
+// --- copies an import replaced -----------------------------------------
+async function loadReplaced() {
+  const items = await api('/api/replaced').catch(() => []);
+  $('#replacedCount').textContent = items.length || '0';
+  return items;
+}
+
+$('#replacedList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
+  $('#replacedList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  const items = await loadReplaced();
+  if (!items.length) {
+    $('#books .list').innerHTML = '<div class="empty">Nothing replaced. An import that replaces a book '
+      + 'leaves the old copy here until you delete it.</div>';
+    return;
+  }
+  $('#books .list').innerHTML = `<div class="row pager">
+      <span class="hint">${items.length} older ${items.length === 1 ? 'copy' : 'copies'}, kept where they were and renamed</span>
+      <div class="spacer"></div><button id="rAll" class="danger">Delete them all</button>
+    </div>` + items.map((r) => `<div class="fix">
+    <div>
+      <strong>${esc(r.title)}</strong>
+      <div class="sub">${esc(r.genre)} · ${esc(r.author)}${r.series ? ' · ' + esc(r.series) : ''}</div>
+      <div class="sub">${r.files} file(s) · ${kb(r.bytes)} · ${esc(r.quality)} · replaced ${new Date(r.replaced_at).toLocaleString()}</div>
+      <div class="sub">${esc(r.path)}${r.onDisk ? '' : ' — the folder is gone'}</div>
+    </div>
+    <div class="actions"><button class="danger" data-del="${r.id}">Delete now</button></div>
+  </div>`).join('');
+  $('#books .list').querySelectorAll('button[data-del]').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm('Delete this older copy and its files for good?')) return;
+      try { await post(`/api/replaced/${b.dataset.del}`, {}); } catch (e) { return toast(e.message); }
+      toast('Deleted.');
+      $('#replacedList').click();
+    };
+  });
+  const all = $('#books #rAll');
+  if (all) all.onclick = async () => {
+    if (!confirm(`Delete all ${items.length} replaced copies and their files for good?`)) return;
+    try { await post('/api/replaced/all', {}); } catch (e) { return toast(e.message); }
+    toast('Deleted.');
+    $('#replacedList').click();
+  };
+};
+
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
 async function refreshLibrary() {
-  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), importCountOnly()]);
+  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), loadReplaced(), importCountOnly()]);
   if (state.author) selectAuthor(state.author, null);
   else if (!document.body.classList.contains('maintenance')) await loadHome();
 }
@@ -928,7 +1035,7 @@ $('#scan').onclick = startScan;
   await loadPerm();
   const users = await loadUsers();
   await loadGenres();
-  await Promise.all([loadStats(), loadUntagged(), importCountOnly(), loadTrash()]);
+  await Promise.all([loadStats(), loadUntagged(), importCountOnly(), loadTrash(), loadReplaced()]);
   await loadHome();
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
 })();
