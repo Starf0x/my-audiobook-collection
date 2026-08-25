@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>my-audiobook-collection</Name>
+  <Name>My-Audiobook-Collection</Name>
   <Repository>starf0x/my-audiobook-collection:latest</Repository>
   <Registry>https://hub.docker.com/r/starf0x/my-audiobook-collection</Registry>
   <Network>bridge</Network>
