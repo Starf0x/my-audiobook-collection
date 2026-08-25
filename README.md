@@ -74,6 +74,10 @@ places:
   which is where audiobook taggers put it, with the movement index deciding the
   order
 
+A series only appears after a scan, since that is when the folders and files are
+read. Books that were already in the library pick it up from a rescan without
+their folders having to change.
+
 All three are shown the same way, on the cards and as a heading in the author
 view. A series that was not a folder never moves a file: the folders stay as they
 are, and *Move…* and the **Series** field still work on the folder alone.
