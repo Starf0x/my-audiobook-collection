@@ -24,6 +24,7 @@
     <ul>
       <li id="needsTags"><span>Needs tags</span><span class="count" id="needsTagsCount">…</span></li>
       <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
+      <li id="replacedList"><span>Replaced</span><span class="count" id="replacedCount">…</span></li>
       <li id="trashList"><span>Trash</span><span class="count" id="trashCount">…</span></li>
     </ul>
   </aside>
@@ -120,6 +121,22 @@
     <button id="closeImport" class="ghost">Cancel</button>
     <button id="iLookup" class="ghost">Find metadata</button>
     <button id="iGo">Move into the library</button>
+  </div>
+</dialog>
+
+<dialog id="conflict">
+  <h2>This book is already there</h2>
+  <p class="hint" id="cWhere"></p>
+  <div id="cTable"></div>
+  <p class="hint" id="cVerdict"></p>
+  <p class="hint">Replacing keeps the book's place in the library, and everyone's position in it:
+    the copy that is there now is renamed <code>Replaced - …</code> and listed under
+    <em>Replaced</em> until you delete it. Keeping the one you have renames the incoming folder
+    <code>Not Imported - …</code> and leaves it in the import folder.</p>
+  <div class="row end">
+    <button id="cCancel" class="ghost">Cancel</button>
+    <button id="cSkip" class="ghost">Keep the one I have</button>
+    <button id="cReplace">Replace with the new one</button>
   </div>
 </dialog>
 

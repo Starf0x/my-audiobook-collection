@@ -205,3 +205,10 @@ button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
 
 #whoList button { margin: 0; }
 
+
+/* two copies of the same book, side by side */
+table.cmp { width: 100%; border-collapse: collapse; margin: 6px 0 2px; }
+table.cmp th, table.cmp td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+table.cmp th { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+table.cmp td:first-child { color: var(--dim); }
+table.cmp td.better { color: #7ee2a8; font-weight: 600; }

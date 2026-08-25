@@ -8,8 +8,12 @@ const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 const COVER = /^(cover|folder|front)\.(jpg|jpeg|png)$/i;
 export const DISC = /^(disc|disk|cd|part|tape)[\s._-]*\d+$/i;
 
+// A dot hides a folder from the app (the trash uses that), and so do the two
+// names an import gives a copy it set aside: neither is a book to list.
+export const SET_ASIDE = /^(Replaced|Not Imported) - /;
+
 export const dirs = (p) => fs.readdirSync(p, { withFileTypes: true })
-  .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+  .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !SET_ASIDE.test(e.name))
   .map((e) => path.join(p, e.name));
 
 export const audioFiles = (p) => fs.readdirSync(p, { withFileTypes: true })
@@ -93,7 +97,7 @@ const q = {
   dropBook: db.prepare('DELETE FROM books WHERE id = ?'),
 };
 
-async function addBook(genre, author, series, bookPath, files = null) {
+async function addBook(genre, author, series, bookPath, files = null, force = false) {
   files = files || audioFiles(bookPath);
   if (!files.length) return 0;
   const folderTitle = path.basename(bookPath);
@@ -101,7 +105,9 @@ async function addBook(genre, author, series, bookPath, files = null) {
   const known = existing
     ? q.trackPaths.all(existing.id).map((t) => t.path)
     : [];
-  const unchanged = existing && known.length === files.length && known.every((p, i) => p === files[i]);
+  // A replaced book keeps every file name, so "same paths" would read as "same
+  // book" and the old duration and cover would survive the new copy.
+  const unchanged = !force && existing && known.length === files.length && known.every((p, i) => p === files[i]);
 
   if (unchanged) {
     // reading the first file's tags is cheap, and it keeps the "in MP3" state
@@ -126,7 +132,7 @@ async function addBook(genre, author, series, bookPath, files = null) {
 // A folder whose sub-folders are all disc markers is one book split over discs,
 // wherever it sits: directly under an author, or under a series folder as well.
 // Returns its files in disc order, or null when it is not such a folder.
-function discFiles(dir) {
+export function discFiles(dir) {
   if (audioFiles(dir).length) return null;
   const inner = dirs(dir).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   if (inner.length < 2 || !inner.every((d) => DISC.test(path.basename(d)))) return null;
@@ -135,8 +141,8 @@ function discFiles(dir) {
 
 // Add one known book straight away, so an import or a restore turns up in the
 // library at once instead of after a full scan of everything else.
-export async function addOne({ genre, author, series, dir }) {
-  return addBook(genre, author, series || null, dir, discFiles(dir));
+export async function addOne({ genre, author, series, dir, force }) {
+  return addBook(genre, author, series || null, dir, discFiles(dir), !!force);
 }
 
 // A library root holds genre folders, so its books sit three levels down. When
@@ -199,7 +205,7 @@ async function walkAndScan() {
 
   if (tooDeep.length) {
     progress.warning = `${tooDeep.join(', ')} looks like a single genre folder, so its authors are `
-      + 'being filed as genres. Tick "is one genre" behind it in Settings, or add the folder that '
+      + 'being filed as genres. Tick "Is a Genre" behind it in Settings, or add the folder that '
       + 'contains your genre folders instead.';
   }
 
