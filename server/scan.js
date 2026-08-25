@@ -71,40 +71,53 @@ async function readMeta(files, bookPath) {
   return meta;
 }
 
+// Prepared once and reused. Preparing inside the per-book loop held a native
+// statement handle for every book and track, which showed up as growing RSS
+// across repeated scans of a large library.
+const q = {
+  bookByPath: db.prepare('SELECT id, duration FROM books WHERE path = ?'),
+  trackPaths: db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx'),
+  touchBook: db.prepare('UPDATE books SET genre = ?, author = ?, series = ?, tagged = ? WHERE id = ?'),
+  upsertBook: db.prepare(`INSERT INTO books (path, genre, author, series, title, narrator, year, description, cover, duration, tagged)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(path) DO UPDATE SET genre = excluded.genre, author = excluded.author, series = excluded.series,
+      title = excluded.title, narrator = excluded.narrator, year = excluded.year,
+      description = excluded.description, cover = excluded.cover, duration = excluded.duration,
+      tagged = excluded.tagged`),
+  idByPath: db.prepare('SELECT id FROM books WHERE path = ?'),
+  dropTracks: db.prepare('DELETE FROM tracks WHERE book_id = ?'),
+  addTrack: db.prepare('INSERT INTO tracks (book_id, idx, path, title, duration) VALUES (?, ?, ?, ?, ?)'),
+  allBookPaths: db.prepare('SELECT id, path FROM books'),
+  dropBook: db.prepare('DELETE FROM books WHERE id = ?'),
+};
+
 async function addBook(genre, author, series, bookPath, files = null) {
   files = files || audioFiles(bookPath);
   if (!files.length) return 0;
   const folderTitle = path.basename(bookPath);
-  const existing = db.prepare('SELECT id, duration FROM books WHERE path = ?').get(bookPath);
+  const existing = q.bookByPath.get(bookPath);
   const known = existing
-    ? db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(existing.id).map((t) => t.path)
+    ? q.trackPaths.all(existing.id).map((t) => t.path)
     : [];
   const unchanged = existing && known.length === files.length && known.every((p, i) => p === files[i]);
 
   if (unchanged) {
     // reading the first file's tags is cheap, and it keeps the "in MP3" state
     // truthful after tags were written outside the app
-    db.prepare('UPDATE books SET genre = ?, author = ?, series = ?, tagged = ? WHERE id = ?')
-      .run(genre, author, series, await taggedOf(files[0]), existing.id);
+    q.touchBook.run(genre, author, series, await taggedOf(files[0]), existing.id);
     return 1;
   }
 
   const m = await readMeta(files, bookPath);
-  db.prepare(`INSERT INTO books (path, genre, author, series, title, narrator, year, description, cover, duration, tagged)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(path) DO UPDATE SET genre = excluded.genre, author = excluded.author, series = excluded.series,
-      title = excluded.title, narrator = excluded.narrator, year = excluded.year,
-      description = excluded.description, cover = excluded.cover, duration = excluded.duration,
-      tagged = excluded.tagged`)
+  q.upsertBook
     // Folder name wins over the album tag: album tags repeat across a series
     // ("The Belgariad" for all ten books) while folder names identify the book.
     .run(bookPath, genre, author, series, folderTitle || m.title, m.narrator, m.year, m.description,
          m.cover, m.duration, m.tagged || '');
 
-  const id = db.prepare('SELECT id FROM books WHERE path = ?').get(bookPath).id;
-  db.prepare('DELETE FROM tracks WHERE book_id = ?').run(id);
-  const ins = db.prepare('INSERT INTO tracks (book_id, idx, path, title, duration) VALUES (?, ?, ?, ?, ?)');
-  files.forEach((f, i) => ins.run(id, i, f, m.tracks[i].title, m.tracks[i].duration));
+  const id = q.idByPath.get(bookPath).id;
+  q.dropTracks.run(id);
+  files.forEach((f, i) => q.addTrack.run(id, i, f, m.tracks[i].title, m.tracks[i].duration));
   return 1;
 }
 
@@ -195,10 +208,10 @@ async function walkAndScan() {
     progress.done++;
   }
   const seen = new Set(jobs.map((j) => j.dir));
-  for (const b of db.prepare('SELECT id, path FROM books').all()) {
+  for (const b of q.allBookPaths.all()) {
     if (!seen.has(b.path)) {
-      db.prepare('DELETE FROM tracks WHERE book_id = ?').run(b.id);
-      db.prepare('DELETE FROM books WHERE id = ?').run(b.id);
+      q.dropTracks.run(b.id);
+      q.dropBook.run(b.id);
     }
   }
 }

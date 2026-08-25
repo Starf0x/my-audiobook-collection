@@ -61,7 +61,8 @@ Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
    * Path: `/data` → `/mnt/user/appdata/my-audiobook-collection` (database + covers)
    * Path: `/audiobooks` → `/mnt/user/Audiobooks` (read/write if you want to write tags)
 2. Open `http://TOWER-IP:8080`
-3. **+ User** → add yourself (playback positions are stored per user)
+3. The first visit asks who is listening; the name is kept on the server, so
+   the next visit and any other browser can pick it again
 4. **Settings** → add `/audiobooks` as a library folder (use *Browse…* to pick it),
    paste your Google Books API key, **Save**. If `/audiobooks` also holds folders you do not
    want scanned, add the genre folders one by one instead and tick *Is a Genre* behind each.

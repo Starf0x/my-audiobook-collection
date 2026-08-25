@@ -93,6 +93,16 @@
   <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
 </dialog>
 
+<dialog id="who">
+  <h2>Who is listening?</h2>
+  <p class="hint">Where you got to in a book, and which books you have finished, are kept
+    per person. Names are stored on the server, so they are still here next time.</p>
+  <div id="whoList"></div>
+  <label>Add someone</label>
+  <div class="row"><input id="whoName" placeholder="Your name"><button id="whoGo">Start listening</button></div>
+  <div class="row end"><button id="whoClose" class="ghost" hidden>Cancel</button></div>
+</dialog>
+
 <dialog id="importDlg">
   <h2>Import audiobook</h2>
   <p class="hint" id="iSource"></p>

@@ -26,9 +26,10 @@ export async function moveBook(id, { genre, author, series, title }) {
     await moveFolder(book.path, dest);
     db.prepare('UPDATE books SET path = ?, genre = ?, author = ?, series = ?, title = ? WHERE id = ?')
       .run(dest, genre, clean(author), clean(series) || null, clean(title), book.id);
+    // one prepared statement, not one per track: a book can hold hundreds
+    const move = db.prepare('UPDATE tracks SET path = ? WHERE id = ?');
     for (const t of db.prepare('SELECT id, path FROM tracks WHERE book_id = ?').all(book.id)) {
-      db.prepare('UPDATE tracks SET path = ? WHERE id = ?')
-        .run(path.join(dest, path.relative(book.path, t.path)), t.id);
+      move.run(path.join(dest, path.relative(book.path, t.path)), t.id);
     }
     return { dest };
   } catch (e) {
