@@ -5,7 +5,7 @@ import url from 'node:url';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
 import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
-import { candidates, genreFolders, importBook, fileProgress, importState } from './import.js';
+import { candidates, genreFolders, importBook, fileProgress, importState, clean } from './import.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 
 const app = express();
@@ -44,6 +44,44 @@ app.get('/api/browse', (req, res) => {
     .sort();
   res.json({ path: path.resolve(dir), parent: path.dirname(path.resolve(dir)), entries });
 });
+
+// --- genres ------------------------------------------------------------
+// A genre is a folder. Where a library folder holds the genre folders, the new
+// one only has to exist; where each genre folder is registered on its own, the
+// new one has to be registered too.
+const genreParent = () => {
+  const libs = getLibraries();
+  const root = libs.find((l) => !l.asGenre);
+  if (root) return root.path;
+  return libs.length ? path.dirname(path.resolve(libs[0].path)) : '';
+};
+
+app.get('/api/genrefolders', (req, res) => res.json({
+  folders: genreFolders(),
+  suggestedParent: genreParent(),
+}));
+
+app.post('/api/genres', wrap(async (req, res) => {
+  const name = clean(req.body.name || '');
+  if (!name) throw new Error('A genre needs a name');
+  const parent = (req.body.parent || genreParent()).trim();
+  if (!parent) throw new Error('Say which folder the genre folder goes in');
+  if (!fs.existsSync(parent)) throw new Error(`That folder is not there: ${parent}`);
+
+  const dir = path.join(parent, name);
+  const existed = fs.existsSync(dir);
+  if (!existed) fs.mkdirSync(dir, { recursive: true });
+
+  const libs = getLibraries();
+  const here = path.resolve(dir);
+  const inRoot = libs.some((l) => !l.asGenre && here.startsWith(path.resolve(l.path) + path.sep));
+  const listed = libs.some((l) => path.resolve(l.path) === here);
+  if (!inRoot && !listed) {
+    libs.push({ path: dir, asGenre: true });
+    setSetting('libraries', JSON.stringify(libs));
+  }
+  res.json({ dir, existed, registered: !inRoot && !listed });
+}));
 
 // --- import ------------------------------------------------------------
 app.get('/api/files/status', (req, res) => res.json(fileProgress));
