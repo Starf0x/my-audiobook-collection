@@ -42,6 +42,10 @@ How a third-level folder is read:
 | sub-folders that are all `Disc 01`, `CD 2`, `Part 3`… | **one book**, its discs played in order as one track list |
 | exactly one sub-folder | **one book**; a series of one has nothing to group |
 
+Settings has a **Genres** section to make one: it creates the folder, and adds it
+as a library folder when your libraries are single genre folders, so the new genre
+is offered for an import straight away.
+
 If a library folder holds things you do not want scanned, add the genre folders
 themselves and tick *Is a Genre* behind each, instead of adding their parent.
 A scan warns when a folder looks like a genre but is not marked as one, since its

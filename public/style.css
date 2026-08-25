@@ -198,3 +198,7 @@ button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
 .pager .spacer { flex: 1; }
 .pager button[disabled] { opacity: .4; cursor: default; }
 #books .fix + .pager { margin-top: 8px; }
+
+#genreList { list-style: none; padding: 0; margin: 0; max-height: 150px; overflow: auto; }
+#genreList li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 10px; background: var(--panel2); border-radius: 8px; margin-bottom: 5px; }
+#genreList .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }

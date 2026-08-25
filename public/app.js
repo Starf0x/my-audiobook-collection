@@ -701,6 +701,30 @@ function renderLibs() {
     b.onclick = () => { libs.splice(Number(b.dataset.i), 1); renderLibs(); };
   });
 }
+async function loadGenreFolders() {
+  const d = await api('/api/genrefolders').catch(() => ({ folders: [], suggestedParent: '' }));
+  $('#genreList').innerHTML = d.folders.length
+    ? d.folders.map((g) => `<li><span>${esc(g.genre)}</span><span class="hint">${esc(g.path)}</span></li>`).join('')
+    : '<li class="empty">None yet.</li>';
+  if (!$('#genreParent').value) $('#genreParent').value = d.suggestedParent || '';
+}
+
+$('#addGenre').onclick = async () => {
+  const name = $('#newGenre').value.trim();
+  if (!name) return toast('Give the genre a name.');
+  try {
+    const r = await post('/api/genres', { name, parent: $('#genreParent').value.trim() });
+    $('#newGenre').value = '';
+    toast(r.existed ? `That folder was already there: ${r.dir}` : `Created ${r.dir}`);
+    // a new genre folder can add a library entry, so read the settings back
+    const s = await api('/api/settings');
+    libs = s.libraries;
+    libsAtOpen = JSON.stringify(libs);
+    renderLibs();
+    await loadGenreFolders();
+  } catch (e) { toast(e.message); }
+};
+
 $('#openSettings').onclick = async () => {
   const s = await api('/api/settings');
   libs = s.libraries;
@@ -708,6 +732,7 @@ $('#openSettings').onclick = async () => {
   $('#apiKey').value = s.googleApiKey;
   $('#importPath').value = s.importPath || '';
   renderLibs();
+  await loadGenreFolders();
   $('#browser').hidden = true;
   $('#settings').showModal();
 };
