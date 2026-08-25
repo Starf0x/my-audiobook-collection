@@ -286,7 +286,7 @@ async function loadImport(showBar, refresh) {
   if (showBar) await trackProgress('/api/files/status', 'Reading the import folder…', until);
   const r = await request;
   if (showBar) $('#progress').hidden = true;
-  $('#importCount').textContent = r.d ? r.d.candidates.length : '!';
+  $('#importCount').textContent = r.d ? r.d.candidates.length : '–';
   return r;
 }
 
