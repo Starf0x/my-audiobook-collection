@@ -583,6 +583,91 @@ $('#tidyCovers').onclick = () => work($('#tidyCovers'), 'The cover tidy-up', asy
   }
 });
 
+// --- books the disk does not back up any more ---------------------------
+const WHY = {
+  gone: 'The folder is gone',
+  empty: 'No audio files left in the folder',
+  unreadable: 'The folder cannot be read',
+  damaged: 'Files that cannot be read',
+  changed: 'Files have changed on disk',
+};
+
+async function loadBroken() {
+  const items = await api('/api/broken').catch(() => []);
+  $('#brokenCount').textContent = items.length || '0';
+  return items;
+}
+
+async function validateAll() {
+  await post('/api/validate', {});
+  const p = await trackProgress('/api/validate/status', 'Reading every book…');
+  $('#progressText').textContent = p.error
+    ? 'The check stopped: ' + p.error
+    : `Checked ${p.done} book(s): ${p.broken} with something wrong.`;
+  hideProgressSoon(p.broken ? 15000 : 4000);
+  await loadBroken();
+  if ($('#brokenList').classList.contains('active') || p.broken) $('#brokenList').click();
+}
+
+$('#validateAll').onclick = () => {
+  if (!confirm('Open every file of every book?\n\nThis reads your whole collection, so on a large '
+    + 'one it takes a long time — minutes, not seconds. You can keep listening while it runs.')) return;
+  $('#settings').close();
+  return work($('#validateAll'), 'The disk check', validateAll);
+};
+
+$('#brokenList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
+  $('#brokenList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  const items = await loadBroken();
+  const header = `<div class="row pager">
+      <span class="hint">${items.length
+    ? `${items.length} book(s) the disk no longer backs up`
+    : 'Nothing wrong with what was checked'}</span>
+      <div class="spacer"></div><button id="bAgain" class="ghost">Check every book again</button>
+    </div>`;
+  $('#books .list').innerHTML = header + (items.length ? items.map((b) => `<div class="fix">
+    <div>
+      <strong>${esc(b.title)}</strong>
+      <div class="sub">${esc(b.genre)} · ${esc(b.author)}</div>
+      <div class="sub missing">${esc(WHY[b.reason] || b.reason)} — ${esc(b.detail)}</div>
+      <div class="sub">${esc(b.path)}${b.onDisk ? '' : ' — not on disk'}</div>
+    </div>
+    <div class="actions">
+      <button data-recheck="${b.id}">Check again</button>
+      <button class="ghost danger" data-drop="${b.id}">${b.onDisk ? 'Delete…' : 'Forget it'}</button>
+    </div>
+  </div>`).join('')
+    : '<div class="empty">Nothing here. <em>Check every book against the disk</em> in Settings '
+      + 'looks for folders that are gone and files that cannot be read.</div>');
+
+  $('#books #bAgain').onclick = () => work($('#books #bAgain'), 'The disk check', validateAll);
+  $('#books .list').querySelectorAll('button[data-recheck]').forEach((b) => {
+    b.onclick = () => work(b, 'The check', async () => {
+      const r = await post(`/api/broken/${b.dataset.recheck}/recheck`, {}).catch((e) => ({ error: e.message }));
+      if (r.error) return toast(r.error);
+      toast(r.ok ? 'Nothing wrong with it now.' : `Still not right: ${r.detail}`);
+      await loadBroken();
+      $('#brokenList').click();
+    });
+  });
+  $('#books .list').querySelectorAll('button[data-drop]').forEach((b) => {
+    b.onclick = () => work(b, 'The delete', async () => {
+      const onDisk = b.textContent.startsWith('Delete');
+      if (!confirm(onDisk
+        ? 'Move this book and its files to the trash?'
+        : 'Forget this book? Its files are already gone, so only the library entry and the saved positions go.')) return;
+      const r = await post(`/api/broken/${b.dataset.drop}/delete`, {}).catch((e) => ({ error: e.message }));
+      if (r.error) return toast(r.error);
+      toast(r.trashed ? 'Moved to the trash.' : `Forgotten: ${r.forgotten}`);
+      await refreshLibrary();
+      $('#brokenList').click();
+    });
+  });
+};
+
 // --- copies an import replaced -----------------------------------------
 async function loadReplaced() {
   const items = await api('/api/replaced').catch(() => []);
@@ -633,7 +718,7 @@ $('#replacedList').onclick = async () => {
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
 async function refreshLibrary() {
-  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), loadReplaced(), importCountOnly()]);
+  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), loadReplaced(), loadBroken(), importCountOnly()]);
   if (state.author) selectAuthor(state.author, null);
   else if (!document.body.classList.contains('maintenance')) await loadHome();
 }
@@ -1079,7 +1164,7 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
   await loadPerm();
   const users = await loadUsers();
   await loadGenres();
-  await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(), loadReplaced()]);
+  await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(), loadReplaced(), loadBroken()]);
   await loadHome();
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
   // a scan another browser started is still running: follow it instead of

@@ -173,6 +173,29 @@ the deletion. **Trash** in the left column lists what is in there, how long it h
 left, and offers *Put back*, *Delete now* per book and *Empty trash*. Anything
 older than 30 days is dropped by itself, checked at startup and once a day after.
 
+## Checking the books against the disk
+
+A scan trusts the folders it walks. **Check every book against the disk** in
+Settings does not: it opens every file of every book, which is what finds a
+truncated download, a zero-byte file or a share that answers but will not read.
+It asks first, because on a large collection this takes minutes rather than
+seconds, and it reports through the bar at the bottom.
+
+What it finds is listed under **Broken on disk** in the left column, with the
+reason and how many files are involved:
+
+| Reason | What it means |
+| --- | --- |
+| the folder is gone | nothing at that path any more |
+| no audio files left | the folder is there and empty of audio |
+| files that cannot be read | truncated, zero-byte or unreadable files |
+| files have changed | the files the library listed are gone, others are there — a scan will pick those up |
+
+Each entry offers **Check again**, which re-reads that one book and drops it off
+the list when it is well, and a delete: *Delete…* moves the book to the trash
+when its files are still there, and *Forget it* removes the library entry when
+they are not.
+
 ## Cover files it no longer needs
 
 Covers are stored under the name of the image itself, so a book that gets new
