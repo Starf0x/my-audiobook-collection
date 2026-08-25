@@ -15,7 +15,10 @@ db.exec(`
     genre TEXT, author TEXT, series TEXT, title TEXT,
     narrator TEXT, year TEXT, description TEXT, cover TEXT,
     duration REAL DEFAULT 0,
-    tagged TEXT DEFAULT ''
+    tagged TEXT DEFAULT '',
+    -- the series as the files claim it, for books that are not in a series folder
+    tag_series TEXT DEFAULT '',
+    series_no INTEGER DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS tracks (
     id INTEGER PRIMARY KEY,
@@ -54,6 +57,8 @@ db.exec(`
 // columns added after the first release; harmless when they already exist
 try { db.exec('ALTER TABLE progress ADD COLUMN done INTEGER DEFAULT 0'); } catch { /* already there */ }
 try { db.exec("ALTER TABLE books ADD COLUMN tagged TEXT DEFAULT ''"); } catch { /* already there */ }
+try { db.exec("ALTER TABLE books ADD COLUMN tag_series TEXT DEFAULT ''"); } catch { /* already there */ }
+try { db.exec('ALTER TABLE books ADD COLUMN series_no INTEGER DEFAULT 0'); } catch { /* already there */ }
 
 // descriptions stored before iTunes normalisation data was filtered out of them
 for (const b of db.prepare("SELECT id, description FROM books WHERE description <> ''").all()) {

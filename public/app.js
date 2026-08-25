@@ -145,36 +145,67 @@ async function openInLibrary(genre, author) {
 }
 
 // --- browsing ----------------------------------------------------------
+// Each genre lists its series underneath it: a series belongs to a genre, and a
+// reader looking for the next book of one is not looking for its author first.
 async function loadGenres() {
   const list = await api('/api/genres');
-  $('#genres ul').innerHTML = list.map((g) =>
-    `<li data-name="${esc(g.name)}"><span>${esc(g.name)}</span><span class="count">${g.books}</span></li>`).join('')
+  $('#genres ul').innerHTML = list.map((g) => `<li data-name="${esc(g.name)}">
+      <span>${esc(g.name)}</span><span class="count">${g.books}</span></li>`
+    + (g.series || []).map((s) => `<li class="series-in-genre" data-genre="${esc(g.name)}" data-series="${esc(s.name)}">
+        <span>${esc(s.name)}</span><span class="count">${s.books}</span></li>`).join('')).join('')
     || '<li class="empty">No genres — add a library folder in Settings and scan.</li>';
   $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => { li.onclick = () => selectGenre(li.dataset.name, li); });
+  $('#genres ul').querySelectorAll('li[data-series]').forEach((li) => {
+    li.onclick = () => selectSeries(li.dataset.genre, li.dataset.series, li);
+  });
 }
 
 async function selectGenre(genre, li) {
   document.body.classList.remove('maintenance');
   state.genre = genre;
+  state.series = '';
   document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
   const list = await api('/api/authors?genre=' + encodeURIComponent(genre));
   $('#authors ul').innerHTML = list.map((a) =>
     `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
   $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
-  $('#books .list').innerHTML = '<div class="empty">Select an author.</div>';
+  $('#books .list').innerHTML = '<div class="empty">Select an author, or a series under the genre.</div>';
+}
+
+// One series, in reading order where the files number it
+async function selectSeries(genre, series, li) {
+  document.body.classList.remove('maintenance');
+  state.genre = genre;
+  state.series = series;
+  state.author = null;
+  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+  if (li) li.classList.add('active');
+  const authors = await api('/api/authors?genre=' + encodeURIComponent(genre));
+  $('#authors ul').innerHTML = authors.map((a) =>
+    `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
+  $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
+  await drawBooks(await api(`/api/books?genre=${encodeURIComponent(genre)}&series=${encodeURIComponent(series)}`
+    + `&user=${encodeURIComponent(state.user)}`), series);
 }
 
 async function selectAuthor(author, li) {
   state.author = author;
+  state.series = '';
   document.querySelectorAll('#authors li').forEach((e) => e.classList.remove('active'));
+  document.querySelectorAll('#genres li[data-series]').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
   const books = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`
     + `&user=${encodeURIComponent(state.user)}`);
-  let html = '';
-  let series = '';
+  await drawBooks(books, '');
+}
+
+async function drawBooks(books, heading) {
+  let html = heading ? `<div class="series-head">Series · ${esc(heading)}</div>` : '';
+  let series = heading;
   for (const b of books) {
-    if (b.series !== series) {
+    const author = b.author;
+    if (!heading && b.series !== series) {
       series = b.series;
       if (series) html += `<div class="series-head">Series · ${esc(series)}</div>`;
     }
@@ -189,7 +220,7 @@ async function selectAuthor(author, li) {
         <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
               title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
           ${esc(b.title)}</h3>
-        <div class="sub">${esc(author)}${b.series ? ' · ' + esc(b.series) : ''}</div>
+        <div class="sub">${esc(author)}${b.series ? ' · ' + esc(b.series) + (b.series_no ? ' #' + b.series_no : '') : ''}</div>
         <div class="sub" style="margin-top:6px">
           ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
@@ -279,10 +310,8 @@ async function writeWithProgress(id, pick, genre) {
   const p = await trackProgress('/api/apply/status', 'Writing tags…', until);
   const r = await request;
   const failure = r.error || p.error;
-  $('#progressText').textContent = failure
-    ? 'Writing tags failed: ' + failure
-    : `${r.written} MP3 file(s) tagged.`;
-  hideProgressSoon();
+  p.bar.say(failure ? 'Writing tags failed: ' + failure : `${r.written} MP3 file(s) tagged.`, !!failure);
+  p.bar.done(failure ? 15000 : 3000);
   // the maintenance list and its count depend on what is in the files
   loadUntagged().then(() => { if ($('#needsTags').classList.contains('active')) $('#needsTags').click(); });
   return !failure;
@@ -293,16 +322,16 @@ window.writeTags = (id) => work(null, 'A tag write', () => writeWithProgress(id,
 
 // A run of books, one at a time, so the bar can show where it is.
 async function writeMany(books) {
-  $('#progress').hidden = false;
+  const bar = newBar('Writing tags…');
   let failed = 0;
   for (const [i, b] of books.entries()) {
-    $('#progressBar').style.width = ((i + 1) / books.length) * 100 + '%';
-    $('#progressText').textContent = `${i + 1} / ${books.length} · ${b.title}`;
+    bar.at(((i + 1) / books.length) * 100);
+    bar.say(`Writing tags ${i + 1} / ${books.length} · ${b.title}`);
     const r = await post(`/api/apply/${b.id}`, { pick: {}, writeTags: true }).catch(() => null);
     if (!r) failed++;
   }
-  $('#progressText').textContent = `Tags written into ${books.length - failed} of ${books.length} book(s).`;
-  hideProgressSoon();
+  bar.say(`Tags written into ${books.length - failed} of ${books.length} book(s).`, failed > 0);
+  bar.done(failed ? 15000 : 3000);
   loadUntagged();
 }
 
@@ -331,9 +360,9 @@ async function loadImport(showBar, refresh) {
     .then((r) => { until.finished = true; return r; });
   // The bar only means anything while the list is actually being read: handed
   // back from the kept list, the answer is there before the first poll.
-  if (showBar) await trackProgress('/api/files/status', 'Reading the import folder…', until);
+  const p = showBar ? await trackProgress('/api/files/status', 'Reading the import folder…', until) : null;
   const r = await request;
-  if (showBar) $('#progress').hidden = true;
+  if (p) p.bar.done(0);
   $('#importCount').textContent = r.d ? r.d.candidates.length : '–';
   return r;
 }
@@ -496,7 +525,7 @@ function importForm(d, c) {
 $('#closeImport').onclick = () => $('#importDlg').close();
 
 async function runImport(body) {
-  const { ok, r } = await fileWork('/api/import', body, 'Import');
+  const { ok, r, bar } = await fileWork('/api/import', body, 'Import');
   if (!ok) {
     // the candidate is still there: back to the list so it can be tried again
     $('#importList').onclick('keep');
@@ -504,9 +533,9 @@ async function runImport(body) {
   }
   // the server files the book as it moves it, so there is nothing to rescan;
   // open the genre and author it landed under, which is where it now is
-  $('#progressText').textContent = r.replacedPath
+  bar.say(r.replacedPath
     ? `Imported into ${r.dest}, the copy that was there is now ${r.replacedPath}`
-    : `Imported into ${r.dest}`;
+    : `Imported into ${r.dest}`);
   await refreshLibrary();
   if (r.genre && r.author) await openInLibrary(r.genre, r.author);
   toast(`${r.title} is now under ${r.genre} / ${r.author}. Import is in the left column for the next one.`);
@@ -601,10 +630,10 @@ async function loadBroken() {
 async function validateAll() {
   await post('/api/validate', {});
   const p = await trackProgress('/api/validate/status', 'Reading every book…');
-  $('#progressText').textContent = p.error
+  p.bar.say(p.error
     ? 'The check stopped: ' + p.error
-    : `Checked ${p.done} book(s): ${p.broken} with something wrong.`;
-  hideProgressSoon(p.broken ? 15000 : 4000);
+    : `Checked ${p.done} book(s): ${p.broken} with something wrong.`, !!p.error || !!p.broken);
+  p.bar.done(p.broken ? 15000 : 4000);
   await loadBroken();
   if ($('#brokenList').classList.contains('active') || p.broken) $('#brokenList').click();
 }
@@ -732,9 +761,9 @@ async function fileWork(url, body, label) {
   const p = await trackProgress('/api/files/status', label, until);
   const r = await request;
   const failure = r.error || p.error;
-  $('#progressText').textContent = failure ? `${label} failed: ${failure}` : `${label} done.`;
-  hideProgressSoon(failure ? 15000 : 3000);
-  return { ok: !failure, r };
+  p.bar.say(failure ? `${label} failed: ${failure}` : `${label} done.`, !!failure);
+  p.bar.done(failure ? 15000 : 3000);
+  return { ok: !failure, r, bar: p.bar };
 }
 
 window.moveBook = async function (id) {
@@ -1101,27 +1130,46 @@ $('#browseImport').onclick = () => browse($('#importPath').value.trim() || '/');
 // Drives the bar at the bottom from a {running, done, total, current} endpoint.
 // `until` lets the caller stop as soon as its own request has returned; without
 // it the bar follows the server's running flag.
-async function trackProgress(statusUrl, label, until) {
+// One bar per job, side by side. Jobs can overlap — a scan another browser
+// started, a tag write here, the import folder being read in the background —
+// and sharing one bar made each of them look like the others' progress.
+function newBar(label) {
+  const el = document.createElement('div');
+  el.className = 'job';
+  el.innerHTML = '<div class="track"><div class="fill"></div></div><span class="say"></span>';
+  el.querySelector('.say').textContent = label;
   $('#progress').hidden = false;
-  $('#progressBar').style.width = '0';
-  $('#progressText').textContent = label;
+  $('#progress').append(el);
+  return {
+    at(pct) { el.querySelector('.fill').style.width = pct + '%'; },
+    say(text, warn) {
+      el.querySelector('.say').textContent = text;
+      el.querySelector('.say').classList.toggle('warn', !!warn);
+    },
+    done(ms = 3000) {
+      setTimeout(() => {
+        el.remove();
+        if (!$('#progress').children.length) $('#progress').hidden = true;
+      }, ms);
+    },
+  };
+}
+
+async function trackProgress(statusUrl, label, until) {
+  const bar = newBar(label);
   let started = false;
   let waited = 0;
   for (;;) {
     await new Promise((r) => setTimeout(r, 300));
     const p = await api(statusUrl).catch(() => null);
-    if (!p) return { error: 'lost contact with the server' };
+    if (!p) return { error: 'lost contact with the server', bar };
     if (p.running) started = true;
     if (p.total) {
-      $('#progressBar').style.width = (p.done / p.total) * 100 + '%';
-      $('#progressText').textContent = `${p.done} / ${p.total} · ${p.current}`;
+      bar.at((p.done / p.total) * 100);
+      bar.say(`${label} ${p.done} / ${p.total} · ${p.current}`);
     }
-    if (until ? until.finished : (started ? !p.running : (waited += 300) > 3000)) return p;
+    if (until ? until.finished : (started ? !p.running : (waited += 300) > 3000)) return { ...p, bar };
   }
-}
-
-function hideProgressSoon(ms = 3000) {
-  setTimeout(() => { $('#progress').hidden = true; }, ms);
 }
 
 async function loadScanChoices() {
@@ -1142,16 +1190,16 @@ async function startScan() {
 
 function finishScan(error, p) {
   if (error) {
-    $('#progressText').textContent = 'Scan failed: ' + error;
+    if (p && p.bar) { p.bar.say('Scan failed: ' + error, true); p.bar.done(15000); }
+    else toast('Scan failed: ' + error);
     return;
   }
-  $('#progressText').textContent = p.warning
+  p.bar.say(p.warning
     ? `Scan complete: ${p.books} book(s) — ${p.warning}`
-    : `Scan complete: ${p.books} book(s).`;
-  $('#progressText').classList.toggle('warn', !!p.warning);
+    : `Scan complete: ${p.books} book(s).`, !!p.warning);
+  p.bar.done(p.warning ? 30000 : 3000);
   loadGenres();
   loadStats();
-  hideProgressSoon(p.warning ? 30000 : 3000);
 }
 
 $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);

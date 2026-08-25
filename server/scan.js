@@ -44,8 +44,24 @@ async function taggedOf(file) {
   }
 }
 
+// A book filed straight under its author has no series folder, but its files
+// often say which series it belongs to: iTunes and most audiobook taggers put it
+// in the movement name, others in the grouping or a SERIES text frame.
+const seriesFromTags = (tags) => {
+  const c = tags.common || {};
+  const txxx = (tags.native?.['ID3v2.4'] || tags.native?.['ID3v2.3'] || [])
+    .find((f) => f.id === 'TXXX' && /^(series|album series)$/i.test(f.value?.description || ''));
+  const name = [c.movement, c.grouping, txxx?.value?.text]
+    .map((v) => (v || '').trim())
+    .find((v) => v && v !== c.album && v !== c.title) || '';
+  return { name, no: Number(c.movementIndex?.no) || 0 };
+};
+
 async function readMeta(files, bookPath) {
-  const meta = { title: '', narrator: '', year: '', description: '', duration: 0, cover: null };
+  const meta = {
+    title: '', narrator: '', year: '', description: '', duration: 0, cover: null,
+    tagSeries: '', seriesNo: 0,
+  };
   for (const [i, file] of files.entries()) {
     let tags = {};
     // No { duration: true }: that scans every frame of every file (~4s per MP3).
@@ -61,6 +77,9 @@ async function readMeta(files, bookPath) {
     meta.year = c.year ? String(c.year) : '';
     meta.description = descriptionOf(c);
     meta.tagged = taggedFields(c);
+    const s = seriesFromTags(tags);
+    meta.tagSeries = s.name;
+    meta.seriesNo = s.no;
     const pic = c.picture?.[0];
     if (pic) {
       // named after the image itself: the same art keeps its name, new art gets
@@ -84,12 +103,13 @@ const q = {
   bookByPath: db.prepare('SELECT id, duration FROM books WHERE path = ?'),
   trackPaths: db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx'),
   touchBook: db.prepare('UPDATE books SET genre = ?, author = ?, series = ?, tagged = ? WHERE id = ?'),
-  upsertBook: db.prepare(`INSERT INTO books (path, genre, author, series, title, narrator, year, description, cover, duration, tagged)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  upsertBook: db.prepare(`INSERT INTO books
+      (path, genre, author, series, title, narrator, year, description, cover, duration, tagged, tag_series, series_no)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET genre = excluded.genre, author = excluded.author, series = excluded.series,
       title = excluded.title, narrator = excluded.narrator, year = excluded.year,
       description = excluded.description, cover = excluded.cover, duration = excluded.duration,
-      tagged = excluded.tagged`),
+      tagged = excluded.tagged, tag_series = excluded.tag_series, series_no = excluded.series_no`),
   idByPath: db.prepare('SELECT id FROM books WHERE path = ?'),
   dropTracks: db.prepare('DELETE FROM tracks WHERE book_id = ?'),
   addTrack: db.prepare('INSERT INTO tracks (book_id, idx, path, title, duration) VALUES (?, ?, ?, ?, ?)'),
@@ -121,7 +141,7 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
     // Folder name wins over the album tag: album tags repeat across a series
     // ("The Belgariad" for all ten books) while folder names identify the book.
     .run(bookPath, genre, author, series, folderTitle || m.title, m.narrator, m.year, m.description,
-         m.cover, m.duration, m.tagged || '');
+         m.cover, m.duration, m.tagged || '', m.tagSeries || '', m.seriesNo || 0);
 
   const id = q.idByPath.get(bookPath).id;
   q.dropTracks.run(id);
