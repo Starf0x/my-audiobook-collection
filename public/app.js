@@ -991,6 +991,7 @@ $('#needsTags').onclick = async () => {
 
 window.editMeta = async function (id) {
   const b = await api(`/api/books/${id}`);
+  $('#ePath').textContent = b.path || '';
   $('#eTitle').value = b.title || '';
   $('#eAuthor').value = b.author || '';
   $('#eSeries').value = b.folderSeries || b.series || '';
