@@ -247,6 +247,18 @@ time. Measured on a local library of 5 MB files: 18.5 ms per file before and
 29 ms to 12 ms. So **Write tags into all MP3s** finishes in a third of the time
 and the pages stay answerable while it runs.
 
+## Books with no cover
+
+Not every book comes with art, and a shelf of empty rectangles is hard to read.
+A book with no cover of its own gets one drawn for it: the title, the author and
+a pair of headphones, in colours taken from the title, so the same book always
+looks the same and two books beside each other rarely look alike. It stands in
+for art that has gone missing from disk as well.
+
+Nothing is written to disk for this — it is drawn when the page asks for the
+cover. A book with a drawn cover still counts as one that **needs tags**, so
+finding it real art and writing that into the files remains the fix.
+
 ## Cover files it no longer needs
 
 Covers are stored under the name of the image itself, so a book that gets new
