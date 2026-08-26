@@ -45,10 +45,40 @@ app.post('/api/admin/lock', (req, res) => {
 });
 
 // --- users -------------------------------------------------------------
-app.get('/api/users', (req, res) => res.json(db.prepare('SELECT name FROM users ORDER BY name').all().map((u) => u.name)));
+// A listener has no password, so what keeps one person out of another person's
+// place in a book is that a browser is only ever offered the names it has said
+// itself. A browser that has never been here is offered nothing and has to type
+// a name; the names it has used are kept in a cookie of its own.
+const WHO = 'whoami';
+
+const claimed = (req) => {
+  const raw = (req.headers.cookie || '').split(';').map((c) => c.trim())
+    .find((c) => c.startsWith(`${WHO}=`));
+  if (!raw) return [];
+  try {
+    const names = JSON.parse(Buffer.from(raw.slice(WHO.length + 1), 'base64url').toString());
+    return Array.isArray(names) ? names.filter((n) => typeof n === 'string' && n) : [];
+  } catch {
+    return []; // a cookie we did not write, or one that was cut short
+  }
+};
+
+const claim = (res, names) => res.setHeader('Set-Cookie',
+  `${WHO}=${Buffer.from(JSON.stringify(names)).toString('base64url')}`
+  + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=34560000');
+
+app.get('/api/users', (req, res) => {
+  const known = new Set(db.prepare('SELECT name FROM users').all().map((u) => u.name));
+  res.json(claimed(req).filter((n) => known.has(n)).sort());
+});
+
 app.post('/api/users', (req, res) => {
   const name = (req.body.name || '').trim();
-  if (name) db.prepare('INSERT OR IGNORE INTO users (name) VALUES (?)').run(name);
+  if (!name) return res.json({ ok: true });
+  db.prepare('INSERT OR IGNORE INTO users (name) VALUES (?)').run(name);
+  const names = claimed(req);
+  if (!names.includes(name)) names.push(name);
+  claim(res, names);
   res.json({ ok: true });
 });
 
