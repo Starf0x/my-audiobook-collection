@@ -30,6 +30,10 @@ header {
   box-shadow: 0 10px 26px -22px #000;
 }
 header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+/* the search box: wide enough for a title and an author, and it may grow */
+.search { width: 300px; max-width: 34vw; margin-left: 14px; }
+.search::placeholder { color: var(--dim); }
+.search:focus { outline: none; border-color: var(--accent); }
 .spacer { flex: 1; }
 button, select, input {
   font: inherit; color: var(--text); background: var(--panel2);

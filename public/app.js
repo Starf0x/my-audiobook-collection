@@ -234,8 +234,11 @@ async function selectAuthor(author, li) {
   await drawBooks(books, '');
 }
 
-async function drawBooks(books, heading) {
-  let html = heading ? `<div class="series-head">Series · ${esc(heading)}</div>` : '';
+async function drawBooks(books, heading, kind = 'Series') {
+  // anything drawn here that is not a search result means the box no longer says
+  // what is on screen
+  if (kind !== 'Search') $('#q').value = '';
+  let html = heading ? `<div class="series-head">${kind} · ${esc(heading)}</div>` : '';
   let series = heading;
   for (const b of books) {
     const author = b.author;
@@ -280,6 +283,34 @@ async function drawBooks(books, heading) {
   }
   $('#books .list').innerHTML = html || '<div class="empty">No books.</div>';
 }
+
+
+// --- the search box -----------------------------------------------------
+// The words are looked for in anything a book is filed or described by, and the
+// results take over the book column. Emptying the box puts back what was there.
+let searchSoon;
+async function runSearch() {
+  const q = $('#q').value.trim();
+  if (!q) {
+    if (state.series) return selectSeries(state.genre, state.series, null);
+    if (state.author) return selectAuthor(state.author, null);
+    return loadHome();
+  }
+  const rows = await api(`/api/search?q=${encodeURIComponent(q)}&user=${encodeURIComponent(state.user)}`);
+  document.body.classList.remove('maintenance');
+  if (!rows.length) {
+    $('#books .list').innerHTML = `<div class="empty">Nothing matches "${esc(q)}".</div>`;
+    return;
+  }
+  await drawBooks(rows, `${q} · ${rows.length} book${rows.length === 1 ? '' : 's'}`, 'Search');
+}
+$('#q').oninput = () => { clearTimeout(searchSoon); searchSoon = setTimeout(runSearch, 200); };
+$('#q').onkeydown = (e) => {
+  if (e.key === 'Escape') $('#q').value = '';
+  if (e.key !== 'Enter' && e.key !== 'Escape') return;
+  clearTimeout(searchSoon);
+  runSearch();
+};
 
 // --- player ------------------------------------------------------------
 const audio = $('#audio');
