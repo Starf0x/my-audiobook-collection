@@ -268,7 +268,7 @@ async function drawBooks(books, heading) {
       <div class="actions">
         <button onclick="playBook(${b.id})">▶ Play</button>
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
-        <button class="ghost" onclick="writeTags(${b.id})">Write into MP3s</button>
+        <button class="ghost" onclick="writeTags(${b.id}, this)">Write into MP3s</button>
         <button class="ghost" onclick="editMeta(${b.id})">Edit metadata</button>
         <div class="row2">
           <button class="ghost" onclick="moveBook(${b.id})">Move…</button>
@@ -352,7 +352,7 @@ async function writeWithProgress(id, pick, genre) {
 }
 
 // Write what the app already knows about the book into its MP3 files.
-window.writeTags = (id) => work(null, 'A tag write', () => writeWithProgress(id, {}));
+window.writeTags = (id, button) => work(button, 'A tag write', () => writeWithProgress(id, {}));
 
 // A run of books, one at a time, so the bar can show where it is.
 async function writeMany(books) {
@@ -815,20 +815,20 @@ $('#replacedList').onclick = async () => {
     <div class="actions"><button class="danger" data-del="${r.id}">Delete now</button></div>
   </div>`).join('');
   $('#books .list').querySelectorAll('button[data-del]').forEach((b) => {
-    b.onclick = async () => {
+    b.onclick = () => work(b, 'The delete', async () => {
       if (!confirm('Delete this older copy and its files for good?')) return;
       try { await post(`/api/replaced/${b.dataset.del}`, {}); } catch (e) { return toast(e.message); }
       toast('Deleted.');
       $('#replacedList').click();
-    };
+    });
   });
   const all = $('#books #rAll');
-  if (all) all.onclick = async () => {
+  if (all) all.onclick = () => work(all, 'The delete', async () => {
     if (!confirm(`Delete all ${items.length} replaced copies and their files for good?`)) return;
     try { await post('/api/replaced/all', {}); } catch (e) { return toast(e.message); }
     toast('Deleted.');
     $('#replacedList').click();
-  };
+  });
 };
 
 // Everything the library counts feeds off the same data, so refresh it together.
@@ -924,24 +924,24 @@ $('#trashList').onclick = async () => {
         <button class="ghost danger" data-purge="${t.id}">Delete now</button>
       </div>
     </div>`).join('')}`;
-  $('#emptyTrash').onclick = async () => {
+  $('#emptyTrash').onclick = () => work($('#emptyTrash'), 'Emptying the trash', async () => {
     if (!confirm(`Delete the files of all ${d.items.length} item(s) for good?`)) return;
     await post('/api/trash/empty', {}).catch((e) => toast(e.message));
     $('#trashList').click();
-  };
+  });
   $('#books .list').querySelectorAll('button[data-restore]').forEach((b) => {
-    b.onclick = async () => {
+    b.onclick = () => work(b, 'Putting the book back', async () => {
       await fileWork(`/api/trash/${b.dataset.restore}/restore`, {}, 'Put back');
       await refreshLibrary();
       $('#trashList').click();
-    };
+    });
   });
   $('#books .list').querySelectorAll('button[data-purge]').forEach((b) => {
-    b.onclick = async () => {
+    b.onclick = () => work(b, 'The delete', async () => {
       if (!confirm('Delete these files for good?')) return;
       await post(`/api/trash/${b.dataset.purge}/purge`, {}).catch((e) => toast(e.message));
       $('#trashList').click();
-    };
+    });
   });
 };
 
@@ -979,7 +979,7 @@ $('#needsTags').onclick = async () => {
         ${b.needsLookup.length ? `<div class="sub missing">Not known yet: ${esc(b.needsLookup.join(', '))}</div>` : ''}
       </div>
       <div class="actions">
-        ${b.fixable.length ? `<button onclick="writeTags(${b.id})">Write into MP3s</button>` : ''}
+        ${b.fixable.length ? `<button onclick="writeTags(${b.id}, this)">Write into MP3s</button>` : ''}
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
       </div>
     </div>`).join('')}`;
