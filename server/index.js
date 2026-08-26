@@ -261,6 +261,28 @@ app.get('/api/books', (req, res) => {
   res.json(rows.map((b) => ({ ...b, coverV: coverV(b) })));
 });
 
+// The box at the top of the page. Every word has to appear somewhere in the
+// book — its title, author, genre, series, narrator or description — so
+// "sanderson mist" finds Mistborn without knowing which field holds what.
+const HAYSTACK = ['b.title', 'b.author', 'b.genre', 'b.series', 'b.tag_series', 'b.narrator', 'b.description']
+  .map((c) => `COALESCE(${c}, '')`).join(` || ' ' || `);
+
+app.get('/api/search', (req, res) => {
+  const words = (req.query.q || '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
+  if (!words.length || words.join('').length < 2) return res.json([]);
+  const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
+                                  b.genre, b.description, b.cover, b.duration, b.tagged,
+                                  p.done, p.position > 0 AS started
+                           FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
+                           WHERE ${words.map(() => `${HAYSTACK} LIKE ?`).join(' AND ')}
+                           -- a title match is what you were most likely after
+                           ORDER BY CASE WHEN b.title LIKE ? THEN 0 WHEN b.author LIKE ? THEN 1 ELSE 2 END,
+                                    b.author, b.series_no, b.title
+                           LIMIT 200`)
+    .all(req.query.user || '', ...words.map((w) => `%${w}%`), `%${words[0]}%`, `%${words[0]}%`);
+  res.json(rows.map((b) => ({ ...b, coverV: coverV(b) })));
+});
+
 app.post('/api/listened', (req, res) => {
   const { user, bookId, done } = req.body;
   if (!user) return res.status(400).json({ error: 'No user' });
