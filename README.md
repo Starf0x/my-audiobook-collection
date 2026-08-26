@@ -3,11 +3,16 @@
 A small, self-hosted web app to browse and play an audiobook collection that is
 organised on disk as **Genre → Author → Book** or **Genre → Author → Series → Book**.
 
+The full manual, with screenshots of every part of it, is in the
+[wiki](https://github.com/Starf0x/my-audiobook-collection/wiki).
+
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
+* One search box for the lot: title, author, genre, series, narrator or a few words from the description
 * Each genre lists its series underneath it, from a series folder, from sibling volume names, or from the tags
 * Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
 * Scans one or more library folders on the server (with a built-in folder browser)
 * Reads ID3 / audio metadata from the files (title, narrator, year, description, embedded cover art)
+* Draws a cover for a book that has none, so a shelf is never a row of empty rectangles
 * Shows per book which tags the **files themselves** carry, so database-only metadata is visible as such
 * Fills in missing metadata via the **Google Books API**, or by hand, and writes it back into the MP3s
 * A *Needs tags* list of every book whose files miss a required tag, with writing and lookup on the spot
@@ -205,7 +210,9 @@ are stripped of characters a path cannot hold.
 
 The **Series** field in *Edit metadata* moves the book too, since a series is a
 folder: filling it in files the book under `genre / author / series / book`, and
-emptying it moves the book back up. The folder keeps its own name.
+emptying it moves the book back up. The folder keeps its own name. The line at the
+foot of that dialog is the folder the book sits in and how many files it holds,
+for when two books share a title.
 
 *Move…* on a book card shifts its folder to where a new genre, author, series and
 title say it belongs. The book keeps its row, so the listened state and playback
@@ -262,6 +269,11 @@ and the pages stay answerable while it runs.
 
 ## Books with no cover
 
+![Covers drawn for four books that have no art of their own](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/no-cover.png)
+
+*Dune*, *The Name of the Wind*, *The Shining* and *SPQR* have no art of their own
+here; the other three do.
+
 Not every book comes with art, and a shelf of empty rectangles is hard to read.
 A book with no cover of its own gets one drawn for it: the title, the author and
 a pair of headphones, in colours taken from the title, so the same book always
@@ -285,17 +297,17 @@ they are zipped into one archive beside them and the loose files removed.
 
 Google Cloud Console → *APIs & Services* → enable **Books API** → *Credentials* →
 *Create credentials* → *API key*. It goes on the container, as `GOOGLE_API_KEY`
-(the Unraid template has a masked field for it), and nowhere else. Then use
-A result that credits more than one author offers the pair as a choice: both
-names, or either one. What you pick goes into the artist and album artist tags,
-and the author folder keeps its name.
+(the Unraid template has a masked field for it), and nowhere else.
 
 **Find metadata** on a book and pick a result, or type your own search when the
-folder name finds nothing. A result that comes with categories offers them as
-genres next to the one the book is filed under now; since a genre is a folder,
-picking another one moves the book there — creating and registering the folder if
-it is new — and writes that genre into the tags. A 503 from Google is retried after 10, 20 and 30
-seconds, with the wait shown in the dialog.
+folder name finds nothing. A result that credits more than one author offers the
+pair as a choice: both names, or either one — what you pick goes into the artist
+and album artist tags, and the author folder keeps its name. A result that comes
+with categories offers them as genres next to the one the book is filed under
+now; since a genre is a folder, picking another one moves the book there —
+creating and registering the folder if it is new — and writes that genre into the
+tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
+shown in the dialog.
 
 ## What a tag write puts in the MP3s
 
