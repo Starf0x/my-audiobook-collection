@@ -992,7 +992,9 @@ $('#needsTags').onclick = async () => {
 
 window.editMeta = async function (id) {
   const b = await api(`/api/books/${id}`);
-  $('#ePath').textContent = b.path || '';
+  // where it sits on disk and how many files it is made of, at the foot of the dialog
+  const files = (b.tracks || []).length;
+  $('#ePath').textContent = `${b.path || ''} · ${files} file${files === 1 ? '' : 's'}`;
   $('#eTitle').value = b.title || '';
   $('#eAuthor').value = b.author || '';
   $('#eSeries').value = b.folderSeries || b.series || '';
