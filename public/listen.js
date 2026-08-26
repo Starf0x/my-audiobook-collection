@@ -313,6 +313,9 @@ window.setListened = async function (id, box) {
 
 (async () => {
   const remembered = localStorage.user || '';
+  // this browser has been here before: say so, or the server would not know which
+  // names are its own to offer
+  if (remembered) await post('/api/users', { name: remembered }).catch(() => {});
   const users = await loadUsers();
   await loadGenres();
   await loadStats();
