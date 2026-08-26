@@ -1335,6 +1335,9 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
   // read the remembered name first: loadUsers falls back to the first name in
   // the list and writes that back, which would hide that this browser is new
   const remembered = localStorage.user || '';
+  // this browser has been here before: say so, or the server would not know which
+  // names are its own to offer
+  if (remembered) await post('/api/users', { name: remembered }).catch(() => {});
   await loadPerm();
   const users = await loadUsers();
   await loadGenres();

@@ -111,8 +111,10 @@ check the paths it filled in:
 The last three are optional, and the two variables are masked in the form. Then
 **Apply**, and open the WebUI:
 
-1. The first visit asks who is listening. The name is kept on the server, so the
-   next visit, and any other browser, can pick it from the list.
+1. The first visit asks who is listening, and asks you to **type** a name: a
+   browser is only ever offered the names it has used itself, so nobody arriving
+   at the address is handed a list of everyone in the house. On your next visit
+   the same browser offers the name back.
 2. **Settings** → add `/audiobooks` as a library folder (*Browse…* picks it from
    the container's own view of the disk) → **Save**.
    If `/audiobooks` also holds folders you do not want scanned, add the genre
@@ -177,6 +179,23 @@ whoever opens it may do anything. Once set, every
 request that changes something is refused unless the browser has unlocked, so
 hiding the buttons is not what protects it — the server does. A visitor who types
 the admin address is sent to the listening page.
+
+## Names, and why one browser is not offered another's
+
+A listener has no password of their own — the app is meant to be shared inside a
+house, and the single admin password guards everything that *changes* the
+collection. What keeps one person out of another person's place in a book is that
+**a browser is only ever offered the names it has said itself**. The names a
+browser has used are kept in a cookie of its own; the server hands back nothing
+else. So a stranger who opens the listening page sees an empty dialog and a field,
+not a list of the household.
+
+Two things follow. A browser two people share is offered both names once both have
+typed theirs, which is what a family tablet needs. And someone who knows an
+existing name exactly can still type it and pick that place up — on a new phone
+that is the *point*, and without a password per listener there is no way to tell
+the two apart. If that matters more than convenience, give each listener their own
+name that others do not know.
 
 ## Importing new audiobooks
 
