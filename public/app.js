@@ -14,23 +14,38 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
 
 const state = { user: localStorage.user || '', genre: null, author: null, book: null, track: 0 };
 
-// --- one job at a time --------------------------------------------------
-// A job that takes a while — a scan, an import, a tag write — greys the button
-// that started it, and everything else that would start work, until it is done.
-// Without that, a slow import invites a second click on the same book, and the
-// question about the copy already in the library comes back while it is running.
+// --- one job at a time, and tag writes beside each other ----------------
+// A job that moves files or rewrites the library runs alone: it greys the button
+// that started it and everything else that would start work. Without that, a slow
+// import invites a second click on the same book, and the question about the copy
+// already in the library comes back while it is running.
+//
+// Tag writes are the exception. Each one touches only its own book's files and
+// keeps its own count, so two books — two series — can be written at the same
+// time. They still hold back the jobs that would move those files underneath them.
 let job = '';
+let writes = 0;
 
-async function work(button, what, fn) {
+async function work(button, what, fn, alone = true) {
   if (job) { toast(`${job} is still running. Wait for it to finish.`); return null; }
-  job = what;
-  document.body.classList.add('working');
+  if (alone && writes) { toast('A tag write is still running. Wait for it to finish.'); return null; }
+  if (alone) {
+    job = what;
+    document.body.classList.add('working');
+  } else {
+    writes++;
+    document.body.classList.add('writing');
+  }
   if (button) button.disabled = true;
   try {
     return await fn();
   } finally {
-    job = '';
-    document.body.classList.remove('working');
+    if (alone) {
+      job = '';
+      document.body.classList.remove('working');
+    } else if (--writes === 0) {
+      document.body.classList.remove('writing');
+    }
     if (button) button.disabled = false;
   }
 }
@@ -368,15 +383,19 @@ window.setListened = async function (id, box) {
 };
 
 // Writes tags while the bar at the bottom follows the file count.
-async function writeWithProgress(id, pick, genre) {
+async function writeWithProgress(id, pick, genre, title = '') {
   const until = { finished: false };
   const request = post(`/api/apply/${id}`, { pick, genre, writeTags: true })
     .catch((e) => ({ error: e.message }))
     .then((r) => { until.finished = true; return r; });
-  const p = await trackProgress('/api/apply/status', 'Writing tags…', until);
+  // by book, both in the bar's label and in what it asks the server: with two
+  // writes running, one shared count and one shared label say nothing
+  const p = await trackProgress(`/api/apply/status?book=${id}`,
+    title ? `Writing tags · ${title}` : 'Writing tags…', until);
   const r = await request;
   const failure = r.error || p.error;
-  p.bar.say(failure ? 'Writing tags failed: ' + failure : `${r.written} MP3 file(s) tagged.`, !!failure);
+  p.bar.say(failure ? `Writing tags failed${title ? ' · ' + title : ''}: ${failure}`
+    : `${title ? title + ': ' : ''}${r.written} MP3 file(s) tagged.`, !!failure);
   p.bar.done(failure ? 15000 : 3000);
   // the maintenance list and its count depend on what is in the files
   loadUntagged().then(() => { if ($('#needsTags').classList.contains('active')) $('#needsTags').click(); });
@@ -384,7 +403,12 @@ async function writeWithProgress(id, pick, genre) {
 }
 
 // Write what the app already knows about the book into its MP3 files.
-window.writeTags = (id, button) => work(button, 'A tag write', () => writeWithProgress(id, {}));
+window.writeTags = (id, button) => {
+  // the card or the row it was pressed on names the book, for its own bar
+  const title = button?.closest('.card, .fix')?.querySelector('h3, strong')
+    ?.textContent.replace('♫', '').replace(/\s+/g, ' ').trim() || '';
+  return work(button, 'A tag write', () => writeWithProgress(id, {}, '', title), false);
+};
 
 // A run of books, one at a time, so the bar can show where it is.
 async function writeMany(books) {
@@ -1017,7 +1041,7 @@ $('#needsTags').onclick = async () => {
     </div>`).join('')}`;
   $('#tagFixable').onclick = () => {
     if (!confirm(`Write tags into ${fixable.length} book(s)?`)) return;
-    work($('#tagFixable'), 'The tag write', () => writeMany(fixable)).then(() => $('#needsTags').click());
+    work($('#tagFixable'), 'The tag write', () => writeMany(fixable), false).then(() => $('#needsTags').click());
   };
 };
 
