@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { parseFile } from 'music-metadata';
 import { db, getLibraries, DATA_DIR } from './db.js';
+import { lane, pool } from './pool.js';
 
 const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 const COVER = /^(cover|folder|front)\.(jpg|jpeg|png)$/i;
@@ -43,7 +44,7 @@ const taggedFields = (c) => [
 // they say it belongs to.
 async function firstFileTells(file) {
   try {
-    const tags = await parseFile(file);
+    const tags = await lane(() => parseFile(file));
     return { tagged: taggedFields(tags.common || {}), series: seriesFromTags(tags) };
   } catch {
     return { tagged: '', series: { name: '', no: 0 } };
@@ -93,7 +94,7 @@ async function readMeta(files, bookPath) {
     let tags = {};
     // No { duration: true }: that scans every frame of every file (~4s per MP3).
     // Duration is only used for a badge, so take it when the header offers it for free.
-    try { tags = await parseFile(file); } catch { /* unreadable file */ }
+    try { tags = await lane(() => parseFile(file)); } catch { /* unreadable file */ }
     const c = tags.common || {}, f = tags.format || {};
     meta.duration += f.duration || 0;
     meta.tracks = meta.tracks || [];
@@ -112,7 +113,13 @@ async function readMeta(files, bookPath) {
       // named after the image itself: the same art keeps its name, new art gets
       // a new one, so a browser may cache it for a long time
       const name = crypto.createHash('md5').update(pic.data).digest('hex') + '.jpg';
-      fs.writeFileSync(path.join(DATA_DIR, 'covers', name), Buffer.from(pic.data));
+      // Several books can carry the same art, and with several books being read
+      // at once two of them could write this file at the same moment. The name is
+      // the hash of the bytes, so whoever wrote it first wrote the right thing.
+      const target = path.join(DATA_DIR, 'covers', name);
+      try {
+        if (!fs.existsSync(target)) fs.writeFileSync(target, Buffer.from(pic.data));
+      } catch { /* another book is writing the same art right now */ }
       meta.cover = name;
     }
   }
@@ -299,11 +306,15 @@ async function walkAndScan(only) {
   }
 
   progress.total = jobs.length;
-  for (const j of jobs) {
+  // Several books at once: the work is waiting for the disk, not thinking.
+  await pool(jobs, async (j) => {
     progress.current = path.basename(j.dir);
-    progress.books += await addBook(j.genre, j.author, j.series, j.dir, j.files, false, j.guess);
+    // read the count first: "x += await y" reads x before the await, so with
+    // several books in flight the additions would overwrite each other
+    const added = await addBook(j.genre, j.author, j.series, j.dir, j.files, false, j.guess);
+    progress.books += added;
     progress.done++;
-  }
+  });
   // Books whose folder is gone are dropped — but only from what was walked, or
   // scanning one library folder would delete the books of all the others.
   const seen = new Set(jobs.map((j) => j.dir));

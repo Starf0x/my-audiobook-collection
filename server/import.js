@@ -3,6 +3,7 @@ import path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { db, getSetting, getLibraries } from './db.js';
 import { dirs, audioFiles, discFiles, DISC, addOne, NOT_IMPORTED, REPLACED } from './scan.js';
+import { lane, pool } from './pool.js';
 
 // One progress object for every operation that shifts files about: importing,
 // moving a book and emptying it into the trash all report through it.
@@ -106,13 +107,12 @@ async function build(root, quiet) {
     fileProgress.total = found.length;
   }
   try {
-    const out = [];
-    for (const b of found) {
+    const out = await pool(found, async (b) => {
       if (!quiet) fileProgress.current = path.basename(b.dir);
       let album = '';
       let artist = '';
       try {
-        const c = (await parseFile(b.files[0])).common || {};
+        const c = (await lane(() => parseFile(b.files[0]))).common || {};
         album = c.album || '';
         artist = c.artist || c.albumartist || '';
       } catch { /* unreadable, the folder names will have to do */ }
@@ -122,7 +122,8 @@ async function build(root, quiet) {
       const parts = path.relative(root, b.dir).split(path.sep);
       const genre = known.has(parts[0]) ? parts[0] : '';
       const p = genre ? parts.slice(1) : parts;
-      out.push({
+      if (!quiet) fileProgress.done++;
+      return {
         path: b.dir,
         name: path.basename(b.dir),
         where: parts.join(' / '),
@@ -131,10 +132,8 @@ async function build(root, quiet) {
         genre,
         artist: artist || (p.length >= 3 ? p[p.length - 3] : (p[p.length - 2] || '')),
         series: p.length >= 3 ? p[p.length - 2] : '',
-      });
-      if (!quiet) fileProgress.done++;
-      await new Promise((r) => setImmediate(r));
-    }
+      };
+    });
     cache = { root, sig: signature(found), items: out, at: Date.now() };
     Object.assign(importState, { cachedAt: cache.at, count: out.length });
     return out;
@@ -184,16 +183,24 @@ export async function qualityOf(dir) {
     files: files.length, bytes: 0, duration: 0, bitrate: 0,
     sampleRate: 0, channels: 0, codec: '', lossless: false,
   };
-  for (const f of files) {
-    try { out.bytes += fs.statSync(f).size; } catch { /* vanished mid-read */ }
+  const read = await pool(files, (f) => lane(async () => {
+    let bytes = 0;
+    try { bytes = fs.statSync(f).size; } catch { /* vanished mid-read */ }
     try {
       const { format } = await parseFile(f);
-      out.duration += format.duration || 0;
-      out.sampleRate = Math.max(out.sampleRate, format.sampleRate || 0);
-      out.channels = Math.max(out.channels, format.numberOfChannels || 0);
-      out.codec = out.codec || format.codec || format.container || '';
-      out.lossless = out.lossless || !!format.lossless;
-    } catch { /* unreadable file: it still counts for size */ }
+      return { bytes, format };
+    } catch {
+      return { bytes, format: null }; // unreadable file: it still counts for size
+    }
+  }));
+  for (const { bytes, format } of read) {
+    out.bytes += bytes;
+    if (!format) continue;
+    out.duration += format.duration || 0;
+    out.sampleRate = Math.max(out.sampleRate, format.sampleRate || 0);
+    out.channels = Math.max(out.channels, format.numberOfChannels || 0);
+    out.codec = out.codec || format.codec || format.container || '';
+    out.lossless = out.lossless || !!format.lossless;
   }
   // measured, not read from a header, so a mislabelled file cannot flatter itself
   if (out.duration) out.bitrate = Math.round((out.bytes * 8) / out.duration / 1000);
@@ -316,11 +323,12 @@ async function copyTree(src, dest) {
   };
   walk(src, '');
   fileProgress.total = files.length;
-  for (const f of files) {
-    fileProgress.current = path.basename(f.from);
-    fs.mkdirSync(path.dirname(f.to), { recursive: true });
-    fs.copyFileSync(f.from, f.to);
-    fileProgress.done++;
-    await new Promise((r) => setImmediate(r)); // let the status endpoint answer
+  for (const dir of new Set(files.map((f) => path.dirname(f.to)))) {
+    fs.mkdirSync(dir, { recursive: true });
   }
+  await pool(files, (f) => lane(async () => {
+    fileProgress.current = path.basename(f.from);
+    await fs.promises.copyFile(f.from, f.to);
+    fileProgress.done++;
+  }));
 }

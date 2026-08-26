@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import NodeID3 from 'node-id3';
+import { writeTag } from './tagpool.js';
 import { db, googleKey, DATA_DIR } from './db.js';
 
 // Google Books answers 503 when it is briefly busy: wait and ask again.
@@ -146,14 +146,14 @@ async function apply_(book, pick, writeTags, progress) {
     const width = Math.max(2, String(files.length).length);
     const total = String(files.length).padStart(width, '0');
     try {
-      for (const [i, file] of files.entries()) {
-        progress.current = path.basename(file);
+      // handed to worker threads: the queue in tagpool decides how many run at
+      // once, so this may ask for every file of the book at the same time
+      await Promise.all(files.map(async (file, i) => {
         const trackNumber = `${String(i + 1).padStart(width, '0')}/${total}`;
-        if (NodeID3.update({ ...tags, trackNumber }, file) === true) progress.written++;
+        progress.current = path.basename(file);
+        if (await writeTag(file, { ...tags, trackNumber })) progress.written++;
         progress.done++;
-        // yield so the status endpoint can answer while writing
-        await new Promise((r) => setImmediate(r));
-      }
+      }));
     } catch (e) {
       progress.error = e.message;
     }
