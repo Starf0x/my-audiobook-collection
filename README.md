@@ -21,6 +21,7 @@ The full manual, with screenshots of every part of it, is in the
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
 * Runs as a single Docker container, SQLite storage, no external services
 * One job at a time: whichever button started the job greys out until it is done, wherever it was pressed
+* Except tag writes: two books, or two series, can be written at once, each with its own bar
 
 ## Folder layout it expects
 
@@ -346,6 +347,14 @@ the book:
 Values the app does not have are left out rather than written empty, so a book
 with no description keeps no empty comment frame. The badge on each card lists
 what the files actually carry.
+
+Two books can be written at the same time — a book from one series and a book
+from another, each with a bar of its own that names it. The same book twice is
+refused, since that would be two writers on one file, and the whole-collection run
+waits for any single write to finish before it starts, because it would reach that
+book itself. While a write is going, the buttons that would move those files or
+read them mid-write — a scan, an import, the disk check, *Find metadata*, *Edit
+metadata* — stay greyed.
 
 *Write tags into all MP3s* does the whole collection, which is an hour of work on
 a big share, so it runs **on the server**: closing the page does not stop it, and
