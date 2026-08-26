@@ -104,13 +104,14 @@ async function loadStats() {
 }
 
 // --- landing view ------------------------------------------------------
-// A book with no cover falls back to the app icon, so the row keeps its grid.
+// A book with no art of its own gets a cover drawn from its title, so every
+// tile in the row is a cover.
 const tile = (b, resumable) => {
   const at = Math.min(b.track_idx + 1, b.tracks || 1);
   const pct = b.done ? 100 : b.tracks ? (at / b.tracks) * 100 : 0;
   return `<div class="tile" data-id="${b.id}" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
        data-resume="${resumable ? 1 : 0}" title="${esc(b.title)}">
-    <img src="/api/cover/${b.id}?v=${b.coverV || 0}" onerror="this.src='icon-128.png'" alt="">
+    <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="">
     <div class="t">${esc(b.title)}</div>
     <div class="a">${esc(b.author)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
@@ -244,7 +245,7 @@ async function drawBooks(books, heading) {
     }
     html += `<div class="card" data-started="${b.started ? 1 : 0}">
       <div class="cover">
-        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" onerror="this.style.visibility='hidden'" alt="">
+        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="">
         <label class="listened">
           <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
         </label>

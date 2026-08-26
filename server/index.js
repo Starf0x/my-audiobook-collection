@@ -10,6 +10,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
   deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
+import { placeholderCover } from './placeholder.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -19,8 +20,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(path.dirname(url.fileURLToPath(import.meta.url)), '../public')));
 
 // Covers are named after the image itself, so this marker in the URL changes
-// exactly when the picture does, and a browser may then keep it for a week.
-const coverV = (cover) => (cover ? crypto.createHash('md5').update(cover).digest('hex').slice(0, 12) : '');
+// exactly when the picture does, and a browser may then keep it for a week. A
+// book with no picture gets one drawn from its title, so that names it instead.
+const coverV = (b) => crypto.createHash('md5')
+  .update(b.cover || `title:${b.title || ''}`).digest('hex').slice(0, 12);
 
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => res.status(400).json({ error: e.message }));
 
@@ -227,10 +230,10 @@ app.get('/api/home', (req, res) => res.json({
                         FROM progress p JOIN books b ON b.id = p.book_id
                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
                         ORDER BY p.updated DESC LIMIT 12`).all(req.query.user || '')
-    .map((b) => ({ ...b, coverV: coverV(b.cover) })),
+    .map((b) => ({ ...b, coverV: coverV(b) })),
   recent: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${SERIES} AS series, b.series_no
                       FROM books b ORDER BY b.id DESC LIMIT 12`).all()
-    .map((b) => ({ ...b, coverV: coverV(b.cover) })),
+    .map((b) => ({ ...b, coverV: coverV(b) })),
 }));
 
 app.get('/api/genres', (req, res) => {
@@ -255,7 +258,7 @@ app.get('/api/books', (req, res) => {
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
                            ORDER BY series IS NULL, series, b.series_no, b.title`)
     .all(req.query.user || '', req.query.genre, bySeries ? req.query.series : req.query.author);
-  res.json(rows.map((b) => ({ ...b, coverV: coverV(b.cover) })));
+  res.json(rows.map((b) => ({ ...b, coverV: coverV(b) })));
 });
 
 app.post('/api/listened', (req, res) => {
@@ -281,15 +284,20 @@ app.get('/api/books/:id', (req, res) => {
   const gf = genreFolders().find((g) => here.startsWith(path.resolve(g.path) + path.sep));
   const rel = gf ? path.relative(path.resolve(gf.path), here).split(path.sep) : [];
   book.folderSeries = rel.length >= 3 ? rel[1] : '';
-  book.coverV = coverV(book.cover);
+  book.coverV = coverV(book);
   res.json(book);
 });
 
 app.get('/api/cover/:id', (req, res) => {
-  const cover = db.prepare('SELECT cover FROM books WHERE id = ?').get(Number(req.params.id))?.cover;
-  if (!cover) return res.status(404).end();
-  const file = cover.startsWith('file:') ? cover.slice(5) : path.join(DATA_DIR, 'covers', cover);
-  if (!fs.existsSync(file)) return res.status(404).end();
+  const book = db.prepare('SELECT cover, title, author FROM books WHERE id = ?').get(Number(req.params.id));
+  if (!book) return res.status(404).end();
+  // No art, or art that is no longer on disk: a drawn cover rather than a hole
+  // in the shelf. It is derived from the title, so it may be cached like a file.
+  const drawn = () => res.type('image/svg+xml')
+    .set('Cache-Control', 'public, max-age=604800').send(placeholderCover(book));
+  if (!book.cover) return drawn();
+  const file = book.cover.startsWith('file:') ? book.cover.slice(5) : path.join(DATA_DIR, 'covers', book.cover);
+  if (!fs.existsSync(file)) return drawn();
   // with the marker the URL names one picture, so it need not be asked for again
   res.sendFile(file, req.query.v ? { maxAge: '7d', immutable: true } : {});
 });
