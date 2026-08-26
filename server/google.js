@@ -68,31 +68,35 @@ async function search_(book, search, key) {
   }));
 }
 
-// What a single tag write reports, for the bar that follows it. A run over the
-// whole collection keeps its own count instead of borrowing this one: two writers
-// sharing it is what made a bar read "193 / 157".
-export const tagProgress = { running: false, done: 0, total: 0, current: '', written: 0, error: '' };
+// What one tag write reports, for the bar that follows it. Every write has its
+// own: two writers sharing one count is what made a bar read "193 / 157".
 export const newTagProgress = () => ({ running: false, done: 0, total: 0, current: '', written: 0, error: '' });
+const IDLE = newTagProgress();
 
-// Only one tag write at a time, whoever asks: two of them writing the same files
-// is worse than a wait, and a shared progress count reads as nonsense.
-let writing = false;
+// One writer per book, not one per server: two books — two series — can be
+// written at the same time, since each write only ever touches its own files. The
+// same book twice would be two writers on one file, which is worse than a wait.
+const writers = new Map(); // book id -> the progress of the write running on it
 
-export async function applyMetadata(book, pick, writeTags, sink = tagProgress) {
-  if (writeTags && writing) {
-    throw new Error('A tag write is already running. Wait for it to finish, or stop it in Settings.');
+export const writeProgress = (id) => writers.get(Number(id)) || IDLE;
+export const anyWriting = () => writers.size > 0;
+
+export async function applyMetadata(book, pick, writeTags, sink = null) {
+  if (writeTags && writers.has(book.id)) {
+    throw new Error('That book is already being written. Wait for it to finish.');
   }
-  // set before the first await so a poll right after the request sees it
+  const progress = sink || newTagProgress();
+  // registered before the first await, so a poll right after the request sees it
   if (writeTags) {
-    writing = true;
-    Object.assign(sink, { running: true, done: 0, total: 0, current: '', written: 0, error: '' });
+    Object.assign(progress, { running: true, done: 0, total: 0, current: '', written: 0, error: '' });
+    writers.set(book.id, progress);
   }
   try {
-    return await apply_(book, pick, writeTags, sink);
+    return await apply_(book, pick, writeTags, progress);
   } finally {
     // whatever failed, the bar must stop spinning
-    sink.running = false;
-    if (writeTags) writing = false;
+    progress.running = false;
+    if (writeTags) writers.delete(book.id);
   }
 }
 

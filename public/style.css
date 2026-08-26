@@ -225,6 +225,13 @@ table.cmp td.better { color: #7ee2a8; font-weight: 600; }
 /* while a job runs: its own button is disabled, and so is anything that would
    start a second one. Playing and marking listened stay available. */
 button:disabled { opacity: .45; cursor: default; }
+body.writing #books button[data-pick],
+body.writing #books button[data-restore],
+body.writing #books button[data-purge],
+body.writing #books button[data-del],
+body.writing #books .actions button:not([onclick^="playBook"]),
+body.writing #scan, body.writing #tagAll, body.writing #tidyCovers,
+body.writing #iGo, body.writing #cReplace, body.writing #cSkip,
 body.working #books button[data-pick],
 body.working #books button[data-restore],
 body.working #books button[data-purge],
@@ -237,6 +244,9 @@ body.working #needsTags, body.working #importList, body.working #trashList, body
   pointer-events: none;
 }
 body.working #brokenList { opacity: .45; pointer-events: none; }
+/* A tag write does not hold up writing another book: only the jobs that would
+   move those files, or read them while they are being written, are held back. */
+body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opacity: 1; pointer-events: auto; }
 
 /* a series sits under its genre in the left column */
 #genres .who { display: flex; align-items: center; gap: 7px; min-width: 0; }

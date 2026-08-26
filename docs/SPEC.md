@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.8.** This document describes what the app is, how every
+**Version described: 1.9.16.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.8` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.16` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -473,11 +473,16 @@ created, `unref`'d, a dead worker is replaced and its file reported as not
 written). `apply_` hands every file of the book to that pool at once and counts
 as each finishes.
 
-**One writer at a time**, whoever asks: a module-level `writing` flag makes a
-second write fail with *"A tag write is already running. Wait for it to finish,
-or stop it in Settings."* Each write reports into its **own** progress sink
-(`newTagProgress()`), because two writers sharing one counter is what produced a
-bar reading `193 / 157`.
+**One writer per book**, not one per server: `writers`, a `Map` of book id to
+that write's progress. Two books — two series — can be written at the same time,
+since each write only ever touches its own book's files. The same book twice is
+refused with *"That book is already being written. Wait for it to finish."*, and
+`GET /api/apply/status?book=<id>` hands back that book's own count, because two
+writers sharing one counter is what produced a bar reading `193 / 157`.
+
+`POST /api/tagall` refuses to start while `anyWriting()`: the run would reach
+the book being written and count it as failed. The reverse guard already existed —
+a single write is refused while the run is going.
 
 ### 7.4 The whole-collection run (`tagall.js`)
 
@@ -685,12 +690,20 @@ text opt back in.
 Covers are 2:3 everywhere: 96×144 on cards, 104×156 on tiles, 60×90 on lookup
 candidates, 36×54 in the footer.
 
-**One job at a time.** `work(button, what, fn)` refuses a second job with a toast,
-adds `body.working` (which greys every button that would start work, to opacity
-0.45 and `pointer-events: none`, including `[data-pick]` candidates), disables the
-button that was pressed, and restores both in a `finally`. Every job button goes
-through it: scan, import, tag writes (card, needs-tags row and edit dialog),
-disk check, cover tidy, trash actions.
+**One job at a time.** `work(button, what, fn, alone = true)` refuses a second job
+with a toast, adds `body.working` (which greys every button that would start work,
+to opacity 0.45 and `pointer-events: none`, including `[data-pick]` candidates),
+disables the button that was pressed, and restores both in a `finally`. Every job
+button goes through it: scan, import, tag writes (card, needs-tags row and edit
+dialog), disk check, cover tidy, trash actions.
+
+Tag writes pass `alone: false`. They add `body.writing` instead, which greys
+everything a running write must hold back — a scan, an import, the disk check, the
+whole-collection run, *Find metadata*, *Edit metadata* — while leaving the other
+books' *Write into MP3s* buttons alive
+(`body.writing … button[onclick^="writeTags"]:not(:disabled)`). Each write's bar is
+named after its book, both while it runs and in what it says when it is done, or
+two bars side by side read as the same message twice.
 
 **One bar per job.** `newBar(label)` adds a `.job` bar to `#progress` so two
 concurrent jobs sit side by side and never share a counter; each polls its own
@@ -820,7 +833,9 @@ Server suites:
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
-| `one-writer` | two tag writes at once: one runs, the other is refused with a reason; counts never run past their own totals |
+| `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
+| `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
+| `two-writes-ui` | pressing one book's *Write into MP3s* greys that button and the file-moving ones, leaves the other books' write buttons alive, and gives each write its own named bar |
 | `tagall-test` | the resumable run: paused across a restart, resumed to completion, every file written once, a fresh run starting over, a `running` row settled to `paused` at startup |
 | `validate-test` | each broken reason found, a recheck clearing a repair, delete-to-trash versus forget, progress ending complete |
 | `covers-test` | unused covers moved aside, a cover back in use kept, the 1000-file threshold, zipping, deleting |
@@ -877,6 +892,7 @@ to insert order and looks broken when the app is right.
 | 1.8.72 | the search box on both pages |
 | 1.9.0 | README brought up to date, with a screenshot of the drawn covers |
 | 1.9.8 | a browser is only offered the names it has used itself |
+| 1.9.16 | two books, or two series, can have their tags written at the same time |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
