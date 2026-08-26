@@ -146,6 +146,19 @@ change anything.
 docker compose up -d
 ```
 
+## Searching
+
+The box at the top of both pages looks for what you type in everything a book is
+filed or described by: its title, its author, its genre, its series, its narrator
+and its description. Every word has to appear somewhere in the same book, so
+`sanderson mist` finds Mistborn without you having to know which field holds
+what, and `kramer` finds everything one narrator read.
+
+Results replace the book column and are headed with what was searched for and how
+many books matched. Books whose title matches come first, then the ones matched by
+author. Emptying the box — or pressing Escape — puts back whatever was on screen
+before; picking a genre or an author lets go of the search.
+
 ## Two pages, and who may change things
 
 `index.html` is the page that changes the collection: scanning, importing,
