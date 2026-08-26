@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.0.** This document describes what the app is, how every
+**Version described: 1.9.8.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.8` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -637,6 +637,33 @@ install.
 **The server refuses, the interface merely hides.** Every route that changes
 anything carries `requireAdmin`; hiding buttons is not what protects it.
 
+### 7.12 Who is listening, and which names a browser is offered
+
+A listener has no password: the app is shared inside a house, and the one admin
+password guards what *changes* the collection. What keeps one person out of
+another person's place in a book is that **a browser is only ever offered the
+names it has said itself**.
+
+The names a browser has claimed live in a cookie it gets back from the server —
+`whoami`, a base64url JSON array, `HttpOnly`, `SameSite=Lax`, 400 days:
+
+* `GET /api/users` returns the claimed names that still exist in `users`, sorted.
+  No cookie means an empty list, whatever the collection holds. A cookie the
+  server did not write is ignored rather than trusted.
+* `POST /api/users` inserts the name if it is new, adds it to the cookie, and
+  returns `{ok: true}`. An empty name claims nothing.
+
+The dialog needs no special case: it renders a pick list only when it was given
+names, so a stranger sees the field alone. Both pages claim
+`localStorage.user` on load, so a browser that was here before an update keeps
+its name and its dropdown instead of being asked again.
+
+Two consequences, both intended. A browser two people share is offered both names
+once both have typed theirs — what a family tablet needs. And someone who knows an
+existing name exactly can still type it and take that place up; on a new phone
+that is the point, and without a password per listener the two cannot be told
+apart. The guarantee is about not *offering* names, not about proving identity.
+
 ## 8. The interface
 
 No framework, no build. `$` is `querySelector`, `api()` throws the server's
@@ -750,7 +777,10 @@ skips them will reproduce the bugs.
     hold a lane while waiting for its children.
 20. **Sort file names numerically** (`localeCompare(…, {numeric: true})`), or
     track 10 plays before track 2.
-21. **Tooling note for whoever rebuilds this**: writing JavaScript through a
+21. **Never hand a browser the whole list of listeners.** `GET /api/users`
+    answers with the names *that browser* has claimed; a first-time visitor gets
+    an empty list, and the dialog then shows only a field to type one in.
+22. **Tooling note for whoever rebuilds this**: writing JavaScript through a
     shell mangles template literals, `${…}` and `\d`. Use a file-writing tool for
     anything containing them, and grep the result afterwards.
 
@@ -795,6 +825,8 @@ Server suites:
 | `validate-test` | each broken reason found, a recheck clearing a repair, delete-to-trash versus forget, progress ending complete |
 | `covers-test` | unused covers moved aside, a cover back in use kept, the 1000-file threshold, zipping, deleting |
 | `replace-rollback` | a failing replacing import puts the old copy back, leaves no `Replaced` row, and the same import then works |
+| `who-names` | a first browser is offered nobody, then only its own name; two browsers never see each other's; a shared browser is offered both; an empty name claims nothing; a forged cookie is ignored; a deleted name drops off |
+| `who-ui` | the dialog a stranger sees: asked, offered nobody though names exist, a field labelled *Your name*, an empty dropdown; after typing, remembered and not asked again |
 | `cover-fallback` | art present → the file; none → SVG with title and author; art deleted → SVG; unknown book → 404; deterministic; a rename asks for a new picture |
 
 UI suites: `search-ui` (the box on both pages: each match kind, multi-word,
@@ -844,6 +876,7 @@ to insert order and looks broken when the app is right.
 | 1.8.64 | the folder and file count moved to the foot of the edit dialog |
 | 1.8.72 | the search box on both pages |
 | 1.9.0 | README brought up to date, with a screenshot of the drawn covers |
+| 1.9.8 | a browser is only offered the names it has used itself |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
