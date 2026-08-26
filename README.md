@@ -15,7 +15,7 @@ organised on disk as **Genre → Author → Book** or **Genre → Author → Ser
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
 * Runs as a single Docker container, SQLite storage, no external services
-* One job at a time: the button that started a scan, an import or a tag write greys out until it is done
+* One job at a time: whichever button started the job greys out until it is done, wherever it was pressed
 
 ## Folder layout it expects
 
