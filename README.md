@@ -229,6 +229,24 @@ the list when it is well, and a delete: *Delete…* moves the book to the trash
 when its files are still there, and *Forget it* removes the library entry when
 they are not.
 
+## How fast it works through a collection
+
+Almost all of the waiting is the disk, not the work. Reading the tags of one
+book on a network share costs about a second, nearly all of it spent waiting for
+an answer, so the app keeps several reads in flight at once — up to eight,
+whatever asks for them, which is what a share will answer without complaint.
+On a real share that made a scan three times faster; a check against the disk,
+an import folder being read and the comparison of two copies of a book gain the
+same way.
+
+Writing tags is the other half, and it is the opposite: node-id3 rewrites the
+whole MP3 and does it synchronously, which used to hold up the whole server for
+the length of every file. Those writes now happen on worker threads, a few at a
+time. Measured on a local library of 5 MB files: 18.5 ms per file before and
+6.4 ms per file now, and the longest the interface was left waiting fell from
+29 ms to 12 ms. So **Write tags into all MP3s** finishes in a third of the time
+and the pages stay answerable while it runs.
+
 ## Cover files it no longer needs
 
 Covers are stored under the name of the image itself, so a book that gets new
