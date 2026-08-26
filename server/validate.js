@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { parseFile } from 'music-metadata';
 import { db } from './db.js';
 import { audioFiles, discFiles } from './scan.js';
+import { lane, pool } from './pool.js';
 
 // A scan trusts the folders it walks. This does not: it opens every file of
 // every book, which is the only way to find a truncated download or a share
@@ -32,25 +33,22 @@ async function checkBook(book) {
   }
   if (!files.length) return { reason: 'empty', detail: 'The folder holds no audio files any more' };
 
-  let bad = 0;
-  for (const file of files) {
-    let size = 0;
+  // Several files at once: each one is a wait on the disk, and the lane cap
+  // keeps the share from being asked for more than it likes at any moment.
+  const verdicts = await pool(files, (file) => lane(async () => {
     try {
-      size = fs.statSync(file).size;
+      if (!fs.statSync(file).size) return false;
     } catch {
-      bad++;
-      continue;
+      return false;
     }
-    if (!size) { bad++; continue; }
     try {
       const m = await parseFile(file);
-      if (!m.format || !m.format.container) bad++;
+      return Boolean(m.format && m.format.container);
     } catch {
-      bad++; // a header that will not parse is a file no player will play either
+      return false; // a header that will not parse is a file no player will play either
     }
-    // yield, so the status endpoint can still answer during a long check
-    await new Promise((r) => setImmediate(r));
-  }
+  }));
+  const bad = verdicts.filter((ok) => !ok).length;
   if (bad) return { reason: 'damaged', detail: `${bad} of ${files.length} file(s) cannot be read` };
 
   const known = q.tracks.all(book.id).map((t) => t.path);
@@ -76,11 +74,11 @@ export async function validateAll(stamp) {
   try {
     const books = q.books.all();
     checkProgress.total = books.length;
-    for (const b of books) {
+    await pool(books, async (b) => {
       checkProgress.current = b.title;
       if (await record(b)) checkProgress.broken++;
       checkProgress.done++;
-    }
+    });
     return { checked: books.length, broken: checkProgress.broken, at: stamp };
   } catch (e) {
     checkProgress.error = e.message;
