@@ -5,7 +5,7 @@ import url from 'node:url';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress } from './scan.js';
-import { lookup, applyMetadata, tagProgress, lookupProgress } from './google.js';
+import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
@@ -169,7 +169,13 @@ app.post('/api/import', requireAdmin, wrap(async (req, res) => res.json(await im
 // Runs on the server, so closing the page does not stop it, and what is left of
 // it is a queue in the database, so it can be picked up again later.
 app.get('/api/tagall/status', (req, res) => res.json(tagStatus()));
-app.post('/api/tagall', requireAdmin, (req, res) => res.json(startTagAll()));
+app.post('/api/tagall', requireAdmin, wrap(async (req, res) => {
+  // the run would reach the book that is being written and count it as failed
+  if (anyWriting()) {
+    throw new Error('A tag write is running on one book. Wait for it to finish, then start the whole collection.');
+  }
+  res.json(startTagAll());
+}));
 app.post('/api/tagall/stop', requireAdmin, (req, res) => res.json(stopTagAll()));
 
 // --- checking the books against the disk --------------------------------
@@ -390,7 +396,8 @@ app.get('/api/lookup/:id', requireAdmin, wrap(async (req, res) => {
   res.json(await lookup(book, req.query.q));
 }));
 
-app.get('/api/apply/status', (req, res) => res.json(tagProgress));
+// one write per book, so the bar that follows one asks for that book by name
+app.get('/api/apply/status', (req, res) => res.json(writeProgress(req.query.book)));
 
 app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
   let book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
