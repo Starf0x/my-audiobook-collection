@@ -109,6 +109,8 @@ check the paths it filled in:
 | Appdata | `/mnt/user/appdata/my-audiobook-collection` → `/data` | database and cover images |
 | Audiobooks | `/mnt/user/Audiobooks` → `/audiobooks` | the collection, read/write so tags can be written |
 | Import folder | empty → `/import` | where new audiobooks arrive; leave empty if you do not import |
+| User ID / Group ID | `99` / `100` | **who the app writes as.** Leave these: without them it runs as root, and every folder it creates on your share belongs to root, so you are refused permission to write in it yourself |
+| File mode mask | `000` | the mode of what it creates. `000` is what an Unraid share normally is; `022` makes it read-only to others |
 | Admin password | empty | guards everything that changes the collection; the only place it is set |
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
 
@@ -254,6 +256,25 @@ pressing it again reads **▶ Resume** and carries on. Every other card and tile
 pressing one of those moves the pause to that book. Which book is playing survives a redraw of
 the list, so browsing away and back does not lose it.
 
+## Who the app writes as
+
+Set **PUID** and **PGID** on the container to the user that owns the share — on
+Unraid that is `99` and `100` (nobody:users) — and **UMASK** to `000`. The app
+drops to that user before it creates or opens anything, so the folders it makes
+are yours to write in.
+
+Without them it runs as root: the import lands, and then you cannot copy anything
+into the folder it made, or move it, from your own machine. If that has already
+happened, hand the folders back on the server once:
+
+```bash
+chown -R 99:100 /mnt/user/Audiobooks && chmod -R u+rwX,g+rwX /mnt/user/Audiobooks
+```
+
+A file error from the disk is reported in words rather than as a code: a refusal
+says which user the app is writing as and what to set, a full disk says it is full,
+and a read-only mount says so.
+
 ## Importing new audiobooks
 
 Set an **Import folder** in Settings, drop new audiobooks in it, then open
@@ -281,9 +302,12 @@ renames the incoming folder `Not Imported - …` and leaves it where it is. Both
 prefixes hide a folder from the app, and neither is offered for import again.
 
 The folder is moved, not copied, so the import folder empties as you work through
-it. If the import folder sits on a different mount than the library, the files are
-copied across and the source removed, with the bar showing the file count. Names
-are stripped of characters a path cannot hold.
+it. Where a rename cannot cross — two Docker mounts, or a user share spread over
+several disks — the files are copied instead, with the bar showing the file count,
+and **the original is only removed once every file has arrived at the same size**.
+A copy that stops half way leaves the source untouched and says how far it got.
+Nothing is ever moved onto a folder that already holds something. Names are
+stripped of characters a path cannot hold.
 
 ## Moving and deleting
 

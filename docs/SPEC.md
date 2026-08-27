@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.8.** This document describes what the app is, how every
+**Version described: 1.10.16.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.8` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.16` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -97,6 +97,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | File | Lines | What it is |
 | --- | --- | --- |
 | `server/index.js` | 391 | Express app: every route, and nothing else |
+| `server/user.js` | 51 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 107 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 330 | walking the library, reading tags, filing books |
@@ -217,6 +218,8 @@ const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')),
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DATA_DIR` | `/data` | database and covers |
+| `PUID` / `PGID` | unset | the user and group to write as. `server/user.js`, imported before anything else, chowns `DATA_DIR` and then drops to them — without this the container writes as root and the folders it creates on a share cannot be written to by their owner |
+| `UMASK` | unset | mode mask for what it creates (`000` on an Unraid share) |
 | `PORT` | `8523` | HTTP port |
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
@@ -582,8 +585,20 @@ Both prefixes hide a folder from the scanner and neither is offered again.
 renamed back and the `replaced` row deleted — otherwise the library points at a
 folder that is not there.
 
-The folder is **moved**, not copied. Across mounts, `copyTree` copies (in lanes,
-async) and then removes the source, reporting file counts through `fileProgress`.
+The folder is **moved**, not copied — and `moveFolder` is where the sharp edges
+are. It refuses to move onto a destination that holds anything (an empty one is
+removed first, since a rename onto one is refused on some platforms). A rename that
+fails with `EXDEV`, `ENOTEMPTY` or `EEXIST` falls back to `copyTree` (in lanes,
+async, reporting through `fileProgress`): those are what two Docker mounts, or a
+user share spread over several disks, answer. `EPERM` and `EBUSY` deliberately do
+**not** — they mean something holds the folder or the rights are wrong, and copying
+then would leave the book in two places instead of saying so. After a copy, every
+file of the source must exist at the destination **with the same size** before the
+source is removed; otherwise nothing is removed and it says how far it got. If the
+removal itself fails, the move stands with a line saying the original is still in
+the import folder: undoing a good move over that would be worse.
+`explainFileError` turns `EACCES`/`EPERM`, `ENOSPC`, `EROFS` and `ENOTEMPTY` into
+sentences that say what to do, naming the user the app writes as.
 `pruneEmptyParents` drops the folders the source left empty. The book is filed
 into the library immediately with `addOne` (with `force` when it replaced
 something), and the row is handed back so the page can open the genre and author
@@ -913,19 +928,26 @@ skips them will reproduce the bugs.
     one finishes — and redraw the list if it is the one on screen. Without that
     *Needs tags* keeps its old number until the page is reloaded, and it looks as
     though the scan did nothing.
-22. **Cover art beside the audio is cover art.** A book's cover is either a file
+22. **A container that writes as root makes folders its owner cannot use.** Honour
+    `PUID`/`PGID`/`UMASK` and drop to that user before creating anything, or an
+    import lands somewhere the person who owns the share is refused permission to
+    write in.
+23. **Never remove the source of a copy before checking that every file arrived**,
+    with its size. A move that half happened and then deleted the original cannot
+    be undone.
+24. **Cover art beside the audio is cover art.** A book's cover is either a file
     the app keeps or a `file:` path to a picture in the book's folder; a tag write
     that only handles the first kind leaves a book asking for a cover it already
     has, for ever, while the list promises a write can fix it.
-23. **The queue and the count of a resumable run must move together**, in one
+25. **The queue and the count of a resumable run must move together**, in one
     transaction: a container stopped between them drops a book off the queue that
     the count never counted.
-24. **A form field on a phone must be 16px or larger**, or the browser zooms the
+26. **A form field on a phone must be 16px or larger**, or the browser zooms the
     whole page when it is focused and the layout jumps.
-25. **Never hand a browser the whole list of listeners.** `GET /api/users`
+27. **Never hand a browser the whole list of listeners.** `GET /api/users`
     answers with the names *that browser* has claimed; a first-time visitor gets
     an empty list, and the dialog then shows only a field to type one in.
-26. **Tooling note for whoever rebuilds this**: writing JavaScript through a
+28. **Tooling note for whoever rebuilds this**: writing JavaScript through a
     shell mangles template literals, `${…}` and `\d`. Use a file-writing tool for
     anything containing them, and grep the result afterwards.
 
@@ -968,6 +990,8 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `moves` | a plain move; a move onto a folder that holds something refused with nothing touched; a move into an empty folder; a copy that cannot finish leaving every file of the original where it was; and every file error a share throws put into words |
+| `as-user` | the app starts with and without `PUID`/`PGID`/`UMASK`, says which user it became or why it could not, and treats nonsense in those variables as nothing at all |
 | `import-empty` | the kept list drops a book whose folder has gone, empties when the folder is emptied, picks up a new one from the background pass, ignores a folder left behind with no audio, and reads from scratch on a refresh |
 | `import-empty-ui` | with the panel open and the folder emptied behind its back, the list empties itself within seconds, says the folder is empty, the count follows, and a book dropped in appears — nothing pressed |
 | `skipped` | every way a folder full of audiobooks can be walked past — a book one level too deep, files it cannot read, an empty folder, audio loose in a genre or author folder, a copy set aside — each named with its reason; counted plus not counted is what is on the disk; moving a too-deep book up one level raises the count |
@@ -1050,6 +1074,7 @@ to insert order and looks broken when the app is right.
 | 1.9.72 | one write per book in the page too, whichever way it is asked for |
 | 1.10.0 | a scan reports the folders it walked past, and a maintenance list stays put |
 | 1.10.8 | an emptied import folder empties the list that offers its books |
+| 1.10.16 | the app writes as the user that owns the share, and a move never half-happens |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
