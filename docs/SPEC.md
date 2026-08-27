@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.16.** This document describes what the app is, how every
+**Version described: 1.9.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -108,11 +108,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 94 | the cover drawn for a book that has none |
-| `public/index.html` | 196 | the admin page: columns, dialogs |
-| `public/app.js` | 1352 | the admin page's behaviour |
-| `public/listen.html` | 58 | the listening page |
-| `public/listen.js` | 321 | the listening page's behaviour |
-| `public/style.css` | 266 | the whole look, both pages |
+| `public/index.html` | 197 | the admin page: columns, dialogs |
+| `public/app.js` | 1424 | the admin page's behaviour |
+| `public/listen.html` | 59 | the listening page |
+| `public/listen.js` | 364 | the listening page's behaviour |
+| `public/style.css` | 395 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`. `app.use(express.json({ limit: '1mb' }))`.
 
@@ -739,6 +739,41 @@ and category-as-genre buttons); *Edit metadata* (title, author, series, narrator
 year, description — with the book's folder and file count at the foot, above the
 buttons); *Move…*.
 
+**On a phone** (`@media (max-width: 720px)`): the three columns become one, and
+`document.body.dataset.col` — `genres` / `authors` / `books` — says which is on
+screen; the stylesheet hides the other two, and a wide screen ignores the
+attribute entirely. `show(col)` sets it, called where the interface already knew
+it had moved: `selectGenre` → authors, `drawBooks` and `loadHome` → books, and a
+click on any maintenance row → books. Each column heading carries the step
+out — `#backGenres` ("‹ Genres"), `#backCol` (named after where it goes, authors
+or genres, by `outOfBooks()`) — and the genre column has `#toBooks` ("Books ›")
+forward. The page ships with `data-col="books"`, so it opens on the shelves before
+any script runs.
+
+The rest of the phone layout is CSS only: the header wraps to two rows with the
+search across the width (explicit `order` on each control), a card becomes
+`84px 1fr` with its actions a two-up grid beneath, `.fix` rows go one column,
+dialogs become full-screen scrolling sheets, the player puts cover, title and
+track on one line with the audio control full width below, rows and buttons are at
+least 40px, and `#progress` bars stack. Two details that are not cosmetic:
+**fields are set at 16px**, because a phone zooms the whole page when you focus a
+smaller one, and `height: 100dvh` on the body, because `100vh` puts the player
+behind the browser's own chrome. Between 721px and 1000px the three columns
+stay, narrower. `@media (hover: none)` drops the hover states, or a tapped button
+stays lit.
+
+The tag badge carries both forms — `.wide` with the list, `.narrow` with the
+count — and the media query picks one, since the full list is a paragraph on a
+phone.
+
+**Playing** is a toggle on the card's own button: `playBook(id)` pauses or resumes
+when `state.book.id === id` and starts the book otherwise, so the button that
+started it is the one that stops it. `markPlaying()` writes the label — *▶ Play*,
+*⏸ Pause*, *▶ Resume* — and a `.playing` ring, from the `play`, `pause` and
+`ended` events and at the end of `drawBooks`, so a redraw does not forget which
+book is playing. The `onclick` attribute stays `playBook(...)`, because the
+stylesheet and the tests find the play button by it.
+
 **Maintenance lists** (admin page, `body.maintenance`): *Needs tags* (what a write
 can fix now versus what needs a lookup), *Broken on disk*, *Import* (ten per
 page), *Replaced*, *Trash* — each with its count in the left column.
@@ -790,10 +825,12 @@ skips them will reproduce the bugs.
     hold a lane while waiting for its children.
 20. **Sort file names numerically** (`localeCompare(…, {numeric: true})`), or
     track 10 plays before track 2.
-21. **Never hand a browser the whole list of listeners.** `GET /api/users`
+21. **A form field on a phone must be 16px or larger**, or the browser zooms the
+    whole page when it is focused and the layout jumps.
+22. **Never hand a browser the whole list of listeners.** `GET /api/users`
     answers with the names *that browser* has claimed; a first-time visitor gets
     an empty list, and the dialog then shows only a field to type one in.
-22. **Tooling note for whoever rebuilds this**: writing JavaScript through a
+23. **Tooling note for whoever rebuilds this**: writing JavaScript through a
     shell mangles template literals, `${…}` and `\d`. Use a file-writing tool for
     anything containing them, and grep the result afterwards.
 
@@ -835,6 +872,8 @@ Server suites:
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
+| `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
 | `two-writes-ui` | pressing one book's *Write into MP3s* greys that button and the file-moving ones, leaves the other books' write buttons alive, and gives each write its own named bar |
 | `tagall-test` | the resumable run: paused across a restart, resumed to completion, every file written once, a fresh run starting over, a `running` row settled to `paused` at startup |
 | `validate-test` | each broken reason found, a recheck clearing a repair, delete-to-trash versus forget, progress ending complete |
@@ -893,6 +932,7 @@ to insert order and looks broken when the app is right.
 | 1.9.0 | README brought up to date, with a screenshot of the drawn covers |
 | 1.9.8 | a browser is only offered the names it has used itself |
 | 1.9.16 | two books, or two series, can have their tags written at the same time |
+| 1.9.24 | a layout for phones, and Play becomes Pause on the card it started |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and

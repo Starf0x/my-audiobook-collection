@@ -274,3 +274,122 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
 /* the series a book belongs to, on its card and on its shelf tile */
 .card .sub.series-of { color: var(--accent2); }
 .tile .a.series-of { color: var(--accent2); opacity: .85; }
+
+/* the step-back button in a column heading: only a phone shows one column at a
+   time, so only a phone needs it */
+.back { display: none; }
+
+/* --- a narrow screen ----------------------------------------------------
+   A phone has room for one column, not three: data-col on the body says which
+   one is on screen, and the heading of each carries a way back. Everything that
+   was a row of controls wraps, and every target is big enough for a thumb. */
+@media (max-width: 720px) {
+  /* dvh, or the browser's own chrome cuts the player off the bottom */
+  body { height: 100dvh; }
+  header { flex-wrap: wrap; padding: 8px 12px; gap: 8px 8px; }
+  header h1 {
+    font-size: 15px; flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .spacer { display: none; }
+  .search { order: 10; flex: 1 0 100%; width: auto; max-width: none; margin-left: 0; }
+  /* 16px: a smaller field makes iOS zoom the whole page on focus */
+  input, select, textarea { font-size: 16px; }
+  button, select { min-height: 40px; }
+  header button, header select { padding: 7px 10px; font-size: 14px; }
+
+  main { grid-template-columns: 1fr; }
+  body.maintenance main { grid-template-columns: 1fr; }
+  main > * { border-right: none; }
+  body[data-col="genres"] #authors, body[data-col="genres"] #books,
+  body[data-col="authors"] #genres, body[data-col="authors"] #books,
+  body[data-col="books"] #genres, body[data-col="books"] #authors { display: none; }
+  .col-title { display: flex; align-items: center; gap: 10px; padding: 10px 14px 8px; }
+  .back { display: inline-block; }
+  main ul { padding: 0 6px; }
+  main li { padding: 13px 12px; }
+  #genres li.series-in-genre { padding: 11px 12px 11px 30px; }
+
+  .list { padding: 4px 12px; gap: 10px; }
+  .card { grid-template-columns: 84px 1fr; gap: 12px; padding: 10px; }
+  .card img { width: 84px; height: 126px; }
+  .card .actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .card .actions button { flex: 1 1 45%; }
+  .card .actions .row2 { flex: 1 1 100%; }
+  .fix { grid-template-columns: 1fr; }
+  .fix .actions { flex-wrap: wrap; }
+  .fix .actions button { flex: 1 1 45%; }
+
+  .tile, .tile img { width: 96px; }
+  .tile img { height: 144px; }
+
+  /* the player: cover and title on one line, the controls under them */
+  footer { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
+  footer img { width: 44px; height: 66px; }
+  footer .meta { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+  footer .meta strong, footer .meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  footer #trackSelect { max-width: 45%; }
+  footer audio { order: 10; flex: 1 0 100%; height: 40px; }
+
+  /* a dialog is a sheet: the whole screen, and it scrolls */
+  dialog {
+    width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    margin: 0; border: 0; border-radius: 0; padding: 16px 14px 28px; overflow-y: auto;
+  }
+  .row { flex-wrap: wrap; }
+  .row > button { flex: 1 1 auto; }
+  #libList, #browserList, #genreList, #iFound { max-height: 40vh; }
+  #lookupState { min-width: 0; text-align: left; }
+  #lookupProgress { flex-wrap: wrap; }
+  table.cmp th, table.cmp td { padding: 5px 6px; font-size: 12.5px; }
+  .cand img { width: 48px; height: 72px; }
+
+  #progress { padding: 8px 12px; gap: 8px; }
+  #progress .job { flex: 1 1 100%; min-width: 0; }
+  #progress .say { max-width: 60%; }
+  #status { gap: 8px 14px; flex-wrap: wrap; padding: 7px 12px; }
+  #toast { bottom: 96px; max-width: 92vw; text-align: center; }
+}
+
+/* between a phone and a desktop the three columns still fit, but narrower */
+@media (min-width: 721px) and (max-width: 1000px) {
+  main { grid-template-columns: 180px 190px 1fr; }
+  body.maintenance main { grid-template-columns: 180px 1fr; }
+  .search { width: 200px; }
+}
+
+/* a tap is not a hover: without this a tapped button stays lit on a phone */
+@media (hover: none) {
+  button:hover { filter: none; }
+  main li:hover { background: none; }
+  main li.active:hover { background: var(--accent); }
+  .tile:hover img { border-color: var(--line); }
+}
+
+/* the long list of tags a file carries is a paragraph on a phone: the count says
+   as much in the space there is */
+.badge .narrow { display: none; }
+
+@media (max-width: 720px) {
+  .badge .wide { display: none; }
+  .badge .narrow { display: inline; }
+  .badge { max-width: 100%; }
+
+  /* two rows, not three: the title and who is listening, then the search and
+     the scan controls */
+  header h1 { order: 1; }
+  header #user { order: 2; max-width: 120px; }
+  header #adminBtn { order: 3; }
+  header #openSettings { order: 4; }
+  .search { order: 5; flex: 1 1 130px; min-width: 120px; }
+  header #scanWhich { order: 6; flex: 0 1 110px; min-width: 0; }
+  header #scan { order: 7; padding: 7px 9px; }
+
+  /* a small arrow needs a big target on a touch screen */
+  #genres .twist { width: 14px; font-size: 13px; padding: 10px 12px; margin: -10px -12px; }
+}
+
+/* the book that is playing: its own button is the one that pauses it */
+.card .actions button.playing {
+  box-shadow: 0 0 0 2px var(--accent2) inset;
+}

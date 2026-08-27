@@ -14,6 +14,23 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
 
 const state = { user: localStorage.user || '', genre: null, author: null, book: null, track: 0 };
 
+// --- which column is on screen -----------------------------------------
+// A phone has room for one of the three columns at a time; this says which, and
+// the stylesheet does the rest. A wide screen shows all three and ignores it.
+// One step out of the book column: back to the authors of the genre being
+// browsed, or to the genres themselves when there is no author on screen.
+const outOfBooks = () => (!document.body.classList.contains('maintenance')
+  && (state.author || state.series) ? 'authors' : 'genres');
+
+const show = (col) => {
+  document.body.dataset.col = col;
+  // the button says where it goes, not just "back"
+  $('#backCol').textContent = outOfBooks() === 'authors' ? '‹ Authors' : '‹ Genres';
+};
+$('#backGenres').onclick = () => show('genres');
+$('#backCol').onclick = () => show(outOfBooks());
+$('#toBooks').onclick = () => show('books');
+
 // --- one job at a time, and tag writes beside each other ----------------
 // A job that moves files or rewrites the library runs alone: it greys the button
 // that started it and everything else that would start work. Without that, a slow
@@ -147,6 +164,7 @@ async function loadHome() {
   const html = shelf('Continue listening', d.continue, true) + shelf('Recently added', d.recent, false);
   $('#books .list').innerHTML = html
     || '<div class="empty">Nothing here yet — add a library folder in Settings and scan.</div>';
+  show('books');
   $('#books .list').querySelectorAll('.tile').forEach((t) => {
     t.onclick = () => (t.dataset.resume === '1'
       ? playBook(Number(t.dataset.id))
@@ -217,6 +235,7 @@ async function selectGenre(genre, li) {
     `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
   $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
   $('#books .list').innerHTML = '<div class="empty">Select an author, or a series under the genre.</div>';
+  show('authors');
 }
 
 // One series, in reading order where the files number it
@@ -279,7 +298,7 @@ async function drawBooks(books, heading, kind = 'Series') {
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
           ${b.duration ? `<span class="badge">${hms(b.duration)}</span>` : ''}
           ${b.tagged
-            ? `<span class="badge tagged" title="Tags found in the MP3 files">In MP3: ${esc(b.tagged.split(',').join(', '))}</span>`
+            ? `<span class="badge tagged" title="Tags found in the MP3 files"><span class="wide">In MP3: ${esc(b.tagged.split(',').join(', '))}</span><span class="narrow">In MP3: ${b.tagged.split(',').length} tags</span></span>`
             : '<span class="badge untagged" title="The MP3 files carry none of these tags">Not in MP3</span>'}
         </div>
         <div class="desc">${esc(b.description) || 'No description.'}</div>
@@ -297,6 +316,8 @@ async function drawBooks(books, heading, kind = 'Series') {
     </div>`;
   }
   $('#books .list').innerHTML = html || '<div class="empty">No books.</div>';
+  markPlaying();
+  show('books');
 }
 
 
@@ -315,6 +336,7 @@ async function runSearch() {
   document.body.classList.remove('maintenance');
   if (!rows.length) {
     $('#books .list').innerHTML = `<div class="empty">Nothing matches "${esc(q)}".</div>`;
+    show('books');
     return;
   }
   await drawBooks(rows, `${q} · ${rows.length} book${rows.length === 1 ? '' : 's'}`, 'Search');
@@ -331,6 +353,11 @@ $('#q').onkeydown = (e) => {
 const audio = $('#audio');
 
 window.playBook = async function (id) {
+  // the same book again: the button that started it is the one that stops it
+  if (state.book && state.book.id === id) {
+    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+    return;
+  }
   if (!state.user) return toast('Create or select a user first.');
   const book = await api(`/api/books/${id}?user=${encodeURIComponent(state.user)}`);
   state.book = book;
@@ -353,6 +380,20 @@ function playTrack(idx, position = 0) {
   audio.onloadedmetadata = () => { if (position) audio.currentTime = position; };
   audio.play().catch(() => {});
 }
+
+// The card of the book that is playing says what pressing it will do now, and
+// every other card still says Play.
+function markPlaying() {
+  const playing = state.book ? state.book.id : 0;
+  document.querySelectorAll('#books .card .actions button[onclick^="playBook"]').forEach((b) => {
+    const mine = Number(b.getAttribute('onclick').match(/\d+/)[0]) === playing;
+    b.textContent = mine ? (audio.paused ? '▶ Resume' : '⏸ Pause') : '▶ Play';
+    b.classList.toggle('playing', mine && !audio.paused);
+  });
+}
+audio.addEventListener('play', markPlaying);
+audio.addEventListener('pause', markPlaying);
+audio.addEventListener('ended', markPlaying);
 
 $('#trackSelect').onchange = (e) => playTrack(Number(e.target.value));
 audio.onended = () => playTrack(state.track + 1);
@@ -1350,6 +1391,10 @@ function finishScan(error, p) {
   p.bar.done(p.warning ? 30000 : 3000);
   loadGenres();
   loadStats();
+}
+
+for (const id of ['needsTags', 'brokenList', 'importList', 'replacedList', 'trashList']) {
+  $('#' + id).addEventListener('click', () => show('books'));
 }
 
 $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
