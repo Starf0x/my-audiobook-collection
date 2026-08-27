@@ -390,6 +390,11 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
 }
 
 /* the book that is playing: its own button is the one that pauses it */
-.card .actions button.playing {
+button.playing {
   box-shadow: 0 0 0 2px var(--accent2) inset;
+}
+
+/* a shelf tile you can carry on from: its own play button, under the progress */
+.tile .tplay {
+  width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12.5px;
 }

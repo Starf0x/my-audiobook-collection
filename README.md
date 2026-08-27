@@ -223,11 +223,17 @@ name that others do not know.
 
 ## Playing, and stopping
 
+![The Continue listening shelf, one book playing](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/shelf.png)
+
+Every book on the **Continue listening** shelf carries its own play button under
+the track it is on, so carrying on with the last thing you were listening to is
+one press from the page you land on. Tapping the cover still does the same.
+
 **▶ Play** on a card starts the book where you left it and opens the player at the
 bottom of the page. That same button then reads **⏸ Pause**, with a ring around it,
 because it is the one that stops the book it started; pressing it again reads
-**▶ Resume** and carries on. Every other card still says *Play*, and pressing one
-of those moves the pause to that book. Which book is playing survives a redraw of
+**▶ Resume** and carries on. Every other card and tile still says *Play*, and
+pressing one of those moves the pause to that book. Which book is playing survives a redraw of
 the list, so browsing away and back does not lose it.
 
 ## Importing new audiobooks
