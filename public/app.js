@@ -79,13 +79,13 @@ async function loadPerm() {
   const p = await api('/api/admin').catch(() => ({ required: false, admin: true }));
   perm.required = p.required;
   perm.admin = p.admin;
-  if (perm.required && !perm.admin) location.replace('listen.html');
+  if (perm.required && !perm.admin) location.replace('/');
   $('#adminBtn').hidden = !perm.required;
 }
 
 $('#adminBtn').onclick = async () => {
   await post('/api/admin/lock', {});
-  location.replace('listen.html');
+  location.replace('/');
 };
 
 // --- users -------------------------------------------------------------
@@ -127,6 +127,8 @@ async function askWho(users, cancellable) {
 
 $('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
 $('#home').onclick = loadHome;
+// the name of the app is the way back to the shelves, wherever you are
+$('#brand').onclick = loadHome;
 
 async function loadStats() {
   const s = await api('/api/stats?user=' + encodeURIComponent(state.user));
@@ -159,6 +161,7 @@ const shelf = (title, items, resumable) => !items.length ? '' :
 
 async function loadHome() {
   document.body.classList.remove('maintenance');
+  $('#q').value = '';
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   $('#authors ul').innerHTML = '';
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
@@ -431,10 +434,18 @@ window.setListened = async function (id, box) {
   if (!state.user) { box.checked = !box.checked; return toast('Create or select a user first.'); }
   try {
     await post('/api/listened', { user: state.user, bookId: id, done: box.checked });
-    const note = box.closest('.card').querySelector('.note');
-    const started = box.closest('.card').dataset.started === '1';
+    const card = box.closest('.card');
+    // unticking cleared the place kept in it, so the card is a fresh book again
+    if (!box.checked) card.dataset.started = '0';
+    const started = card.dataset.started === '1';
+    const note = card.querySelector('.note');
     note.className = 'note ' + (box.checked ? 'done' : started ? 'part' : 'new');
     note.title = box.checked ? 'Listened' : started ? 'Partly listened' : 'Not listened yet';
+    const play = card.querySelector('.actions button[onclick^="playBook"]');
+    if (play) {
+      play.dataset.resume = box.checked || started ? '1' : '0';
+      markPlaying();
+    }
     loadStats();
   } catch (e) {
     box.checked = !box.checked;

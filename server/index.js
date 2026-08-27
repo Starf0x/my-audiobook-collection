@@ -17,7 +17,19 @@ import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purg
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static(path.join(path.dirname(url.fileURLToPath(import.meta.url)), '../public')));
+
+// Addresses without file names in them. The listening page is the one that gets
+// handed around, so it is the bare address; the page that changes the collection
+// is /admin. The old file names still answer, with a redirect, so a bookmark or
+// an old link does not break. index: false, or express.static would serve
+// index.html at / before these ever ran.
+const PUBLIC = path.join(path.dirname(url.fileURLToPath(import.meta.url)), '../public');
+const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC, name));
+app.get('/', page('listen.html'));
+app.get('/admin', page('index.html'));
+app.get('/listen.html', (req, res) => res.redirect('/'));
+app.get('/index.html', (req, res) => res.redirect('/admin'));
+app.use(express.static(PUBLIC, { index: false }));
 
 // Covers are named after the image itself, so this marker in the URL changes
 // exactly when the picture does, and a browser may then keep it for a week. A
@@ -322,10 +334,16 @@ app.get('/api/search', (req, res) => {
 app.post('/api/listened', (req, res) => {
   const { user, bookId, done } = req.body;
   if (!user) return res.status(400).json({ error: 'No user' });
+  // Unticking it says "I have not listened to this", so the place kept in it goes
+  // with the tick: the book leaves Continue listening and starts from the top.
+  if (!done) {
+    db.prepare('DELETE FROM progress WHERE user = ? AND book_id = ?').run(user, Number(bookId));
+    return res.json({ ok: true, cleared: true });
+  }
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated)
-    VALUES (?, ?, 0, 0, ?, datetime('now'))
-    ON CONFLICT(user, book_id) DO UPDATE SET done = excluded.done, updated = excluded.updated`)
-    .run(user, bookId, done ? 1 : 0);
+    VALUES (?, ?, 0, 0, 1, datetime('now'))
+    ON CONFLICT(user, book_id) DO UPDATE SET done = 1, updated = excluded.updated`)
+    .run(user, bookId);
   res.json({ ok: true });
 });
 
