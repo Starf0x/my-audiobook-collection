@@ -15,5 +15,8 @@
   <Config Name="Import folder" Target="/import" Default="" Mode="rw" Description="Where new audiobooks arrive, to file with Import" Type="Path" Display="always" Required="false"></Config>
   <Config Name="Admin password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Guards everything that changes the collection. This is the only place it is set. Leave empty for an install nobody has to unlock." Type="Variable" Display="always" Required="false" Mask="true"></Config>
   <Config Name="Google Books API key" Target="GOOGLE_API_KEY" Default="" Mode="" Description="Used to look up missing metadata. This is the only place the key is set." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="User ID" Target="PUID" Default="99" Mode="" Description="The user the app writes as. 99 is nobody on Unraid, which owns your shares — leave it, or folders it creates belong to root and you cannot write in them." Type="Variable" Display="always" Required="true">99</Config>
+  <Config Name="Group ID" Target="PGID" Default="100" Mode="" Description="The group the app writes as. 100 is users on Unraid." Type="Variable" Display="always" Required="true">100</Config>
+  <Config Name="File mode mask" Target="UMASK" Default="000" Mode="" Description="000 makes the folders and files it creates writable by everyone on the share, which is what Unraid shares normally are. 022 makes them read-only to others." Type="Variable" Display="advanced" Required="false">000</Config>
   <Config Name="Audiobooks" Target="/audiobooks" Default="/mnt/user/Audiobooks" Mode="rw" Type="Path" Display="always" Required="true">/mnt/user/Audiobooks</Config>
 </Container>

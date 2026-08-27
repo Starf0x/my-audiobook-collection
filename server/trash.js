@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { db, getLibraries } from './db.js';
 import { audioFiles, addOne } from './scan.js';
-import { beginFileWork, fileProgress, moveFolder, destinationFor, genreFolders, clean } from './import.js';
+import { beginFileWork, fileProgress, moveFolder, destinationFor, genreFolders, clean,
+  explainFileError } from './import.js';
 
 export const KEEP_DAYS = 30;
 
@@ -71,7 +72,9 @@ async function relocate(book, dest, { genre, author, series, title }) {
     }
     dropEmptyParents(book.path);
     return { dest };
-  } catch (e) {
+  } catch (err) {
+    // in words, not in libuv's
+    const e = explainFileError(err, 'That move');
     fileProgress.error = e.message;
     throw e;
   } finally {
@@ -113,7 +116,9 @@ export async function deleteToTrash(id, stamp) {
     // a restore recreates whatever folders it needs, so these may go
     dropEmptyParents(book.path);
     return { dest };
-  } catch (e) {
+  } catch (err) {
+    // in words, not in libuv's
+    const e = explainFileError(err, 'Moving the book to the trash');
     fileProgress.error = e.message;
     throw e;
   } finally {
@@ -142,7 +147,9 @@ export async function restoreFromTrash(id) {
     await addOne({ genre: t.genre, author: t.author, series: t.series, dir: t.was_path });
     db.prepare('DELETE FROM trash WHERE id = ?').run(t.id);
     return { restored: t.was_path };
-  } catch (e) {
+  } catch (err) {
+    // in words, not in libuv's
+    const e = explainFileError(err, 'Putting the book back');
     fileProgress.error = e.message;
     throw e;
   } finally {
