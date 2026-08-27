@@ -123,7 +123,13 @@ async function apply_(book, pick, writeTags, progress) {
   if (!writeTags) return { written: 0 };
 
   {
-    const coverFile = cover && !cover.startsWith('file:') ? path.join(DATA_DIR, 'covers', cover) : null;
+    // A cover is either a file this app keeps or a picture beside the audio
+    // (cover.jpg and its kind). Both go into the files: the Needs tags list
+    // counts what the FILES carry, so skipping the second kind left a book asking
+    // for a cover it already had, for ever.
+    const kept = cover && !cover.startsWith('file:') ? path.join(DATA_DIR, 'covers', cover) : '';
+    const beside = cover && cover.startsWith('file:') ? cover.slice(5) : '';
+    const coverFile = [kept, beside].find((p) => p && fs.existsSync(p)) || null;
     const author = pick.author || book.author;
     const description = pick.description || book.description || '';
     const tags = {
@@ -139,7 +145,7 @@ async function apply_(book, pick, writeTags, progress) {
       genre: book.genre,
       composer: pick.narrator || book.narrator || '',
       ...(description ? { comment: { language: 'eng', text: description } } : {}),
-      ...(coverFile && fs.existsSync(coverFile) ? { APIC: coverFile } : {}),
+      ...(coverFile ? { APIC: coverFile } : {}),
     };
     // an empty value would write an empty frame, which reads back as "present"
     for (const [k, v] of Object.entries(tags)) if (!v) delete tags[k];

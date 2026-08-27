@@ -77,6 +77,16 @@ function firstFileMeta(tags) {
   return meta;
 }
 
+// cover.jpg, folder.png and their kind, beside the audio
+const localCover = (bookPath) => {
+  try {
+    const local = fs.readdirSync(bookPath).find((n) => COVER.test(n));
+    return local ? 'file:' + path.join(bookPath, local) : null;
+  } catch {
+    return null;
+  }
+};
+
 async function firstFileTells(file) {
   try {
     return firstFileMeta(await lane(() => parseFile(file)));
@@ -131,10 +141,7 @@ async function readMeta(files, bookPath) {
     meta.tracks.push({ title: c.title || path.basename(file, path.extname(file)), duration: f.duration || 0 });
     if (i === 0) Object.assign(meta, firstFileMeta(tags));
   }
-  if (!meta.cover) {
-    const local = fs.readdirSync(bookPath).find((n) => COVER.test(n));
-    if (local) meta.cover = 'file:' + path.join(bookPath, local);
-  }
+  if (!meta.cover) meta.cover = localCover(bookPath);
   return meta;
 }
 
@@ -187,7 +194,11 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
       told.tagSeries || (guess ? guess.name : ''),
       told.seriesNo || (guess ? guess.no : 0),
       told.narrator || existing.narrator, told.year || existing.year,
-      told.description || existing.description, told.cover || existing.cover,
+      told.description || existing.description,
+      // a picture inside the files wins; then whatever the book already had, so a
+      // cover chosen here is not thrown away; then art that has appeared beside
+      // the audio since the last scan
+      told.cover || existing.cover || localCover(bookPath),
       existing.id);
     return 1;
   }
