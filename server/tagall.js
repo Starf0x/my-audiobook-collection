@@ -68,8 +68,13 @@ async function loop() {
       } catch {
         failed = 1; // one unreadable book must not stop the rest of the run
       }
+      // Both together, or a container stopped between them leaves a book off the
+      // queue that the count never counted: done + left would no longer be the
+      // total, and the run would report one book short of what it wrote.
+      db.exec('BEGIN');
       q.drop.run(book.id);
       q.set.run(run.done + 1, run.written + written, run.failed + failed, book.title, 'running');
+      db.exec('COMMIT');
       // let the server answer requests between books
       await new Promise((r) => setImmediate(r));
     }

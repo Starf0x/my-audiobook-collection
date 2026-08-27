@@ -385,6 +385,19 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
+## Tags written by another program
+
+A scan reads every book's first file again, so tags you wrote with another tagger
+are picked up by **Scan library** — not only *that* they are there, which is what
+the *Needs tags* list counts, but their values: the narrator, year, description and
+cover art come into the app as well. The counts in the left column follow the scan
+without a reload.
+
+Where the file says nothing, what the app knows is left alone, so a description
+typed into *Edit metadata* survives a scan. Where the file does say something, the
+file wins — it is the collection, and a tag write puts the app's values into it
+anyway.
+
 ## What a tag write puts in the MP3s
 
 *Write into MP3s* on a book, *Save + write into MP3s* in the edit dialog and
