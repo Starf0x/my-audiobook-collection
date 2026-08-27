@@ -403,3 +403,6 @@ button.playing {
 @media (hover: hover) {
   header h1:hover { color: var(--accent2); }
 }
+
+/* which build is answering: quiet, and always on screen */
+#status .ver { margin-left: auto; opacity: .55; font-variant-numeric: tabular-nums; }
