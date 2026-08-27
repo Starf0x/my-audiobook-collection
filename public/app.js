@@ -683,15 +683,17 @@ function showFreshness(state) {
 // it re-reads on its own, so all this does is pick the new list up.
 function watchImportFolder() {
   clearInterval(importWatch);
-  let seen = null;
   importWatch = setInterval(async () => {
     if (!$('#importList').classList.contains('active')) return clearInterval(importWatch);
     const state = await api('/api/import/state').catch(() => null);
     if (!state) return;
     showFreshness(state);
-    if (seen === null) seen = state.changed;
-    if (state.changed !== seen && !state.building) {
-      seen = state.changed;
+    // The list on screen is the one read at importData.cachedAt. If the server
+    // has read the folder since, that is a newer list and this one is out of
+    // date. Counting the changes instead missed the first one, because the count
+    // had already gone up before this watch took its first look — which is how an
+    // emptied import folder stayed on screen with every book still in it.
+    if (importData && state.cachedAt && state.cachedAt !== importData.cachedAt && !state.building) {
       const { d } = await loadImport(false);
       if (d) { importData = d; drawImportPage(); toast('The import folder changed — list updated.'); }
     }
