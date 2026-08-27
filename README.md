@@ -266,7 +266,10 @@ files the folder into `<genre>/<author>/[series]/<title>` and files it straight
 into the library, so it turns up at once without a rescan of everything else —
 the page then opens the genre and author it landed under, with the book in it.
 The list is kept after the first read and handed back at once next time, ten per
-page, while a background pass checks the folder for changes.
+page, so a large import folder is not walked on every page load. A book that has
+gone is dropped from it the moment the list is asked for again, and while the
+Import panel is open the folder is looked at every few seconds: empty it and the
+list empties itself, drop a book in and it appears, without pressing anything.
 
 If a book already sits where this one would land, nothing is overwritten. The two
 copies are compared on audio quality — bit rate, sample rate, channels, format,

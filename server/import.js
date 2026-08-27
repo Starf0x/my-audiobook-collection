@@ -72,6 +72,18 @@ const importRoot = () => {
 export async function candidates({ refresh = false } = {}) {
   const root = importRoot();
   if (!refresh && cache && cache.root === root) {
+    // A folder that is gone is worse than a list that is merely old: the page
+    // would offer a book that cannot be imported, and emptying the import folder
+    // would leave every one of them on screen. One stat per book, not a walk of
+    // the whole folder — and the signature is cleared, so the pass below reads it
+    // again for whatever else has changed.
+    const here = cache.items.filter((i) => fs.existsSync(i.path));
+    if (here.length !== cache.items.length) {
+      cache = { ...cache, items: here, sig: '', at: Date.now() };
+      importState.count = here.length;
+      importState.cachedAt = cache.at;
+      importState.changed++;
+    }
     checkInBackground(root);
     return { items: cache.items, cachedAt: cache.at, fromCache: true };
   }
@@ -81,8 +93,16 @@ export async function candidates({ refresh = false } = {}) {
 
 // Re-read only when the set of book folders differs from what the list was built
 // from, and never touch the progress bar: nobody asked for this pass.
+// At most one look every few seconds: the page asks for the state every two
+// seconds while the import panel is open, and a folder on a share is not worth
+// walking that often.
+let lookedAt = 0;
+const LOOK_GAP = 5000;
+
 function checkInBackground(root) {
   if (checking || importState.building) return;
+  if (Date.now() - lookedAt < LOOK_GAP) return;
+  lookedAt = Date.now();
   checking = true;
   importState.checking = true;
   setImmediate(async () => {
@@ -141,6 +161,14 @@ async function build(root, quiet) {
     importState.building = false;
     if (!quiet) fileProgress.running = false;
   }
+}
+
+// The page watching the import panel asks for the state, not the list: this is
+// what makes that watch notice a folder emptied behind its back.
+export function lookAgain() {
+  try {
+    checkInBackground(importRoot());
+  } catch { /* no import folder set, or it is not there: nothing to look at */ }
 }
 
 // A book that has just been imported is gone from the folder. Drop that one line
