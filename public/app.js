@@ -859,6 +859,46 @@ const WHY = {
   changed: 'Files have changed on disk',
 };
 
+// What the last scan walked past. The row is not there at all when there is
+// nothing in it: an empty list is not worth a place in the column.
+async function loadSkipped() {
+  const items = await api('/api/skipped').catch(() => []);
+  $('#skippedCount').textContent = items.length || '0';
+  $('#skippedList').hidden = !items.length;
+  return items;
+}
+
+const WHY_SKIPPED = {
+  deeper: 'A folder deeper than the layout reads',
+  unsupported: 'Files this app does not read',
+  empty: 'Nothing to read in it',
+  loose: 'Audio outside a book folder',
+  aside: 'Set aside by an import',
+  unreadable: 'The folder could not be read',
+};
+
+$('#skippedList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
+  $('#skippedList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  const items = await loadSkipped();
+  const said = items.length
+    ? `${items.length} folder(s) the last scan walked past — nothing here was deleted or changed`
+    : 'The last scan counted everything it walked past';
+  const rows = (reason) => items.filter((i) => i.reason === reason).map((i) => `<div class="fix">
+      <div>
+        <strong>${esc(i.path.split(/[\\/]/).pop())}</strong>
+        <div class="sub missing">${esc(i.detail)}</div>
+        <div class="sub path">${esc(i.path)}</div>
+      </div>
+    </div>`).join('');
+  $('#books .list').innerHTML = `<div class="row pager"><span class="hint">${esc(said)}</span></div>`
+    + [...new Set(items.map((i) => i.reason))]
+      .map((reason) => `<div class="series-head">${esc(WHY_SKIPPED[reason] || reason)}</div>${rows(reason)}`)
+      .join('');
+};
+
 async function loadBroken() {
   const items = await api('/api/broken').catch(() => []);
   $('#brokenCount').textContent = items.length || '0';
@@ -984,12 +1024,23 @@ $('#replacedList').onclick = async () => {
 
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
+const MAINTENANCE_ROWS = ['needsTags', 'brokenList', 'skippedList', 'importList', 'replacedList', 'trashList'];
+
+// The view that is on screen, drawn again after something changed. A maintenance
+// list is a view too: applying metadata to a book from Needs tags must put that
+// list back, not throw you into the library or onto the shelves.
+async function backToView() {
+  const open = MAINTENANCE_ROWS.find((id) => $('#' + id).classList.contains('active'));
+  if (open) return $('#' + open).click();
+  if (state.series) return selectSeries(state.genre, state.series, null);
+  if (state.author) return selectAuthor(state.author, null);
+  return loadHome();
+}
+
 async function refreshLibrary() {
-  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(), loadReplaced(), loadBroken(), importCountOnly()]);
-  // back to whatever was on screen: an author, a series, or the shelves
-  if (state.series) await selectSeries(state.genre, state.series, null);
-  else if (state.author) selectAuthor(state.author, null);
-  else if (!document.body.classList.contains('maintenance')) await loadHome();
+  await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(),
+    loadReplaced(), loadBroken(), loadSkipped(), importCountOnly()]);
+  await backToView();
 }
 
 // --- move and delete ---------------------------------------------------
@@ -1276,8 +1327,8 @@ window.applyMeta = async function (id, i, writeTags) {
     catch (e) { return toast(e.message); }
   }
   // a genre change moves the book, and can add a genre folder to the left column
-  if (genre) { await loadGenres(); await loadHome(); return; }
-  if (state.author) selectAuthor(state.author, null);
+  if (genre) await loadGenres();
+  await backToView();
 };
 $('#closeLookup').onclick = () => $('#lookup').close();
 
@@ -1439,10 +1490,15 @@ function finishScan(error, p) {
     else toast('Scan failed: ' + error);
     return;
   }
-  p.bar.say(p.warning
-    ? `Scan complete: ${p.books} book(s) — ${p.warning}`
-    : `Scan complete: ${p.books} book(s).`, !!p.warning);
-  p.bar.done(p.warning ? 30000 : 3000);
+  // What it found, what it walked past, and anything odd about the folders — all
+  // three, since a warning used to hide the rest
+  const said = [`Scan complete: ${p.books} book(s).`];
+  if (p.skipped) {
+    said.push(`${p.skipped} folder(s) were not counted — see Not counted in the left column.`);
+  }
+  if (p.warning) said.push(p.warning);
+  p.bar.say(said.join(' '), !!(p.warning || p.skipped));
+  p.bar.done(p.warning || p.skipped ? 30000 : 3000);
   loadGenres();
   loadStats();
   // A scan re-reads what every file carries and drops books whose folders are
@@ -1450,9 +1506,10 @@ function finishScan(error, p) {
   // either list, if it is the one on screen.
   loadUntagged().then(() => { if ($('#needsTags').classList.contains('active')) $('#needsTags').click(); });
   loadBroken().then(() => { if ($('#brokenList').classList.contains('active')) $('#brokenList').click(); });
+  loadSkipped().then(() => { if ($('#skippedList').classList.contains('active')) $('#skippedList').click(); });
 }
 
-for (const id of ['needsTags', 'brokenList', 'importList', 'replacedList', 'trashList']) {
+for (const id of MAINTENANCE_ROWS) {
   $('#' + id).addEventListener('click', () => show('books'));
 }
 
@@ -1469,7 +1526,8 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
   await loadPerm();
   const users = await loadUsers();
   await loadGenres();
-  await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(), loadReplaced(), loadBroken()]);
+  await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
+    loadReplaced(), loadBroken(), loadSkipped()]);
   await loadHome();
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
   // a scan another browser started is still running: follow it instead of
