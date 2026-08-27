@@ -385,6 +385,25 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
+## When a scan finds fewer books than you have
+
+A scan now keeps a list of every folder it walked past, and why. When there is
+something in it, **Not counted** appears in the left column with the number, the
+bar says so when the scan finishes, and the list names each folder, the reason and
+its full path. Nothing in that list was deleted or changed — it is only a report.
+
+| Reason | What it means |
+| --- | --- |
+| a folder deeper than the layout reads | the audio sits below `genre / author / series / book` — a boxed set inside a series folder, say. Move those books up one level |
+| files this app does not read | it lists what it found: `.aax`, `.wma` and their kind are not read. Supported: `.mp3 .m4a .m4b .ogg .flac .opus` |
+| nothing to read in it | an empty folder, or one with no audio anywhere below it |
+| audio outside a book folder | loose files in a genre or author folder: a book has to be in a folder of its own |
+| set aside by an import | a `Not Imported - ` or `Replaced - ` copy, which is deliberate |
+| the folder could not be read | a permission or share problem, with the error |
+
+The list is what the **last** scan found, kept in memory, so it is empty until you
+scan and after a restart.
+
 ## When a book will not leave *Needs tags*
 
 A book counts as done when its **files** carry all of album, title, artist, album

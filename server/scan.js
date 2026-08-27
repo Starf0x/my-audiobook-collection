@@ -24,6 +24,38 @@ export const audioFiles = (p) => fs.readdirSync(p, { withFileTypes: true })
   .map((e) => path.join(p, e.name))
   .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
+// One listing of a folder, and everything the walk wants to know about it: the
+// folders to go into, the ones set aside by an import, its audio, and the kinds
+// of file it holds that this app does not read. One readdir instead of the two
+// that dirs() and audioFiles() used to make of every folder — and it is what lets
+// a scan say why a folder was not counted, instead of the number being short with
+// no reason given.
+function listing(p) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(p, { withFileTypes: true });
+  } catch (e) {
+    return { dirs: [], aside: [], audio: [], others: [], error: e.message };
+  }
+  const out = { dirs: [], aside: [], audio: [], others: [], error: '' };
+  for (const e of entries) {
+    const full = path.join(p, e.name);
+    if (e.isDirectory()) {
+      if (e.name.startsWith('.')) continue; // the trash and its kind: never a book
+      if (setAside(e.name)) out.aside.push(full);
+      else out.dirs.push(full);
+    } else if (e.isFile()) {
+      if (AUDIO.test(e.name)) out.audio.push(full);
+      else if (!e.name.startsWith('.')) {
+        const ext = path.extname(e.name).toLowerCase();
+        if (ext && !out.others.includes(ext)) out.others.push(ext);
+      }
+    }
+  }
+  out.audio.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  return out;
+}
+
 // iTunes normalisation data ends up in the ID3v1 comment field as hex groups.
 const descriptionOf = (c) => {
   const comment = c.comment?.[0];
@@ -246,12 +278,18 @@ function looksTooDeep(root) {
   return false;
 }
 
-export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '', warning: '' };
+export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '', warning: '', skipped: 0 };
+
+// What the last scan walked past, and why. In memory: it is a diagnostic for the
+// scan that just ran, not a record to keep.
+let skippedLast = [];
+export const lastSkipped = () => skippedLast;
 
 export async function scan(only = '') {
   // running must be true before walking the tree: on a large library that walk
   // takes tens of seconds, and the UI would otherwise read the scan as finished.
-  Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '', warning: '' });
+  Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '', warning: '', skipped: 0 });
+  skippedLast = [];
   try {
     await walkAndScan(only);
   } catch (e) {
@@ -287,9 +325,38 @@ export function seriesFromSiblings(names) {
   return out;
 }
 
+// Why a folder the walk went past holds no book it could read. Called only for
+// folders that turned out to have nothing, so the extra looking is rare.
+function whyNothing(dir, seen) {
+  if (seen.error) return { reason: 'unreadable', detail: seen.error };
+  // a book one level deeper than the layout goes: genre / author / series / book
+  // is as deep as it reads, and this is a level below that
+  for (const inner of seen.dirs) {
+    const below = listing(inner);
+    if (below.audio.length || below.dirs.some((d) => listing(d).audio.length)) {
+      return {
+        reason: 'deeper',
+        detail: `the audio is in ${path.basename(inner)}, a folder deeper than `
+          + 'genre / author / series / book goes',
+      };
+    }
+  }
+  if (seen.others.length) {
+    return {
+      reason: 'unsupported',
+      detail: `holds ${seen.others.join(', ')} — this app reads .mp3 .m4a .m4b .ogg .flac .opus`,
+    };
+  }
+  return { reason: 'empty', detail: 'no audio files in it, and no folder under it that has any' };
+}
+
 async function walkAndScan(only) {
   const jobs = [];
   const tooDeep = [];
+  const skipped = [];
+  const note = (dir, reason, detail) => {
+    if (skipped.length < 500) skipped.push({ path: dir, reason, detail });
+  };
   // one library folder, or all of them
   const libs = only
     ? getLibraries().filter((l) => path.resolve(l.path) === path.resolve(only))
@@ -298,27 +365,54 @@ async function walkAndScan(only) {
   for (const lib of libs) {
     if (!fs.existsSync(lib.path)) continue;
     if (!lib.asGenre && looksTooDeep(lib.path)) tooDeep.push(lib.path);
-    for (const genreDir of (lib.asGenre ? [lib.path] : dirs(lib.path))) {
+    const root = lib.asGenre ? null : listing(lib.path);
+    if (root) root.aside.forEach((d) => note(d, 'aside', 'set aside by an import, and not offered again'));
+    for (const genreDir of (lib.asGenre ? [lib.path] : root.dirs)) {
       const genre = path.basename(genreDir);
-      for (const authorDir of dirs(genreDir)) {
+      const inGenre = listing(genreDir);
+      inGenre.aside.forEach((d) => note(d, 'aside', 'set aside by an import, and not offered again'));
+      if (inGenre.audio.length) {
+        note(genreDir, 'loose', `${inGenre.audio.length} audio file(s) lying in the genre folder `
+          + 'itself: a book has to be in a folder of its own, under an author');
+      }
+      for (const authorDir of inGenre.dirs) {
         const author = path.basename(authorDir);
-        const level3s = dirs(authorDir);
+        const inAuthor = listing(authorDir);
+        inAuthor.aside.forEach((d) => note(d, 'aside', 'set aside by an import, and not offered again'));
+        if (inAuthor.audio.length) {
+          note(authorDir, 'loose', `${inAuthor.audio.length} audio file(s) lying in the author folder `
+            + 'itself: a book has to be in a folder of its own');
+        }
+        const level3s = inAuthor.dirs;
         // What the folder names say about series, for the books that are not in a
         // series folder. A guess from names, so it names the series and never
         // moves a file: it goes where a series read from the tags goes.
         const guessed = seriesFromSiblings(level3s.map((d) => path.basename(d)));
         for (const level3 of level3s) {
           const guess = guessed.get(path.basename(level3)) || null;
-          if (audioFiles(level3).length) jobs.push({ genre, author, series: null, dir: level3, guess });
-          else if (discFiles(level3)) {
+          const inLevel3 = listing(level3);
+          inLevel3.aside.forEach((d) => note(d, 'aside', 'set aside by an import, and not offered again'));
+          if (inLevel3.audio.length) {
+            jobs.push({ genre, author, series: null, dir: level3, files: inLevel3.audio, guess });
+          } else if (discFiles(level3)) {
             jobs.push({ genre, author, series: null, dir: level3, files: discFiles(level3), guess });
+          } else if (!inLevel3.dirs.length) {
+            const why = whyNothing(level3, inLevel3);
+            note(level3, why.reason, why.detail);
           } else {
             // A folder holding a single sub-folder is a redundantly nested book,
             // not a series: there is nothing to group.
-            const books = dirs(level3).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            const books = inLevel3.dirs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
             const series = books.length > 1 ? path.basename(level3) : null;
             for (const bookDir of books) {
-              jobs.push({ genre, author, series, dir: bookDir, files: discFiles(bookDir), guess: series ? null : guess });
+              const inBook = listing(bookDir);
+              const files = inBook.audio.length ? inBook.audio : discFiles(bookDir);
+              if (!files || !files.length) {
+                const why = whyNothing(bookDir, inBook);
+                note(bookDir, why.reason, why.detail);
+                continue;
+              }
+              jobs.push({ genre, author, series, dir: bookDir, files, guess: series ? null : guess });
             }
           }
         }
@@ -332,6 +426,8 @@ async function walkAndScan(only) {
       + 'contains your genre folders instead.';
   }
 
+  skippedLast = skipped;
+  progress.skipped = skipped.length;
   progress.total = jobs.length;
   // Several books at once: the work is waiting for the disk, not thinking.
   await pool(jobs, async (j) => {
