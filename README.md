@@ -385,6 +385,24 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
+## When a book will not leave *Needs tags*
+
+A book counts as done when its **files** carry all of album, title, artist, album
+artist, genre, year, description, cover art and track number. Open **Needs tags**
+and read a row: it says what a write can add now, and what is *not known yet*.
+
+Writing tags cannot invent what the app does not have. A book with no year, no
+description or no cover art anywhere keeps asking for those until a lookup or
+*Edit metadata* fills them in — that is the *not known yet* half of the row, and no
+number of scans or writes will change it.
+
+Cover art beside the audio counts: a `cover.jpg`, `folder.jpg` or `front.png` in
+the book's folder is written into the files like any other, so a collection with
+folder art does not need embedded art first.
+
+The version the container is running is at the right-hand end of the status line
+along the bottom, so "did the update land?" has an answer on screen.
+
 ## Tags written by another program
 
 A scan reads every book's first file again, so tags you wrote with another tagger

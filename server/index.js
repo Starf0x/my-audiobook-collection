@@ -37,6 +37,10 @@ app.use(express.static(PUBLIC, { index: false }));
 const coverV = (b) => crypto.createHash('md5')
   .update(b.cover || `title:${b.title || ''}`).digest('hex').slice(0, 12);
 
+// Which build is answering. Without it there is no way to tell from the outside
+// whether a container has actually been updated.
+const VERSION = JSON.parse(fs.readFileSync(path.join(PUBLIC, '../package.json'), 'utf8')).version;
+
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => res.status(400).json({ error: e.message }));
 
 // --- who may change things ---------------------------------------------
@@ -244,7 +248,7 @@ app.get('/api/stats', (req, res) => {
   const books = db.prepare('SELECT COUNT(*) AS n FROM books').get().n;
   const files = db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n;
   const done = db.prepare('SELECT COUNT(*) AS n FROM progress WHERE user = ? AND done = 1').get(req.query.user || '').n;
-  res.json({ books, files, done, todo: books - done });
+  res.json({ books, files, done, todo: books - done, version: VERSION });
 });
 
 const REQUIRED_TAGS = ['album', 'title', 'artist', 'album artist', 'genre', 'year', 'description', 'cover', 'track no'];
