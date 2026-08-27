@@ -456,7 +456,26 @@ window.setListened = async function (id, box) {
 };
 
 // Writes tags while the bar at the bottom follows the file count.
+// One write per book in this page as well as on the server: the card, the Needs
+// tags row, the edit dialog and the lookup dialog all end up here, and the button
+// that was pressed is not the only way in. The server refuses a second write on
+// the same book too — this is so the answer is a sentence rather than an error.
+const writingBooks = new Set();
+
 async function writeWithProgress(id, pick, genre, title = '') {
+  if (writingBooks.has(id)) {
+    toast(`${title || 'That book'} is already being written. Wait for it to finish.`);
+    return false;
+  }
+  writingBooks.add(id);
+  try {
+    return await write_(id, pick, genre, title);
+  } finally {
+    writingBooks.delete(id);
+  }
+}
+
+async function write_(id, pick, genre, title) {
   const until = { finished: false };
   const request = post(`/api/apply/${id}`, { pick, genre, writeTags: true })
     .catch((e) => ({ error: e.message }))
@@ -490,7 +509,10 @@ async function writeMany(books) {
   for (const [i, b] of books.entries()) {
     bar.at(((i + 1) / books.length) * 100);
     bar.say(`Writing tags ${i + 1} / ${books.length} · ${b.title}`);
+    if (writingBooks.has(b.id)) { failed++; continue; } // that one is being written already
+    writingBooks.add(b.id);
     const r = await post(`/api/apply/${b.id}`, { pick: {}, writeTags: true }).catch(() => null);
+    writingBooks.delete(b.id);
     if (!r) failed++;
   }
   bar.say(`Tags written into ${books.length - failed} of ${books.length} book(s).`, failed > 0);
