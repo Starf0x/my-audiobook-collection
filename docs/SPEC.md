@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.16.** This document describes what the app is, how every
+**Version described: 1.10.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -220,6 +220,15 @@ const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')),
 | `DATA_DIR` | `/data` | database and covers |
 | `PUID` / `PGID` | unset | the user and group to write as. `server/user.js`, imported before anything else, chowns `DATA_DIR` and then drops to them — without this the container writes as root and the folders it creates on a share cannot be written to by their owner |
 | `UMASK` | unset | mode mask for what it creates (`000` on an Unraid share) |
+
+With neither `PUID` nor `PGID` set, and running as root, `user.js` takes the owner
+of `DATA_DIR` (or of the folder above it) and becomes that — on Unraid, appdata
+belongs to nobody:users, so a container that was never told anything still writes
+as the user that owns the shares. `GET /api/permissions` (admin) reports
+`writingAs()` and, for the data folder, every library, the import folder and one
+book folder: whether it is there, its owner and mode, and whether a file can
+actually be written in it and removed again — measured, not inferred from the mode.
+Settings shows it as a table.
 | `PORT` | `8523` | HTTP port |
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
@@ -324,6 +333,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/scan` | admin | `{path}`: one library folder, or all when empty |
 | `GET /api/scan/status` | — | `{running, done, total, current, books, error, warning, skipped}` |
 | `GET /api/skipped` | admin | what the last scan walked past, and why |
+| `GET /api/permissions` | admin | who the app writes as, and what each folder allows |
 | `GET /api/stats` | — | `{books, files, done, todo}` |
 | `GET /api/untagged` | admin | the Needs-tags list, split `fixable` / `needsLookup` |
 | `GET /api/home` | — | `{continue, recent}` |
@@ -990,6 +1000,7 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `permissions` | the report names who the app writes as and what it was asked for, covers the data folder, every library, the import folder and a book folder, says whether each can be written in, names one that is not there rather than calling it unwritable, and leaves no probe file behind |
 | `moves` | a plain move; a move onto a folder that holds something refused with nothing touched; a move into an empty folder; a copy that cannot finish leaving every file of the original where it was; and every file error a share throws put into words |
 | `as-user` | the app starts with and without `PUID`/`PGID`/`UMASK`, says which user it became or why it could not, and treats nonsense in those variables as nothing at all |
 | `import-empty` | the kept list drops a book whose folder has gone, empties when the folder is emptied, picks up a new one from the background pass, ignores a folder left behind with no audio, and reads from scratch on a refresh |
@@ -1075,6 +1086,7 @@ to insert order and looks broken when the app is right.
 | 1.10.0 | a scan reports the folders it walked past, and a maintenance list stays put |
 | 1.10.8 | an emptied import folder empties the list that offers its books |
 | 1.10.16 | the app writes as the user that owns the share, and a move never half-happens |
+| 1.10.24 | with nothing set it follows the data folder's owner, and Settings reports what every folder allows |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and

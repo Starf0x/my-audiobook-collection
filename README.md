@@ -263,6 +263,17 @@ Unraid that is `99` and `100` (nobody:users) — and **UMASK** to `000`. The app
 drops to that user before it creates or opens anything, so the folders it makes
 are yours to write in.
 
+With nothing set at all it takes the hint from the data folder: running as root, it
+becomes whoever owns `/data` (or the folder above it), which on Unraid is
+nobody:users. So a fresh install needs no setting; an existing container that was
+made before these fields existed does not gain them from an update, and either
+needs them added by hand or is covered by that default.
+
+**Settings → Check folder permissions** says who the app is writing as and what
+each folder lets it do — it writes a file and removes it again rather than reading
+the mode and guessing. That is the first thing to look at when something cannot be
+written.
+
 Without them it runs as root: the import lands, and then you cannot copy anything
 into the folder it made, or move it, from your own machine. If that has already
 happened, hand the folders back on the server once:

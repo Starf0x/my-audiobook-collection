@@ -85,6 +85,15 @@
   <p class="hint">New audiobooks are picked up from here. Use <em>Import</em> in the left column
     to file one under a genre and author.</p>
 
+  <label>Folder permissions</label>
+  <p class="hint">Who this app writes as, and what each folder lets it do. If it creates folders you
+    are then refused permission to open, that is what this shows: set <code>PUID</code> and
+    <code>PGID</code> on the container to the user that owns the share — 99 and 100 on Unraid — and
+    hand back what was made as root with
+    <code>chown -R 99:100 /mnt/user/Audiobooks</code>.</p>
+  <button id="checkPerms" class="ghost">Check folder permissions</button>
+  <div id="permsOut"></div>
+
   <label>Books against the disk</label>
   <p class="hint">Opens every file of every book to find what a scan cannot see: a folder that
     is gone, a truncated download, a share that answers but will not read. This reads your whole
