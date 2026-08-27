@@ -149,7 +149,7 @@ const tile = (b, resumable) => {
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
       <div class="a">${b.done ? 'Listened' : `Track ${at} of ${b.tracks}`}</div>
-      <button class="tplay" data-play="${b.id}">▶ Play</button>` : ''}
+      <button class="tplay" data-play="${b.id}" data-resume="1">▶ Resume</button>` : ''}
   </div>`;
 };
 
@@ -309,7 +309,7 @@ async function drawBooks(books, heading, kind = 'Series') {
         <div class="desc">${esc(b.description) || 'No description.'}</div>
       </div>
       <div class="actions">
-        <button onclick="playBook(${b.id})">▶ Play</button>
+        <button onclick="playBook(${b.id})" data-resume="${b.started || b.done ? 1 : 0}">${b.started || b.done ? '▶ Resume' : '▶ Play'}</button>
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
         <button class="ghost" onclick="writeTags(${b.id}, this)">Write into MP3s</button>
         <button class="ghost" onclick="editMeta(${b.id})">Edit metadata</button>
@@ -393,8 +393,17 @@ function markPlaying() {
   const playing = state.book ? state.book.id : 0;
   const label = (button, id) => {
     const mine = id === playing;
-    button.textContent = mine ? (audio.paused ? '▶ Resume' : '⏸ Pause') : '▶ Play';
+    // a book with a place kept in it is resumed, whether or not it is the one
+    // loaded in the player: after a reload nothing is loaded, and the shelf still
+    // means "carry on with this"
+    const kept = button.dataset.resume === '1';
+    button.textContent = mine
+      ? (audio.paused ? '▶ Resume' : '⏸ Pause')
+      : (kept ? '▶ Resume' : '▶ Play');
     button.classList.toggle('playing', mine && !audio.paused);
+    // it has a place kept in it from now on, so it stays a Resume when another
+    // book takes over
+    if (mine) button.dataset.resume = '1';
   };
   document.querySelectorAll('#books .card .actions button[onclick^="playBook"]').forEach((b) => {
     label(b, Number(b.getAttribute('onclick').match(/\d+/)[0]));
