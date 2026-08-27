@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.72.** This document describes what the app is, how every
+**Version described: 1.10.0.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.72` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.0` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -319,7 +319,8 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/trash/:id` | admin | delete a book to the trash |
 | `POST /api/trash/:id/restore`, `/purge`, `POST /api/trash/empty` | admin | the rest of the trash |
 | `POST /api/scan` | admin | `{path}`: one library folder, or all when empty |
-| `GET /api/scan/status` | — | `{running, done, total, current, books, error, warning}` |
+| `GET /api/scan/status` | — | `{running, done, total, current, books, error, warning, skipped}` |
+| `GET /api/skipped` | admin | what the last scan walked past, and why |
 | `GET /api/stats` | — | `{books, files, done, todo}` |
 | `GET /api/untagged` | admin | the Needs-tags list, split `fixable` / `needsLookup` |
 | `GET /api/home` | — | `{continue, recent}` |
@@ -443,6 +444,17 @@ not await it, so an unhandled rejection would take the process down.
 
 Books whose folders are gone are dropped at the end of a scan — but only within
 the scope that was scanned.
+
+**What it walked past.** One `listing()` per folder — one `readdir` giving the
+sub-folders, the ones set aside by an import, the audio, and the other file
+extensions — replaces the `dirs()` + `audioFiles()` pair the walk used to make of
+every folder, so the walk is cheaper *and* can say why a folder yielded no book.
+Every such folder goes into `skippedLast` with a reason: `deeper` (audio below the
+layout, naming the folder it is in), `unsupported` (listing the extensions),
+`empty`, `loose` (audio in a genre or author folder), `aside`, `unreadable`.
+`progress.skipped` counts them, `GET /api/skipped` hands the list over, and the
+page shows it as **Not counted** — a row hidden when there is nothing in it. It is
+the last scan's report, in memory: empty until a scan runs, and after a restart.
 
 ### 7.2 Doing the waiting in parallel (`pool.js`)
 
@@ -829,6 +841,12 @@ end of `drawBooks` and `loadHome`, so a redraw does not forget which book is
 playing. The `onclick` attribute stays `playBook(...)`, because the stylesheet and
 the tests find the play button by it.
 
+**Staying put.** `backToView()` draws the view that is on screen again — the open
+maintenance list if there is one, else the series, the author, or the shelves — and
+both `refreshLibrary()` and the tail of `applyMeta` use it. Without it, applying
+metadata to a book from *Needs tags* threw the page into the library, or onto the
+shelves when a genre came with the metadata.
+
 **Maintenance lists** (admin page, `body.maintenance`): *Needs tags* (what a write
 can fix now versus what needs a lookup), *Broken on disk*, *Import* (ten per
 page), *Replaced*, *Trash* — each with its count in the left column.
@@ -939,6 +957,9 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `skipped` | every way a folder full of audiobooks can be walked past — a book one level too deep, files it cannot read, an empty folder, audio loose in a genre or author folder, a copy set aside — each named with its reason; counted plus not counted is what is on the disk; moving a too-deep book up one level raises the count |
+| `skipped-ui` | the **Not counted** row: absent when empty, there with a count after a scan, the bar saying so, and the list grouped by reason with a path for each |
+| `stay-put` | applying metadata from Needs tags leaves that list on screen — with a genre change too, and from the edit dialog — while from the library it still returns to the author |
 | `same-book` | while a long write runs, every further request for that book is refused with the same reason — singly, three at once, with a different `pick`, and from the whole-collection run; another book writes meanwhile; metadata without a file write is still allowed; the book is free again afterwards |
 | `same-book-ui` | in the page: the pressed button dead, that book's metadata buttons held back, one bar only, a second call answered in words, a request that skips the page refused by the server, the batch counting it as one it could not do, and everything free again afterwards |
 | `folder-cover` | a book whose art is a `cover.jpg` beside the audio: a write puts that picture into the files, so the book leaves Needs tags and a rescan reads it back; art dropped in later is found by a scan |
@@ -1014,6 +1035,7 @@ to insert order and looks broken when the app is right.
 | 1.9.56 | a scan takes the values from tags written elsewhere, and the counts follow it |
 | 1.9.64 | cover art beside the audio is written into the files; the version is on screen |
 | 1.9.72 | one write per book in the page too, whichever way it is asked for |
+| 1.10.0 | a scan reports the folders it walked past, and a maintenance list stays put |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
