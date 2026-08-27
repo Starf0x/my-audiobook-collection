@@ -19,6 +19,7 @@ The full manual, with screenshots of every part of it, is in the
 * Files new audiobooks from an **import folder** into the right genre, author and series
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
+* Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * The Play button of the book that is playing is its Pause button, on the card you started it from
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
 * Runs as a single Docker container, SQLite storage, no external services
@@ -114,7 +115,9 @@ check the paths it filled in:
 The last three are optional, and the two variables are masked in the form. Then
 **Apply**, and open the WebUI:
 
-1. The first visit asks who is listening, and asks you to **type** a name: a
+1. The first visit asks who is listening, and asks you to **type** a name. That
+   first page, at the bare address, is the listening one; the page that changes
+   things is at `/admin`, or one press of **Admin**: a
    browser is only ever offered the names it has used itself, so nobody arriving
    at the address is handed a list of everyone in the house. On your next visit
    the same browser offers the name back.
@@ -171,10 +174,15 @@ before; picking a genre or an author lets go of the search.
 
 ## Two pages, and who may change things
 
-`index.html` is the page that changes the collection: scanning, importing,
-tagging, moving, deleting. `listen.html` only browses, plays and keeps each
-person's place, and is the one to share. It carries an **Admin** button that asks
-for the password and then opens the other page.
+There are no file names in the addresses. **`http://your-server:8523/`** is the
+listening page — it browses, plays and keeps each person's place, and is the one
+to share. **`/admin`** is the page that changes the collection: scanning,
+importing, tagging, moving, deleting. The listening page carries an **Admin**
+button that asks for the password and then opens the other one, and the name of
+the app in the header leads back to the shelves from wherever you are.
+
+The old addresses, `/listen.html` and `/index.html`, still answer with a redirect,
+so an old bookmark or a link you handed out keeps working.
 
 The password is `ADMIN_PASSWORD` on the container, and changing it means changing
 it there and restarting. Until one is set the app behaves as a private install:
@@ -224,6 +232,13 @@ name that others do not know.
 ## Playing, and stopping
 
 ![The Continue listening shelf, one book playing](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/shelf.png)
+
+Unticking **Listened** on a book clears the place kept in it: the tick means "I
+have listened to this", so taking it off means the opposite, and the book leaves
+*Continue listening* and starts from the beginning next time. Nothing else about
+the book changes. Note that a place is not recoverable this way — if you only
+wanted to correct a mis-click on a book you were half way through, that place is
+gone.
 
 Every book on the **Continue listening** shelf carries its own button under the
 track it is on, and since those are the books you are in the middle of it reads

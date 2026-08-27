@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.40.** This document describes what the app is, how every
+**Version described: 1.9.48.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.40` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.48` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -44,9 +44,11 @@ It reads a library that is already organised on disk:
         └── The Shining
 ```
 
-Two pages. `index.html` can change the collection (scan, import, tag, move,
-delete). `listen.html` only browses, plays and remembers positions, and is the
-one to share.
+Two pages, served without file names in the address: **`/`** is the listening
+page — it browses, plays and remembers positions, and is the one to share — and
+**`/admin`** is the page that changes the collection (scan, import, tag, move,
+delete). `/listen.html` and `/index.html` still answer, with a redirect, so old
+links keep working.
 
 **Non-goals**, deliberately: it does not download audiobooks, has no catalogue of
 its own, does not transcode, has no user accounts (a "user" is a name in a list,
@@ -114,7 +116,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/listen.js` | 364 | the listening page's behaviour |
 | `public/style.css` | 395 | the whole look, both pages, phone included |
 
-Static files are served from `public/` by `express.static`. `app.use(express.json({ limit: '1mb' }))`.
+Static files are served from `public/` by `express.static`, with
+`{ index: false }` so the routes below decide what `/` is:
+`GET /` sends `listen.html`, `GET /admin` sends `index.html`, and
+`/listen.html` and `/index.html` redirect to those — the file names are gone from
+the address, and old links still work. `app.use(express.json({ limit: '1mb' }))`.
 
 ## 4. Data model
 
@@ -321,7 +327,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/authors?genre=` | — | `[{name, books}]` |
 | `GET /api/books?genre=&author=|series=&user=` | — | cards |
 | `GET /api/search?q=&user=` | — | cards, across everything |
-| `POST /api/listened` | — | mark a book listened |
+| `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
 | `GET /api/stream/:trackId` | — | audio, with byte-range support |
@@ -766,6 +772,18 @@ The tag badge carries both forms — `.wide` with the list, `.narrow` with the
 count — and the media query picks one, since the full list is a paragraph on a
 phone.
 
+**The name of the app** in the header (`#brand`) calls `loadHome()`, so it is the
+way back to the shelves from a book list, a search or a maintenance list. Both it
+and the *Home* link clear the search box, since the shelves are not a search
+result either.
+
+**Unticking Listened** clears the place kept in the book: the tick means "I have
+listened to this", so `POST /api/listened {done: false}` deletes the progress row
+rather than setting `done = 0`. The card follows — the note goes back to *new* and
+the play button to *▶ Play* — and the book leaves *Continue listening*. A place
+lost this way is not recoverable, which is the price of the tick meaning what it
+says.
+
 **Playing** is a toggle on the button of whatever offered it — a card in the
 library, or a tile on the **Continue listening** shelf, where each book carries a
 `button.tplay[data-play]` under its progress line. A tile's button stops the click
@@ -886,6 +904,9 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
+| `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
+| `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
 | `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
 | `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
 | `two-writes-ui` | pressing one book's *Write into MP3s* greys that button and the file-moving ones, leaves the other books' write buttons alive, and gives each write its own named bar |
@@ -949,6 +970,7 @@ to insert order and looks broken when the app is right.
 | 1.9.24 | a layout for phones, and Play becomes Pause on the card it started |
 | 1.9.32 | a play button on every Continue listening tile |
 | 1.9.40 | a book with a place kept in it says Resume, not Play |
+| 1.9.48 | addresses without file names, the app's name leads home, unticking Listened clears the place |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
