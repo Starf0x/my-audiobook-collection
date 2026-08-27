@@ -1,5 +1,5 @@
 // First of all: who this process writes as, before any folder is created.
-import './user.js';
+import { writingAs } from './user.js';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -60,6 +60,47 @@ app.post('/api/admin/lock', (req, res) => {
   lock(tokenOf(req));
   res.setHeader('Set-Cookie', 'admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   res.json({ admin: false });
+});
+
+// --- what the app can actually do with the folders ----------------------
+// The answer to "why can I not write in my own collection": who this process is,
+// and what each folder lets it do. It writes a file and removes it again rather
+// than reading the mode and guessing.
+const canWrite = (dir) => {
+  const probe = path.join(dir, `.write-test-${process.pid}`);
+  try {
+    fs.writeFileSync(probe, 'x');
+    fs.rmSync(probe);
+    return { canWrite: true, why: '' };
+  } catch (e) {
+    return { canWrite: false, why: e.code || e.message };
+  }
+};
+
+const look = (what, dir) => {
+  const out = { what, path: dir, exists: false, owner: '', mode: '', canWrite: false, why: '' };
+  if (!dir) return { ...out, why: 'not set' };
+  let stat;
+  try {
+    stat = fs.statSync(dir);
+  } catch (e) {
+    return { ...out, why: e.code === 'ENOENT' ? 'not there' : (e.code || e.message) };
+  }
+  out.exists = true;
+  out.owner = `${stat.uid}:${stat.gid}`;
+  out.mode = (stat.mode & 0o777).toString(8).padStart(3, '0');
+  return { ...out, ...canWrite(dir) };
+};
+
+app.get('/api/permissions', requireAdmin, (req, res) => {
+  const places = [look('Database and covers', DATA_DIR)];
+  for (const lib of getLibraries()) places.push(look('Library', lib.path));
+  const importPath = getSetting('importPath');
+  if (importPath) places.push(look('Import folder', importPath));
+  // one book, to show what the collection's own folders look like
+  const book = db.prepare('SELECT path FROM books LIMIT 1').get();
+  if (book) places.push(look('A book folder', book.path));
+  res.json({ writingAs: writingAs(), places });
 });
 
 // --- users -------------------------------------------------------------

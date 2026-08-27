@@ -24,8 +24,28 @@ if (process.env.UMASK) {
   if (Number.isInteger(mask)) process.umask(mask);
 }
 
-const uid = num('PUID');
-const gid = num('PGID');
+let uid = num('PUID');
+let gid = num('PGID');
+
+// Nothing set, and running as root: write as whoever owns the data folder. On
+// Unraid that folder is under appdata and belongs to nobody:users, which is what
+// the shares expect — and a container that creates root-owned folders in someone's
+// collection leaves them unable to touch their own files. Better to take the hint
+// than to need a setting nobody knew about.
+if (uid === null && gid === null && typeof process.getuid === 'function' && process.getuid() === 0) {
+  const where = process.env.DATA_DIR || '/data';
+  for (const p of [where, path.dirname(where)]) {
+    try {
+      const s = fs.statSync(p);
+      if (s.uid !== 0) {
+        uid = s.uid;
+        gid = s.gid;
+        console.log(`Nothing said who to write as, so following ${p}: ${uid}:${gid}`);
+        break;
+      }
+    } catch { /* not there: try the folder above, then give up */ }
+  }
+}
 
 if (uid !== null && gid !== null && typeof process.setuid !== 'function') {
   // Windows, for instance: say so, or a PUID that does nothing looks like a PUID
@@ -55,3 +75,11 @@ if (uid !== null && gid !== null && typeof process.setuid === 'function') {
       + `${typeof process.getuid === 'function' ? process.getuid() : 'is'}`);
   }
 }
+
+// What the rest of the app should say when asked who it is writing as.
+export const writingAs = () => ({
+  uid: typeof process.getuid === 'function' ? process.getuid() : null,
+  gid: typeof process.getgid === 'function' ? process.getgid() : null,
+  umask: process.umask().toString(8).padStart(3, '0'),
+  asked: { PUID: process.env.PUID || '', PGID: process.env.PGID || '', UMASK: process.env.UMASK || '' },
+});
