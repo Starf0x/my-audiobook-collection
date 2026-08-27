@@ -225,14 +225,17 @@ name that others do not know.
 
 ![The Continue listening shelf, one book playing](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/shelf.png)
 
-Every book on the **Continue listening** shelf carries its own play button under
-the track it is on, so carrying on with the last thing you were listening to is
-one press from the page you land on. Tapping the cover still does the same.
+Every book on the **Continue listening** shelf carries its own button under the
+track it is on, and since those are the books you are in the middle of it reads
+**▶ Resume** — a place kept is a place to carry on from, whether or not anything
+is loaded in the player, so a reload does not turn it back into *Play*. Tapping
+the cover does the same as pressing it.
 
-**▶ Play** on a card starts the book where you left it and opens the player at the
-bottom of the page. That same button then reads **⏸ Pause**, with a ring around it,
-because it is the one that stops the book it started; pressing it again reads
-**▶ Resume** and carries on. Every other card and tile still says *Play*, and
+On a card the button says what pressing it will do: **▶ Play** for a book you have
+not started, **▶ Resume** for one with a place kept in it. Either way it opens the
+player at the bottom of the page, and that same button then reads **⏸ Pause**,
+with a ring around it, because it is the one that stops the book it started;
+pressing it again reads **▶ Resume** and carries on. Every other card and tile still says *Play*, and
 pressing one of those moves the pause to that book. Which book is playing survives a redraw of
 the list, so browsing away and back does not lose it.
 
