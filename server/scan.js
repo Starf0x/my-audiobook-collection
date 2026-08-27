@@ -39,15 +39,49 @@ const taggedFields = (c) => [
   ['description', descriptionOf(c)], ['cover', c.picture?.[0]], ['track no', c.track?.no],
 ].filter(([, v]) => v).map(([k]) => k).join(',');
 
-// One parse of the first file, for the two things a book that has not changed
-// still has to be kept honest about: which tags its files carry, and which series
-// they say it belongs to.
+const NOTHING = {
+  title: '', narrator: '', year: '', description: '',
+  tagged: '', tagSeries: '', seriesNo: 0, cover: null,
+};
+
+// Everything a book's first file says about the book itself. A full read and the
+// shortcut for a book that has not changed take the same fields from the same
+// parse — only the running time and the track list need every file.
+function firstFileMeta(tags) {
+  const c = tags.common || {};
+  const s = seriesFromTags(tags);
+  const meta = {
+    title: c.album || c.title || '',
+    narrator: c.composer?.[0] || c.artist || '',
+    year: c.year ? String(c.year) : '',
+    description: descriptionOf(c),
+    tagged: taggedFields(c),
+    tagSeries: s.name,
+    seriesNo: s.no,
+    cover: null,
+  };
+  const pic = c.picture?.[0];
+  if (pic) {
+    // named after the image itself: the same art keeps its name, new art gets
+    // a new one, so a browser may keep it for a long time
+    const name = crypto.createHash('md5').update(pic.data).digest('hex') + '.jpg';
+    // Several books can carry the same art, and with several books being read
+    // at once two of them could write this file at the same moment. The name is
+    // the hash of the bytes, so whoever wrote it first wrote the right thing.
+    const target = path.join(DATA_DIR, 'covers', name);
+    try {
+      if (!fs.existsSync(target)) fs.writeFileSync(target, Buffer.from(pic.data));
+    } catch { /* another book is writing the same art right now */ }
+    meta.cover = name;
+  }
+  return meta;
+}
+
 async function firstFileTells(file) {
   try {
-    const tags = await lane(() => parseFile(file));
-    return { tagged: taggedFields(tags.common || {}), series: seriesFromTags(tags) };
+    return firstFileMeta(await lane(() => parseFile(file)));
   } catch {
-    return { tagged: '', series: { name: '', no: 0 } };
+    return { ...NOTHING };
   }
 }
 
@@ -86,10 +120,7 @@ const seriesFromTags = (tags) => {
 };
 
 async function readMeta(files, bookPath) {
-  const meta = {
-    title: '', narrator: '', year: '', description: '', duration: 0, cover: null,
-    tagSeries: '', seriesNo: 0,
-  };
+  const meta = { ...NOTHING, duration: 0, tracks: [] };
   for (const [i, file] of files.entries()) {
     let tags = {};
     // No { duration: true }: that scans every frame of every file (~4s per MP3).
@@ -97,31 +128,8 @@ async function readMeta(files, bookPath) {
     try { tags = await lane(() => parseFile(file)); } catch { /* unreadable file */ }
     const c = tags.common || {}, f = tags.format || {};
     meta.duration += f.duration || 0;
-    meta.tracks = meta.tracks || [];
     meta.tracks.push({ title: c.title || path.basename(file, path.extname(file)), duration: f.duration || 0 });
-    if (i > 0) continue;
-    meta.title = c.album || c.title || '';
-    meta.narrator = c.composer?.[0] || c.artist || '';
-    meta.year = c.year ? String(c.year) : '';
-    meta.description = descriptionOf(c);
-    meta.tagged = taggedFields(c);
-    const s = seriesFromTags(tags);
-    meta.tagSeries = s.name;
-    meta.seriesNo = s.no;
-    const pic = c.picture?.[0];
-    if (pic) {
-      // named after the image itself: the same art keeps its name, new art gets
-      // a new one, so a browser may cache it for a long time
-      const name = crypto.createHash('md5').update(pic.data).digest('hex') + '.jpg';
-      // Several books can carry the same art, and with several books being read
-      // at once two of them could write this file at the same moment. The name is
-      // the hash of the bytes, so whoever wrote it first wrote the right thing.
-      const target = path.join(DATA_DIR, 'covers', name);
-      try {
-        if (!fs.existsSync(target)) fs.writeFileSync(target, Buffer.from(pic.data));
-      } catch { /* another book is writing the same art right now */ }
-      meta.cover = name;
-    }
+    if (i === 0) Object.assign(meta, firstFileMeta(tags));
   }
   if (!meta.cover) {
     const local = fs.readdirSync(bookPath).find((n) => COVER.test(n));
@@ -134,10 +142,12 @@ async function readMeta(files, bookPath) {
 // statement handle for every book and track, which showed up as growing RSS
 // across repeated scans of a large library.
 const q = {
-  bookByPath: db.prepare('SELECT id, duration FROM books WHERE path = ?'),
+  bookByPath: db.prepare(`SELECT id, duration, narrator, year, description, cover
+                          FROM books WHERE path = ?`),
   trackPaths: db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx'),
   touchBook: db.prepare(`UPDATE books SET genre = ?, author = ?, series = ?, tagged = ?,
-      tag_series = ?, series_no = ? WHERE id = ?`),
+      tag_series = ?, series_no = ?, narrator = ?, year = ?, description = ?, cover = ?
+      WHERE id = ?`),
   upsertBook: db.prepare(`INSERT INTO books
       (path, genre, author, series, title, narrator, year, description, cover, duration, tagged, tag_series, series_no)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -165,14 +175,20 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
   const unchanged = !force && existing && known.length === files.length && known.every((p, i) => p === files[i]);
 
   if (unchanged) {
-    // reading the first file's tags is cheap, and it keeps the "in MP3" state
-    // truthful after tags were written outside the app. The series goes the same
-    // way: a book already in the library must pick up what a new version of this
-    // app can work out, without its folders having to change first.
+    // One parse of the first file is cheap, and the book takes from it everything
+    // it says: the "in MP3" state stays truthful after tags were written outside
+    // the app, and so do the values — narrator, year, description, cover — which
+    // is where a full read gets them from as well. What the file does not say is
+    // left alone, so a title or a description filled in here is not blanked by a
+    // scan. The series goes the same way: a book already in the library picks up
+    // what a newer version of this app can work out, without its folders changing.
     const told = await firstFileTells(files[0]);
     q.touchBook.run(genre, author, series, told.tagged,
-      told.series.name || (guess ? guess.name : ''),
-      told.series.no || (guess ? guess.no : 0), existing.id);
+      told.tagSeries || (guess ? guess.name : ''),
+      told.seriesNo || (guess ? guess.no : 0),
+      told.narrator || existing.narrator, told.year || existing.year,
+      told.description || existing.description, told.cover || existing.cover,
+      existing.id);
     return 1;
   }
 
