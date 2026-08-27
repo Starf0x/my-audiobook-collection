@@ -436,8 +436,12 @@ with no description keeps no empty comment frame. The badge on each card lists
 what the files actually carry.
 
 Two books can be written at the same time — a book from one series and a book
-from another, each with a bar of its own that names it. The same book twice is
-refused, since that would be two writers on one file, and the whole-collection run
+from another, each with a bar of its own that names it. **The same book twice is
+never started**, whichever way it is asked for: the button that started it is dead
+while it runs, that book's *Find metadata* and *Edit metadata* are held back, a
+second attempt from another tab or an older dialog is answered with a sentence
+rather than an error, and the server refuses a request that skips the page
+altogether — two writers on one file is worse than a wait. The whole-collection run
 waits for any single write to finish before it starts, because it would reach that
 book itself. While a write is going, the buttons that would move those files or
 read them mid-write — a scan, an import, the disk check, *Find metadata*, *Edit
