@@ -180,6 +180,7 @@ async function selectGenre(genre, li) {
     `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
   $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
   $('#books .list').innerHTML = '<div class="empty">Select an author.</div>';
+  show('authors');
 }
 
 async function selectAuthor(author, li) {
@@ -227,8 +228,27 @@ function drawBooks(books, heading, kind = 'Series') {
     </div>`;
   }
   $('#books .list').innerHTML = html || '<div class="empty">No books.</div>';
+  markPlaying();
+  show('books');
 }
 
+
+// --- which column is on screen -----------------------------------------
+// A phone has room for one of the three columns at a time; this says which, and
+// the stylesheet does the rest. A wide screen shows all three and ignores it.
+// One step out of the book column: back to the authors of the genre being
+// browsed, or to the genres themselves when there is no author on screen.
+const outOfBooks = () => (!document.body.classList.contains('maintenance')
+  && (state.author || state.series) ? 'authors' : 'genres');
+
+const show = (col) => {
+  document.body.dataset.col = col;
+  // the button says where it goes, not just "back"
+  $('#backCol').textContent = outOfBooks() === 'authors' ? '‹ Authors' : '‹ Genres';
+};
+$('#backGenres').onclick = () => show('genres');
+$('#backCol').onclick = () => show(outOfBooks());
+$('#toBooks').onclick = () => show('books');
 
 // --- the search box -----------------------------------------------------
 // The words are looked for in anything a book is filed or described by, and the
@@ -245,6 +265,7 @@ async function runSearch() {
   document.body.classList.remove('maintenance');
   if (!rows.length) {
     $('#books .list').innerHTML = `<div class="empty">Nothing matches "${esc(q)}".</div>`;
+    show('books');
     return;
   }
   await drawBooks(rows, `${q} · ${rows.length} book${rows.length === 1 ? '' : 's'}`, 'Search');
@@ -261,6 +282,11 @@ $('#q').onkeydown = (e) => {
 const audio = $('#audio');
 
 window.playBook = async function (id) {
+  // the same book again: the button that started it is the one that stops it
+  if (state.book && state.book.id === id) {
+    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+    return;
+  }
   if (!state.user) return toast('Pick a name first.');
   const book = await api(`/api/books/${id}?user=${encodeURIComponent(state.user)}`);
   state.book = book;
@@ -282,6 +308,20 @@ function playTrack(idx, position = 0) {
   audio.onloadedmetadata = () => { if (position) audio.currentTime = position; };
   audio.play().catch(() => {});
 }
+
+// The card of the book that is playing says what pressing it will do now, and
+// every other card still says Play.
+function markPlaying() {
+  const playing = state.book ? state.book.id : 0;
+  document.querySelectorAll('#books .card .actions button[onclick^="playBook"]').forEach((b) => {
+    const mine = Number(b.getAttribute('onclick').match(/\d+/)[0]) === playing;
+    b.textContent = mine ? (audio.paused ? '▶ Resume' : '⏸ Pause') : '▶ Play';
+    b.classList.toggle('playing', mine && !audio.paused);
+  });
+}
+audio.addEventListener('play', markPlaying);
+audio.addEventListener('pause', markPlaying);
+audio.addEventListener('ended', markPlaying);
 
 $('#trackSelect').onchange = (e) => playTrack(Number(e.target.value));
 audio.onended = () => playTrack(state.track + 1);

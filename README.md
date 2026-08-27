@@ -19,6 +19,8 @@ The full manual, with screenshots of every part of it, is in the
 * Files new audiobooks from an **import folder** into the right genre, author and series
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
+* The Play button of the book that is playing is its Pause button, on the card you started it from
+* Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
 * Runs as a single Docker container, SQLite storage, no external services
 * One job at a time: whichever button started the job greys out until it is done, wherever it was pressed
 * Except tag writes: two books, or two series, can be written at once, each with its own bar
@@ -181,6 +183,27 @@ request that changes something is refused unless the browser has unlocked, so
 hiding the buttons is not what protects it — the server does. A visitor who types
 the admin address is sent to the listening page.
 
+## On a phone
+
+![The app on a phone, mid-book](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/phone.png)
+
+Below 720 pixels the three columns become one, and the app steps through them:
+genres, then the authors and series of that genre, then the books. Each heading
+carries the way back — *‹ Genres*, *‹ Authors* — and the genre column has a
+*Books ›* step forward, so nothing is more than one tap away. It opens on the
+shelves, as it does on a desktop.
+
+Everything else follows the screen: the header wraps to two rows with the search
+across the width, a book card puts its cover and text side by side and its buttons
+in a grid under them, dialogs become full-screen sheets that scroll, the player
+keeps cover, title and track on one line with the audio controls across the
+bottom, and every row and button is at least 40 pixels tall. Fields are set at
+16px so a phone does not zoom the page when you tap one. A tablet, and a phone on
+its side, still get all three columns — narrower.
+
+The long list of tags a file carries is a paragraph on a phone, so a card there
+says *In MP3: 10 tags* instead; the full list is still what the desktop shows.
+
 ## Names, and why one browser is not offered another's
 
 A listener has no password of their own — the app is meant to be shared inside a
@@ -197,6 +220,15 @@ existing name exactly can still type it and pick that place up — on a new phon
 that is the *point*, and without a password per listener there is no way to tell
 the two apart. If that matters more than convenience, give each listener their own
 name that others do not know.
+
+## Playing, and stopping
+
+**▶ Play** on a card starts the book where you left it and opens the player at the
+bottom of the page. That same button then reads **⏸ Pause**, with a ring around it,
+because it is the one that stops the book it started; pressing it again reads
+**▶ Resume** and carries on. Every other card still says *Play*, and pressing one
+of those moves the pause to that book. Which book is playing survives a redraw of
+the list, so browsing away and back does not lose it.
 
 ## Importing new audiobooks
 
