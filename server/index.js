@@ -4,7 +4,7 @@ import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
-import { scan, progress } from './scan.js';
+import { scan, progress, lastSkipped } from './scan.js';
 import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
@@ -238,6 +238,9 @@ app.post('/api/scan', requireAdmin, (req, res) => {
   res.json({ started: true });
 });
 app.get('/api/scan/status', (req, res) => res.json(progress));
+// What the last scan walked past, and why: the answer to "it found fewer books
+// than I have". Empty until a scan has run in this container.
+app.get('/api/skipped', requireAdmin, (req, res) => res.json(lastSkipped()));
 
 // --- library -----------------------------------------------------------
 // A series is a folder where the collection has one, and whatever the files call
