@@ -7,7 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-col="books">
 <header>
   <h1>🎧 My Audiobook Collection</h1>
   <input id="q" type="search" class="search" placeholder="Search books, authors, series…"
@@ -18,9 +18,9 @@
 </header>
 
 <main>
-  <aside id="genres"><div class="col-title">Genres</div><ul></ul></aside>
-  <section id="authors"><div class="col-title">Authors</div><ul></ul></section>
-  <section id="books"><div class="col-title">Books <button id="home" class="linkish">Home</button></div><div class="list"></div></section>
+  <aside id="genres"><div class="col-title">Genres<button class="back linkish" id="toBooks">Books ›</button></div><ul></ul></aside>
+  <section id="authors"><div class="col-title"><button class="back linkish" id="backGenres">‹ Genres</button>Authors</div><ul></ul></section>
+  <section id="books"><div class="col-title"><button class="back linkish" id="backCol">‹ Back</button>Books <button id="home" class="linkish">Home</button></div><div class="list"></div></section>
 </main>
 
 <footer id="player" hidden>
