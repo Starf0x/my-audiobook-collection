@@ -13,16 +13,80 @@ export function beginFileWork() {
   Object.assign(fileProgress, { running: true, done: 0, total: 0, current: '', error: '' });
 }
 
-// A rename where the two paths share a filesystem, a copy where they do not,
-// which is the case for two separate Docker bind mounts.
+// What the disk said, in words that say what to do about it. A raw EACCES from
+// libuv tells the person looking at the page nothing at all.
+export function explainFileError(e, what) {
+  const who = typeof process.getuid === 'function' ? `${process.getuid()}:${process.getgid()}` : 'root';
+  if (e.code === 'EACCES' || e.code === 'EPERM') {
+    return new Error(`${what} was refused by the disk (${e.code}). This app is writing as ${who}. `
+      + 'Set PUID and PGID on the container to the user that owns the share (99 and 100 on Unraid), '
+      + 'and check that the folders it has already made are not owned by root.');
+  }
+  if (e.code === 'ENOSPC') return new Error(`${what} stopped: the disk is full.`);
+  if (e.code === 'EROFS') return new Error(`${what} failed: that folder is mounted read-only.`);
+  if (e.code === 'ENOTEMPTY' || e.code === 'EEXIST') {
+    return new Error(`${what} failed: there is already something at the destination.`);
+  }
+  return e;
+}
+
+// Every file of a folder, by path relative to it, with its size.
+const treeOf = (root) => {
+  const out = new Map();
+  const walk = (dir, rel) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const here = path.join(dir, e.name);
+      if (e.isDirectory()) walk(here, path.join(rel, e.name));
+      else if (e.isFile()) out.set(path.join(rel, e.name), fs.statSync(here).size);
+    }
+  };
+  walk(root, '');
+  return out;
+};
+
+// A rename where the two paths share a filesystem, a copy where they do not —
+// two Docker bind mounts, or a user share spread over several disks, which answers
+// a rename between them with EXDEV, and sometimes with ENOTEMPTY or EEXIST when
+// the destination exists on another disk of the same share.
+//
+// Deliberately not EPERM or EBUSY: those mean something holds the folder or the
+// rights are wrong, and copying then would leave the book in two places instead of
+// saying so.
+const COPY_INSTEAD = ['EXDEV', 'ENOTEMPTY', 'EEXIST'];
+
 export async function moveFolder(src, dest) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
+  if (fs.existsSync(dest)) {
+    if (fs.readdirSync(dest).length) {
+      throw new Error(`There is already something at ${dest}. Nothing was moved.`);
+    }
+    // An empty folder, left behind by an earlier attempt or made by hand: out of
+    // the way first, because a rename onto one is refused on some platforms.
+    fs.rmdirSync(dest);
+  }
   try {
     fs.renameSync(src, dest);
+    return;
   } catch (e) {
-    if (e.code !== 'EXDEV') throw e;
-    await copyTree(src, dest);
+    if (!COPY_INSTEAD.includes(e.code)) throw e;
+  }
+  await copyTree(src, dest);
+  // The source only goes once every file has arrived, the same size as it left.
+  // A move that half worked and then deleted the original is not recoverable.
+  const from = treeOf(src);
+  const to = treeOf(dest);
+  const missing = [...from].filter(([rel, size]) => to.get(rel) !== size);
+  if (missing.length) {
+    throw new Error(`Copied ${to.size} of ${from.size} file(s) to ${dest}, so nothing was removed `
+      + `from ${src}. The first one missing is ${missing[0][0]}.`);
+  }
+  try {
     fs.rmSync(src, { recursive: true, force: true });
+  } catch (e) {
+    // The book is where it belongs; only the original could not be cleared. Undoing
+    // a good move over that would be worse, so it is said and left.
+    fileProgress.error = `Copied to ${dest}, but ${src} could not be removed (${e.code}). `
+      + 'It is still in the import folder — delete it there.';
   }
 }
 
@@ -291,7 +355,8 @@ export async function importBook({ source, genre, author, series, title, replace
     // landed instead of leaving it to be found
     const row = db.prepare('SELECT id, genre, author, title FROM books WHERE path = ?').get(dest) || {};
     return { dest, replacedPath, ...row };
-  } catch (e) {
+  } catch (err) {
+    const e = explainFileError(err, `The import of ${path.basename(source)}`);
     // The copy that was there has been stepped aside but the new one never
     // arrived: put it back, or the library points at a folder that is not there.
     if (replacedPath && !fs.existsSync(dest) && fs.existsSync(replacedPath)) {
