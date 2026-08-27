@@ -148,7 +148,8 @@ const tile = (b, resumable) => {
     <div class="a">${esc(b.author)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
-      <div class="a">${b.done ? 'Listened' : `Track ${at} of ${b.tracks}`}</div>` : ''}
+      <div class="a">${b.done ? 'Listened' : `Track ${at} of ${b.tracks}`}</div>
+      <button class="tplay" data-play="${b.id}">▶ Play</button>` : ''}
   </div>`;
 };
 
@@ -170,6 +171,10 @@ async function loadHome() {
       ? playBook(Number(t.dataset.id))
       : openInLibrary(t.dataset.genre, t.dataset.author));
   });
+  $('#books .list').querySelectorAll('button[data-play]').forEach((b) => {
+    b.onclick = (e) => { e.stopPropagation(); playBook(Number(b.dataset.play)); };
+  });
+  markPlaying();
 }
 
 async function openInLibrary(genre, author) {
@@ -381,15 +386,20 @@ function playTrack(idx, position = 0) {
   audio.play().catch(() => {});
 }
 
-// The card of the book that is playing says what pressing it will do now, and
-// every other card still says Play.
+// Whatever offers to play the book that is playing says what pressing it will do
+// now — the card in the library, and the tile on the shelf — and everything else
+// still says Play.
 function markPlaying() {
   const playing = state.book ? state.book.id : 0;
+  const label = (button, id) => {
+    const mine = id === playing;
+    button.textContent = mine ? (audio.paused ? '▶ Resume' : '⏸ Pause') : '▶ Play';
+    button.classList.toggle('playing', mine && !audio.paused);
+  };
   document.querySelectorAll('#books .card .actions button[onclick^="playBook"]').forEach((b) => {
-    const mine = Number(b.getAttribute('onclick').match(/\d+/)[0]) === playing;
-    b.textContent = mine ? (audio.paused ? '▶ Resume' : '⏸ Pause') : '▶ Play';
-    b.classList.toggle('playing', mine && !audio.paused);
+    label(b, Number(b.getAttribute('onclick').match(/\d+/)[0]));
   });
+  document.querySelectorAll('#books button[data-play]').forEach((b) => label(b, Number(b.dataset.play)));
 }
 audio.addEventListener('play', markPlaying);
 audio.addEventListener('pause', markPlaying);
