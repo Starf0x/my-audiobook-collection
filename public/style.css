@@ -29,7 +29,7 @@ header {
   background: linear-gradient(90deg, #171a21, #12141a); border-bottom: 1px solid var(--line);
   box-shadow: 0 10px 26px -22px #000;
 }
-header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; cursor: pointer; }
 /* the search box: wide enough for a title and an author, and it may grow */
 .search { width: 300px; max-width: 34vw; margin-left: 14px; }
 .search::placeholder { color: var(--dim); }
@@ -397,4 +397,9 @@ button.playing {
 /* a shelf tile you can carry on from: its own play button, under the progress */
 .tile .tplay {
   width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12.5px;
+}
+
+/* the name of the app leads back to the shelves */
+@media (hover: hover) {
+  header h1:hover { color: var(--accent2); }
 }

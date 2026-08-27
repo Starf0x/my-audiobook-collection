@@ -18,7 +18,7 @@ const state = { user: localStorage.user || '', genre: null, author: null, book: 
 // --- admin button -------------------------------------------------------
 $('#adminBtn').onclick = async () => {
   const p = await api('/api/admin').catch(() => ({ required: false, admin: true }));
-  if (!p.required || p.admin) return location.assign('index.html');
+  if (!p.required || p.admin) return location.assign('/admin');
   $('#adminWhy').textContent = 'The password opens the page that can scan, import, tag, move and delete.';
   $('#adminPass').value = '';
   $('#admin').showModal();
@@ -27,7 +27,7 @@ $('#adminCancel').onclick = () => $('#admin').close();
 $('#adminGo').onclick = async () => {
   try {
     await post('/api/admin/unlock', { password: $('#adminPass').value });
-    location.assign('index.html');
+    location.assign('/admin');
   } catch (e) { toast(e.message); }
 };
 
@@ -96,6 +96,7 @@ const shelf = (title, items, resumable) => !items.length ? '' :
      <div class="tiles">${items.map((b) => tile(b, resumable)).join('')}</div></div>`;
 
 async function loadHome() {
+  $('#q').value = '';
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   $('#authors ul').innerHTML = '';
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
@@ -113,6 +114,8 @@ async function loadHome() {
   markPlaying();
 }
 $('#home').onclick = loadHome;
+// the name of the app is the way back to the shelves, wherever you are
+$('#brand').onclick = loadHome;
 
 async function openInLibrary(genre, author) {
   const gli = [...document.querySelectorAll('#genres li[data-name]')].find((l) => l.dataset.name === genre);
@@ -359,10 +362,17 @@ window.setListened = async function (id, box) {
   try {
     await post('/api/listened', { user: state.user, bookId: id, done: box.checked });
     const card = box.closest('.card');
-    const note = card.querySelector('.note');
+    // unticking cleared the place kept in it, so the card is a fresh book again
+    if (!box.checked) card.dataset.started = '0';
     const started = card.dataset.started === '1';
+    const note = card.querySelector('.note');
     note.className = 'note ' + (box.checked ? 'done' : started ? 'part' : 'new');
     note.title = box.checked ? 'Listened' : started ? 'Partly listened' : 'Not listened yet';
+    const play = card.querySelector('.actions button[onclick^="playBook"]');
+    if (play) {
+      play.dataset.resume = box.checked || started ? '1' : '0';
+      markPlaying();
+    }
     loadStats();
   } catch (e) {
     box.checked = !box.checked;
