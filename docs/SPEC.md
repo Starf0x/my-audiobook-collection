@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.64.** This document describes what the app is, how every
+**Version described: 1.9.72.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.72` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -492,7 +492,12 @@ created, `unref`'d, a dead worker is replaced and its file reported as not
 written). `apply_` hands every file of the book to that pool at once and counts
 as each finishes.
 
-**One writer per book**, not one per server: `writers`, a `Map` of book id to
+**One writer per book**, in the page as well as on the server. In the page,
+`writingBooks` — a `Set` of book ids — guards `writeWithProgress`, which every
+way in goes through: the card, the Needs tags row, the batch over that list, the
+edit dialog and the lookup dialog. A second attempt on a book already being written
+is answered with a toast and no second bar. The server holds the same rule for
+requests that never went through the page: `writers`, a `Map` of book id to
 that write's progress. Two books — two series — can be written at the same time,
 since each write only ever touches its own book's files. The same book twice is
 refused with *"That book is already being written. Wait for it to finish."*, and
@@ -934,6 +939,8 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `same-book` | while a long write runs, every further request for that book is refused with the same reason — singly, three at once, with a different `pick`, and from the whole-collection run; another book writes meanwhile; metadata without a file write is still allowed; the book is free again afterwards |
+| `same-book-ui` | in the page: the pressed button dead, that book's metadata buttons held back, one bar only, a second call answered in words, a request that skips the page refused by the server, the batch counting it as one it could not do, and everything free again afterwards |
 | `folder-cover` | a book whose art is a `cover.jpg` beside the audio: a write puts that picture into the files, so the book leaves Needs tags and a rescan reads it back; art dropped in later is found by a scan |
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
@@ -1006,6 +1013,7 @@ to insert order and looks broken when the app is right.
 | 1.9.48 | addresses without file names, the app's name leads home, unticking Listened clears the place |
 | 1.9.56 | a scan takes the values from tags written elsewhere, and the counts follow it |
 | 1.9.64 | cover art beside the audio is written into the files; the version is on screen |
+| 1.9.72 | one write per book in the page too, whichever way it is asked for |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
