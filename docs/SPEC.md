@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.24.** This document describes what the app is, how every
+**Version described: 1.9.32.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.24` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.32` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -766,12 +766,18 @@ The tag badge carries both forms — `.wide` with the list, `.narrow` with the
 count — and the media query picks one, since the full list is a paragraph on a
 phone.
 
-**Playing** is a toggle on the card's own button: `playBook(id)` pauses or resumes
+**Playing** is a toggle on the button of whatever offered it — a card in the
+library, or a tile on the **Continue listening** shelf, where each book carries a
+`button.tplay[data-play]` under its progress line. A tile's button stops the click
+from reaching the tile behind it, or one tap would play and pause in the same
+breath.
+
+The toggle itself: `playBook(id)` pauses or resumes
 when `state.book.id === id` and starts the book otherwise, so the button that
 started it is the one that stops it. `markPlaying()` writes the label — *▶ Play*,
-*⏸ Pause*, *▶ Resume* — and a `.playing` ring, from the `play`, `pause` and
-`ended` events and at the end of `drawBooks`, so a redraw does not forget which
-book is playing. The `onclick` attribute stays `playBook(...)`, because the
+*⏸ Pause*, *▶ Resume* — and a `.playing` ring on every card button and every tile
+button, from the `play`, `pause` and `ended` events and at the end of
+`drawBooks` and `loadHome`, so a redraw does not forget which book is playing. The `onclick` attribute stays `playBook(...)`, because the
 stylesheet and the tests find the play button by it.
 
 **Maintenance lists** (admin page, `body.maintenance`): *Needs tags* (what a write
@@ -873,6 +879,7 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `tile-play` | on both pages and at phone width: every Continue listening tile has a play button under its progress and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
 | `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
 | `two-writes-ui` | pressing one book's *Write into MP3s* greys that button and the file-moving ones, leaves the other books' write buttons alive, and gives each write its own named bar |
 | `tagall-test` | the resumable run: paused across a restart, resumed to completion, every file written once, a fresh run starting over, a `running` row settled to `paused` at startup |
@@ -933,6 +940,7 @@ to insert order and looks broken when the app is right.
 | 1.9.8 | a browser is only offered the names it has used itself |
 | 1.9.16 | two books, or two series, can have their tags written at the same time |
 | 1.9.24 | a layout for phones, and Play becomes Pause on the card it started |
+| 1.9.32 | a play button on every Continue listening tile |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
