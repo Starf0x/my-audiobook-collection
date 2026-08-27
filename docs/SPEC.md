@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.56.** This document describes what the app is, how every
+**Version described: 1.9.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -479,7 +479,7 @@ What a tag write puts in every MP3 of a book:
 | `TALB` album, `TIT2` title | the book title — every file carries the book title, not "018 of 132" |
 | `TPE1` artist, `TPE2` album artist | the author |
 | `TCON` genre | the genre folder |
-| `TYER` year, `COMM` description, `APIC` cover | the book's metadata |
+| `TYER` year, `COMM` description, `APIC` cover | the book's metadata — the cover being either the file this app keeps or the picture beside the audio, since the Needs-tags list counts what the files carry |
 | `TCOM` composer | the narrator |
 | `TRCK` track number | renumbered in playing order, zero padded to at least two digits: `01/12`, `001/120` |
 
@@ -797,6 +797,12 @@ the play button to *▶ Play* — and the book leaves *Continue listening*. A pl
 lost this way is not recoverable, which is the price of the tick meaning what it
 says.
 
+**The version** the server is running is read from `package.json` at startup and
+returned by `/api/stats`, and both pages show it at the right-hand end of the
+status line. Without it there is no way to tell from the outside whether a
+container has actually been updated, which is exactly the question a bug report
+starts with.
+
 **Playing** is a toggle on the button of whatever offered it — a card in the
 library, or a tile on the **Continue listening** shelf, where each book carries a
 `button.tplay[data-play]` under its progress line. A tile's button stops the click
@@ -873,15 +879,19 @@ skips them will reproduce the bugs.
     one finishes — and redraw the list if it is the one on screen. Without that
     *Needs tags* keeps its old number until the page is reloaded, and it looks as
     though the scan did nothing.
-22. **The queue and the count of a resumable run must move together**, in one
+22. **Cover art beside the audio is cover art.** A book's cover is either a file
+    the app keeps or a `file:` path to a picture in the book's folder; a tag write
+    that only handles the first kind leaves a book asking for a cover it already
+    has, for ever, while the list promises a write can fix it.
+23. **The queue and the count of a resumable run must move together**, in one
     transaction: a container stopped between them drops a book off the queue that
     the count never counted.
-23. **A form field on a phone must be 16px or larger**, or the browser zooms the
+24. **A form field on a phone must be 16px or larger**, or the browser zooms the
     whole page when it is focused and the layout jumps.
-24. **Never hand a browser the whole list of listeners.** `GET /api/users`
+25. **Never hand a browser the whole list of listeners.** `GET /api/users`
     answers with the names *that browser* has claimed; a first-time visitor gets
     an empty list, and the dialog then shows only a field to type one in.
-25. **Tooling note for whoever rebuilds this**: writing JavaScript through a
+26. **Tooling note for whoever rebuilds this**: writing JavaScript through a
     shell mangles template literals, `${…}` and `\d`. Use a file-writing tool for
     anything containing them, and grep the result afterwards.
 
@@ -924,6 +934,7 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `folder-cover` | a book whose art is a `cover.jpg` beside the audio: a write puts that picture into the files, so the book leaves Needs tags and a rescan reads it back; art dropped in later is found by a scan |
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
@@ -994,6 +1005,7 @@ to insert order and looks broken when the app is right.
 | 1.9.40 | a book with a place kept in it says Resume, not Play |
 | 1.9.48 | addresses without file names, the app's name leads home, unticking Listened clears the place |
 | 1.9.56 | a scan takes the values from tags written elsewhere, and the counts follow it |
+| 1.9.64 | cover art beside the audio is written into the files; the version is on screen |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
