@@ -833,6 +833,29 @@ function askConflict(body, clash) {
 }
 
 // --- cover files no book uses any more ---------------------------------
+// Who the app writes as, and what each folder lets it do.
+$('#checkPerms').onclick = async () => {
+  $('#permsOut').innerHTML = '<p class="hint">Looking…</p>';
+  let r;
+  try { r = await api('/api/permissions'); } catch (e) { return toast(e.message); }
+  const who = r.writingAs;
+  const said = who.uid === null
+    ? 'This platform has no user to write as (Windows), so nothing is dropped.'
+    : `Writing as ${who.uid}:${who.gid}, umask ${who.umask}`
+      + (who.asked.PUID || who.asked.PGID
+        ? ` — asked for ${who.asked.PUID || '?'}:${who.asked.PGID || '?'}`
+        : ' — PUID and PGID are not set on the container');
+  const rows = r.places.map((p) => `<tr>
+      <td>${esc(p.what)}</td>
+      <td class="mono">${esc(p.path || '—')}</td>
+      <td>${p.exists ? esc(p.owner) + ' · ' + esc(p.mode) : esc(p.why || 'not there')}</td>
+      <td class="${p.canWrite ? 'better' : 'worse'}">${p.canWrite ? 'can write' : 'cannot write'
+    + (p.why ? ' (' + esc(p.why) + ')' : '')}</td>
+    </tr>`).join('');
+  $('#permsOut').innerHTML = `<p class="hint">${esc(said)}</p>
+    <table class="cmp"><tr><th>What</th><th>Where</th><th>Owner · mode</th><th></th></tr>${rows}</table>`;
+};
+
 $('#tidyCovers').onclick = () => work($('#tidyCovers'), 'The cover tidy-up', async () => {
   try {
     const r = await post('/api/covers/tidy', {});
