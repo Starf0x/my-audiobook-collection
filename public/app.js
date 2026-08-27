@@ -1421,6 +1421,11 @@ function finishScan(error, p) {
   p.bar.done(p.warning ? 30000 : 3000);
   loadGenres();
   loadStats();
+  // A scan re-reads what every file carries and drops books whose folders are
+  // gone, so both maintenance counts are stale the moment it finishes — and so is
+  // either list, if it is the one on screen.
+  loadUntagged().then(() => { if ($('#needsTags').classList.contains('active')) $('#needsTags').click(); });
+  loadBroken().then(() => { if ($('#brokenList').classList.contains('active')) $('#brokenList').click(); });
 }
 
 for (const id of ['needsTags', 'brokenList', 'importList', 'replacedList', 'trashList']) {

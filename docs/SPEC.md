@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.9.48.** This document describes what the app is, how every
+**Version described: 1.9.56.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.48` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.9.56` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -412,16 +412,29 @@ Cover art is written to `DATA_DIR/covers/<md5 of the bytes>.jpg`, so identical a
 is one file and new art gets a new name. A local `cover.jpg`/`folder.png`/`front.*`
 beside the book is used as `file:<absolute path>` when the tags carry none.
 
-**The unchanged fast path.** A book whose file paths are unchanged is not re-read;
-`touchBook` refreshes genre, author, series, `tagged`, `tag_series` and
-`series_no` from one parse of the first file (`firstFileTells`). Two things depend
-on it:
+**The unchanged fast path.** A book whose file paths are unchanged is not re-read
+in full; one parse of its first file (`firstFileTells` → `firstFileMeta`) refreshes
+genre, author, series, `tagged`, `tag_series`, `series_no` **and the values the
+same parse carries** — narrator, year, description and the cover art. That is where
+a full read gets them from too: only the running time and the track list need every
+file, so `readMeta` and the fast path share `firstFileMeta` and differ in nothing
+else.
+
+Two rules make that safe. Where the file says nothing, what the app has is kept
+(`told.year || existing.year`), so a description typed into *Edit metadata* is not
+blanked by a scan. Where the file says something, the file wins — the same rule a
+full read follows. The **title** is never touched here, because the folder name
+wins over the album tag and the folder has not changed.
+
+Three things depend on it:
 
 * it must still write `tag_series`/`series_no`, or a series inferred from tags
   never appears for a library that was scanned by an older version;
 * `addBook(..., force)` bypasses it. A replacing import lands on the very same
   file names, and without `force` the old copy's duration, cover and description
-  would be kept.
+  would be kept;
+* it must adopt the **values**, not only the list of field names, or tags written
+  by another program leave the app knowing that a year exists and not what it is.
 
 Progress is a module-level object; `running` is set **before** walking the tree,
 because the walk of a large share takes tens of seconds and the interface would
@@ -856,12 +869,19 @@ skips them will reproduce the bugs.
     hold a lane while waiting for its children.
 20. **Sort file names numerically** (`localeCompare(…, {numeric: true})`), or
     track 10 plays before track 2.
-21. **A form field on a phone must be 16px or larger**, or the browser zooms the
+21. **A scan changes the maintenance counts**, so the page must reload them when
+    one finishes — and redraw the list if it is the one on screen. Without that
+    *Needs tags* keeps its old number until the page is reloaded, and it looks as
+    though the scan did nothing.
+22. **The queue and the count of a resumable run must move together**, in one
+    transaction: a container stopped between them drops a book off the queue that
+    the count never counted.
+23. **A form field on a phone must be 16px or larger**, or the browser zooms the
     whole page when it is focused and the layout jumps.
-22. **Never hand a browser the whole list of listeners.** `GET /api/users`
+24. **Never hand a browser the whole list of listeners.** `GET /api/users`
     answers with the names *that browser* has claimed; a first-time visitor gets
     an empty list, and the dialog then shows only a field to type one in.
-23. **Tooling note for whoever rebuilds this**: writing JavaScript through a
+25. **Tooling note for whoever rebuilds this**: writing JavaScript through a
     shell mangles template literals, `${…}` and `\d`. Use a file-writing tool for
     anything containing them, and grep the result afterwards.
 
@@ -904,6 +924,8 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
+| `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
 | `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
@@ -971,6 +993,7 @@ to insert order and looks broken when the app is right.
 | 1.9.32 | a play button on every Continue listening tile |
 | 1.9.40 | a book with a place kept in it says Resume, not Play |
 | 1.9.48 | addresses without file names, the app's name leads home, unticking Listened clears the place |
+| 1.9.56 | a scan takes the values from tags written elsewhere, and the counts follow it |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
