@@ -7,7 +7,7 @@ import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress, lastSkipped } from './scan.js';
 import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
-  deleteReplaced, deleteAllReplaced, fileProgress, importState, clean } from './import.js';
+  deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { placeholderCover } from './placeholder.js';
@@ -162,7 +162,10 @@ app.post('/api/genres', requireAdmin, wrap(async (req, res) =>
 
 // --- import ------------------------------------------------------------
 app.get('/api/files/status', (req, res) => res.json(fileProgress));
-app.get('/api/import/state', requireAdmin, (req, res) => res.json(importState));
+app.get('/api/import/state', requireAdmin, (req, res) => {
+  lookAgain(); // whoever is watching the panel is why the folder gets looked at
+  res.json(importState);
+});
 app.get('/api/import', requireAdmin, wrap(async (req, res) => {
   const c = await candidates({ refresh: req.query.refresh === '1' });
   res.json({

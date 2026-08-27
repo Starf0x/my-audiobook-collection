@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.0.** This document describes what the app is, how every
+**Version described: 1.10.8.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.8` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -539,6 +539,17 @@ again on its own.
 
 ### 7.5 Import (`import.js`)
 
+The list is kept — a large import folder is not worth walking on every page load
+— but a folder that has **gone** is dropped from it as soon as the list is asked
+for again (one `existsSync` per book, not a walk), because the page would
+otherwise offer a book that cannot be imported: emptying the import folder left
+every one of them on screen. `GET /api/import/state`, which the open panel polls,
+also asks for a look at the folder, rate-limited to one walk every five seconds, so
+an emptied or refilled folder is noticed while the panel is open. The page compares
+the `cachedAt` of the list it is showing with the server's, rather than counting
+changes: the count had already gone up before the watch took its first look, which
+is precisely how an emptied folder stayed on screen.
+
 `importPath` is scanned for book folders however deep they sit: a folder holding
 audio is a book, and so is one whose sub-folders are all discs. Each candidate
 gets a guessed genre (a leading folder that names a known genre), author, series
@@ -957,6 +968,8 @@ Server suites:
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `import-empty` | the kept list drops a book whose folder has gone, empties when the folder is emptied, picks up a new one from the background pass, ignores a folder left behind with no audio, and reads from scratch on a refresh |
+| `import-empty-ui` | with the panel open and the folder emptied behind its back, the list empties itself within seconds, says the folder is empty, the count follows, and a book dropped in appears — nothing pressed |
 | `skipped` | every way a folder full of audiobooks can be walked past — a book one level too deep, files it cannot read, an empty folder, audio loose in a genre or author folder, a copy set aside — each named with its reason; counted plus not counted is what is on the disk; moving a too-deep book up one level raises the count |
 | `skipped-ui` | the **Not counted** row: absent when empty, there with a count after a scan, the bar saying so, and the list grouped by reason with a path for each |
 | `stay-put` | applying metadata from Needs tags leaves that list on screen — with a genre change too, and from the edit dialog — while from the library it still returns to the author |
@@ -1036,6 +1049,7 @@ to insert order and looks broken when the app is right.
 | 1.9.64 | cover art beside the audio is written into the files; the version is on screen |
 | 1.9.72 | one write per book in the page too, whichever way it is asked for |
 | 1.10.0 | a scan reports the folders it walked past, and a maintenance list stays put |
+| 1.10.8 | an emptied import folder empties the list that offers its books |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
