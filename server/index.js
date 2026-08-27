@@ -1,3 +1,5 @@
+// First of all: who this process writes as, before any folder is created.
+import './user.js';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
