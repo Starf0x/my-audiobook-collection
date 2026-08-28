@@ -423,22 +423,48 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
-The series comes from three places, in this order. The **brackets** on the end of
-a title (*The Final Empire (Mistborn, #1)*, *(The Dark Tower V)*, *(Book 3 of The
-Expanse)*, *(A Mistborn Novel)*); the **subtitle**, which is where it goes when
-the title is clean (*The Stormlight Archive, Book Three*); and **Google's own
-series line**, which is the only place it is for a book like *A Kiss of Shadows* —
-a clean title, no subtitle, and book 1 of *Merry Gentry* all the same. That line
-is usually missing from a search answer, so for each result that still has no
-series the volume itself is asked about, once, in parallel with the others: a
-lookup with nothing in the words costs a second round trip, and a refused or slow
-one costs the series rather than the lookup.
+### How the series is found
+
+Google keeps series in an awkward place, so this is worth knowing. A search answer
+names the series in the **title's brackets** (*The Final Empire (Mistborn, #1)*,
+*(The Dark Tower V)*, *(Book 3 of The Expanse)*, *(A Mistborn Novel)*) or in the
+**subtitle** (*Mistborn Book One*) — and for plenty of books, in neither. *A Kiss
+of Shadows* has a clean title, no subtitle, and is book 1 of *Merry Gentry* all
+the same.
+
+That series lives in `volumeInfo.seriesInfo`, and two things about it matter. It is
+attached to the **volume**, not to a search result, so it is usually missing from
+the answer a search gives. And it holds **no series name** — only an id, the
+sequence number (`orderNumber`; `bookDisplayNumber` is for printing and can read
+*2.5*), and a "short title" that is as often the book's own name as the series'.
+The name itself is a third endpoint, `series/get`.
+
+So the app asks in this order and stops at the first answer:
+
+| Step | Costs | What it gets |
+| --- | --- | --- |
+| the words of the result | nothing | *Mistborn* from a title or subtitle |
+| `volumes/<id>` | one request | the series id and the sequence number |
+| `series/get` | one request, then cached | the name Google keeps for that series |
+
+A book whose title says its series is never asked about again; a book like *A Kiss
+of Shadows* costs two extra requests, and the second of them once per series, not
+once per book — a shelf of *Merry Gentry* pays for the name a single time. Neither
+request can take the lookup down: an eight-second limit each, and anything that
+fails costs the series and nothing else.
 
 There has to be a series *somewhere* for one to be offered: *(Unabridged)* and
 *(Penguin Classics)* are not series, neither is a number on its own, and a series
 named after the book itself is the book. What it finds is shown as a tick beside
 the name and the volume number, on by default and refusable, and the brackets come
 off the title so the album tag does not carry them.
+
+**Settings → What Google says about series** asks about a stretch of books that
+have no series yet and reports, per book, what Google answered, which of the three
+places the series came from, the raw `seriesInfo` fields, and how many requests it
+took. It is the way to see why a particular book gets nothing offered.
+
+![The series report in Settings](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/series-report.png)
 
 ![A lookup result offering the series it read out of the title](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/series-lookup.png)
 

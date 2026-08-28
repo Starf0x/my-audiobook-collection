@@ -856,6 +856,33 @@ $('#checkPerms').onclick = async () => {
     <table class="cmp"><tr><th>What</th><th>Where</th><th>Owner · mode</th><th></th></tr>${rows}</table>`;
 };
 
+// What Google answered for a stretch of books, as a table to read and to send on.
+// Its own request count per book is the part worth seeing: a series in the title
+// is free, and everything else is not.
+$('#seriesReport').onclick = () => work($('#seriesReport'), 'The series report', async () => {
+  $('#seriesOut').innerHTML = '<p class="hint">Asking Google, one book at a time…</p>';
+  let r;
+  try { r = await api(`/api/lookup/series-report?limit=${$('#seriesReportN').value}`); }
+  catch (e) { $('#seriesOut').innerHTML = ''; return toast(e.message); }
+  const found = r.books.filter((b) => b.series).length;
+  const rows = r.books.map((b) => {
+    const said = [b.seriesId ? 'id ' + b.seriesId : '', b.orderNumber !== '' && b.orderNumber !== undefined ? 'order ' + b.orderNumber : '',
+      b.bookDisplayNumber ? 'shows ' + b.bookDisplayNumber : '', b.shortSeriesBookTitle ? '“' + b.shortSeriesBookTitle + '”' : '']
+      .filter(Boolean).join(' · ');
+    return `<tr>
+      <td>${esc(b.title)}<div class="hint">${esc(b.author)}${b.has ? ' · filed under ' + esc(b.has) : ''}</div></td>
+      <td>${esc(b.googleTitle || '—')}${b.subtitle ? `<div class="hint">${esc(b.subtitle)}</div>` : ''}</td>
+      <td class="${b.series ? 'better' : 'worse'}">${b.series
+        ? esc(b.series) + (b.seriesNo ? ' · book ' + b.seriesNo : '')
+        : esc(b.error || 'nothing')}</td>
+      <td>${esc(b.from || '—')}${said ? `<div class="hint">${esc(said)}</div>` : ''}</td>
+      <td>${1 + (b.asked || []).length}${b.inSearch ? '<div class="hint">came with the search</div>' : ''}</td>
+    </tr>`;
+  }).join('');
+  $('#seriesOut').innerHTML = `<p class="hint">${found} of ${r.books.length} book(s) got a series.</p>
+    <table class="cmp"><tr><th>Book</th><th>Google’s title</th><th>Series</th><th>From</th><th>Calls</th></tr>${rows}</table>`;
+});
+
 $('#tidyCovers').onclick = () => work($('#tidyCovers'), 'The cover tidy-up', async () => {
   try {
     const r = await post('/api/covers/tidy', {});

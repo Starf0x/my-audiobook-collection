@@ -18,18 +18,18 @@ const explain = (status, detail) => ({
 
 export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTER.length + 1, retryUntil: 0 };
 
-export async function lookup(book, search) {
+export async function lookup(book, search, trace = null) {
   const key = googleKey();
   if (!key) throw new Error('No Google Books API key. Set GOOGLE_API_KEY on the container (the Unraid template has a field for it) and restart.');
   Object.assign(lookupProgress, { running: true, attempt: 0, retryUntil: 0 });
   try {
-    return await search_(book, search, key);
+    return await search_(book, search, key, trace);
   } finally {
     lookupProgress.running = false;
   }
 }
 
-async function search_(book, search, key) {
+async function search_(book, search, key, trace = null) {
   const q = search || `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
   const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&key=${key}`;
 
@@ -51,16 +51,12 @@ async function search_(book, search, key) {
     throw new Error(explain(res.status, body.error?.message));
   }
   const data = await res.json();
-  // A search answer often carries no seriesInfo even where Google has one; asking
-  // for the volume itself gets it. Only for the results whose own text said
-  // nothing, all at once, and a failure there just leaves that result as it was.
-  const items = await Promise.all((data.items || []).map(async (it) => {
-    if (seriesOf(it.volumeInfo).series) return it;
-    const seriesInfo = await volumeSeriesInfo(it.id, key);
-    return seriesInfo ? { ...it, volumeInfo: { ...it.volumeInfo, seriesInfo } } : it;
-  }));
-  return items.map((it) => ({
-    ...seriesOf(it.volumeInfo),
+  const items = await Promise.all((data.items || []).map(async (it, i) => ({
+    // only the first result is traced: a probe reports on the match, not the list
+    it, series: await seriesFor(it, key, i === 0 ? trace : null),
+  })));
+  return items.map(({ it, series }) => ({
+    ...series,
     author: (it.volumeInfo.authors || []).join(', '),
     // kept apart as well: a book two people wrote is a choice, not a string
     authors: it.volumeInfo.authors || [],
@@ -76,19 +72,118 @@ async function search_(book, search, key) {
   }));
 }
 
-// The series line of one volume, or nothing. This runs while a lookup the user is
-// watching is open, so it must never throw and never hang: a missing series is a
-// tick the dialog does not offer, which is what happened before it was asked for.
-async function volumeSeriesInfo(id, key) {
-  if (!id) return null;
+// How Google keeps series, and what that costs to read.
+//
+// A volume carries `volumeInfo.seriesInfo`, and it holds no series NAME: only
+// `volumeSeries[].seriesId` with `orderNumber` (the real sequence),
+// `bookDisplayNumber` (for display only — it can read "2.5") and
+// `shortSeriesBookTitle`, which is the *book's* title in the context of the
+// series and so is sometimes the book's own name. The name lives behind
+// `series/get?series_id=`. And `seriesInfo` is usually missing from a
+// `volumes?q=` answer altogether, being on the volume rather than the result.
+//
+// So the series of one book can cost three requests. It is asked for in that
+// order, stopping at the first answer, and nothing is asked at all where the
+// title or subtitle already said it:
+//
+//   1. the text of the result            — free
+//   2. GET volumes/<id> → seriesInfo     — one request, for the ids
+//   3. GET series/get   → the name       — one request, cached by seriesId
+//
+// Every one of these may fail. None of them may take the lookup down with it: a
+// series that cannot be read is a tick the dialog does not offer.
+const ask = async (url) => {
   try {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(id)}?key=${key}`,
-      { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    return (await res.json()).volumeInfo?.seriesInfo || null;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    return res.ok ? await res.json() : null;
   } catch {
     return null;
   }
+};
+
+// seriesId -> name, for the life of the process. A collection's books share a
+// handful of series, so this is what keeps a shelf's worth of lookups cheap.
+const seriesNames = new Map();
+
+async function seriesName(id, key) {
+  if (!id) return '';
+  if (seriesNames.has(id)) return seriesNames.get(id);
+  const body = await ask(`https://www.googleapis.com/books/v1/series/get?series_id=${encodeURIComponent(id)}&key=${key}`);
+  const name = (body?.series || []).find((s) => s.title)?.title || '';
+  // remembered even when empty: a series Google will not name twice is still one
+  // request per book otherwise
+  seriesNames.set(id, name);
+  return name;
+}
+
+// A whole number, or none: series_no is an integer, and a novella numbered "2.5"
+// filed as 2 would sit on top of book 2 rather than beside it.
+const whole = (raw) => {
+  const s = String(raw ?? '').trim();
+  return /^\d{1,3}$/.test(s) ? Number(s) : 0;
+};
+
+const numberIn = (info) => {
+  const first = (info.volumeSeries || [])[0] || {};
+  // orderNumber is the sequence; bookDisplayNumber is what Google prints
+  return whole(first.orderNumber) || whole(info.bookDisplayNumber);
+};
+
+// `trace`, when given, is filled in with what Google actually sent and what was
+// made of it. That is the only way to see this from outside: the answers come from
+// a key the owner holds, on their server, so the checking has to happen there.
+async function seriesFor(it, key, trace = null) {
+  const text = seriesOf(it.volumeInfo);
+  const here = it.volumeInfo?.seriesInfo || null;
+  if (trace) {
+    Object.assign(trace, {
+      googleTitle: it.volumeInfo?.title || '', subtitle: it.volumeInfo?.subtitle || '',
+      inSearch: !!here, asked: [],
+    });
+  }
+  // the words named it: nothing to ask for, though a number Google already sent
+  // fills in one the words left out
+  if (text.series) {
+    const no = text.seriesNo || (here ? numberIn(here) : 0);
+    if (trace) Object.assign(trace, { from: text.from, series: text.series, seriesNo: no });
+    return { ...text, seriesNo: no };
+  }
+  let info = here;
+  if (!info) {
+    if (trace) trace.asked.push('volume');
+    info = (await ask(`https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(it.id || '')}?key=${key}`))
+      ?.volumeInfo?.seriesInfo;
+  }
+  if (!info) {
+    if (trace) Object.assign(trace, { from: 'nothing', series: '', seriesNo: 0 });
+    return text;
+  }
+  const first = (info.volumeSeries || [])[0] || {};
+  const no = numberIn(info);
+  if (trace) {
+    Object.assign(trace, {
+      seriesId: first.seriesId || '', orderNumber: first.orderNumber ?? '',
+      bookDisplayNumber: info.bookDisplayNumber || '', shortSeriesBookTitle: info.shortSeriesBookTitle || '',
+      bookType: first.seriesBookType || '',
+    });
+    if (first.seriesId && !seriesNames.has(first.seriesId)) trace.asked.push('series name');
+  }
+  const canonical = await seriesName(first.seriesId, key);
+  const named = canonical
+    // last resort, and the reason it is last: this field is a book title as often
+    // as it is a series name
+    || (info.shortSeriesBookTitle
+      ? seriesIn(info.shortSeriesBookTitle, [VOLUME_ON_THE_END])?.series || info.shortSeriesBookTitle.trim()
+      : '');
+  const same = named.toLowerCase() === text.title.toLowerCase();
+  const out = { title: text.title, series: same ? '' : named, seriesNo: same || !named ? 0 : no };
+  if (trace) {
+    Object.assign(trace, {
+      from: out.series ? (canonical ? 'series name' : 'short title') : (named ? 'the book itself' : 'nothing'),
+      series: out.series, seriesNo: out.seriesNo,
+    });
+  }
+  return out;
 }
 
 // A search answer names the series in the title's brackets ("The Final Empire
@@ -141,31 +236,38 @@ const seriesIn = (chunk, shapes = SHAPES) => {
   }
   return null;
 };
+// What the words of a result say, on their own: no request, no Google series data.
 export function seriesOf(info = {}) {
   const title = info.title || '';
   // the brackets at the end of a title, if that is what they hold
   const bracket = title.match(/^(.*\S)\s*[([]([^()[\]]+)[)\]]\s*$/);
   const inBracket = bracket ? seriesIn(bracket[2]) : null;
   const clean = inBracket ? bracket[1] : title;
-  // Google's own series line, which is where the series is for a book whose title
-  // says nothing: "A Kiss of Shadows" is book 1 of "Merry Gentry" and only
-  // seriesInfo knows it. shortSeriesBookTitle carries the name and the number.
-  const si = info.seriesInfo || {};
-  const told = numberOf(si.bookDisplayNumber);
-  // that line is already a name, so only a volume number is split off it — none of
-  // the other shapes, which would read "A Long Saga" as a saga called "A Long"
-  const own = si.shortSeriesBookTitle
-    ? seriesIn(si.shortSeriesBookTitle, [VOLUME_ON_THE_END])
-      || { series: si.shortSeriesBookTitle.trim(), seriesNo: told }
-    : null;
-  const found = inBracket || seriesIn(info.subtitle) || own;
-  // a "series" named after the book itself is the book, not a series
-  const same = found && found.series.toLowerCase() === clean.toLowerCase();
+  const found = inBracket || seriesIn(info.subtitle);
   return {
     title: clean,
-    series: found && !same ? found.series : '',
-    seriesNo: found && !same ? found.seriesNo || told : 0,
+    series: found ? found.series : '',
+    seriesNo: found ? found.seriesNo : 0,
+    from: found ? (inBracket ? 'title' : 'subtitle') : '',
   };
+}
+
+// One book, asked about and reported on: what Google sent, what was read from it,
+// and how many requests it took. For the report in Settings — Google can only be
+// asked with the owner's key, from the owner's server.
+export async function probeSeries(books) {
+  const out = [];
+  for (const b of books) {
+    const trace = { title: b.title, author: b.author, has: b.series || b.tag_series || '' };
+    try {
+      const results = await lookup(b, '', trace);
+      if (!results.length) trace.from = 'no result';
+    } catch (e) {
+      trace.error = e.message;
+    }
+    out.push(trace);
+  }
+  return out;
 }
 
 // What one tag write reports, for the bar that follows it. Every write has its
