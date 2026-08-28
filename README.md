@@ -129,7 +129,7 @@ The last three are optional, and the two variables are masked in the form. Then
    browser is only ever offered the names it has used itself, so nobody arriving
    at the address is handed a list of everyone in the house. On your next visit
    the same browser offers the name back.
-2. **Settings** → add `/audiobooks` as a library folder (*Browse…* picks it from
+2. **Settings ▾ → Library and maintenance** → add `/audiobooks` as a library folder (*Browse…* picks it from
    the container's own view of the disk) → **Save**.
    If `/audiobooks` also holds folders you do not want scanned, add the genre
    folders one by one instead and tick *Is a Genre* behind each.
@@ -275,7 +275,7 @@ nobody:users. So a fresh install needs no setting; an existing container that wa
 made before these fields existed does not gain them from an update, and either
 needs them added by hand or is covered by that default.
 
-**Settings → Check folder permissions** says who the app is writing as and what
+**Settings ▾ → Library and maintenance → Check folder permissions** says who the app is writing as and what
 each folder lets it do — it writes a file and removes it again rather than reading
 the mode and guessing. That is the first thing to look at when something cannot be
 written.
@@ -428,7 +428,7 @@ restart. The app talks to HA rather than waiting to be polled: give it the addre
 of your Home Assistant and one **long-lived access token** made in it, and it
 writes its own sensors into HA and plays books on HA's media players.
 
-It has a page of its own: **Settings → Open the Home Assistant page**, or
+It has a page of its own: **Settings ▾ → Home Assistant**, or
 `http://<your-server>:8523/ha`.
 
 ![The Home Assistant page](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/ha-page.png)

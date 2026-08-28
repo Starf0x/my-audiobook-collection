@@ -469,3 +469,34 @@ main.page table.cmp { margin-top: 12px; }
 strong.ok { color: #35d07f; }
 strong.warn { color: #ffb4a8; }
 #haWhere { font-size: 12px; }
+
+/* The pulldown over the two kinds of settings: it looks like the buttons beside
+   it, and being a <details> it opens and closes without any script. */
+.menu { position: relative; }
+.menu > summary {
+  list-style: none; cursor: pointer; user-select: none; -webkit-user-select: none;
+  font: inherit; font-weight: 600; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
+}
+.menu > summary::-webkit-details-marker, .menu > summary::marker { display: none; content: ''; }
+.menu > summary:hover { filter: brightness(1.15); }
+.menu[open] > summary { border-color: var(--accent); }
+.menu > ul {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+  min-width: 210px; margin: 0; padding: 6px; list-style: none;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 18px 40px -18px #000;
+}
+.menu > ul li {
+  padding: 9px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  display: flex; justify-content: space-between; gap: 10px;
+}
+.menu > ul li:hover { background: var(--panel2); }
+@media (max-width: 720px) {
+  /* Thumb-sized rows, and the width of the screen rather than of the button: the
+     header wraps on a phone, so a menu hung off the button's right edge can end up
+     starting left of the window. */
+  .menu > summary { min-height: 40px; display: flex; align-items: center; }
+  .menu > ul { position: fixed; left: 12px; right: 12px; min-width: 0; }
+  .menu > ul li { padding: 12px; }
+}

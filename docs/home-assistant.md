@@ -5,8 +5,8 @@ restart.** The app talks to Home Assistant, not the other way round: give it the
 address of your HA and one long-lived access token made in it, and it writes its
 own sensors into HA and plays books on HA's media players.
 
-Everything is on the app's own page: **Settings → Open the Home Assistant page**,
-or go straight to `http://<your-server>:8523/ha`.
+Everything is on the app's own page: **Settings ▾ → Home Assistant**, or go
+straight to `http://<your-server>:8523/ha`.
 
 ![The Home Assistant page](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/ha-page.png)
 

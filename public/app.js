@@ -1471,7 +1471,21 @@ $('#addGenre').onclick = async () => {
   } catch (e) { toast(e.message); }
 };
 
+// The pulldown over the two kinds of settings. It closes itself whatever happens
+// next — picking something, pressing Escape, or clicking anywhere else — or it
+// would sit open over the page it just opened.
+const settingsMenu = $('#settingsMenu');
+const shutMenu = () => settingsMenu.removeAttribute('open');
+document.addEventListener('click', (e) => {
+  if (settingsMenu.open && !settingsMenu.contains(e.target)) shutMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && settingsMenu.open) shutMenu();
+});
+$('#openHa').onclick = () => { shutMenu(); location.href = '/ha'; };
+
 $('#openSettings').onclick = async () => {
+  shutMenu();
   const s = await api('/api/settings');
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
