@@ -459,10 +459,17 @@ named after the book itself is the book. What it finds is shown as a tick beside
 the name and the volume number, on by default and refusable, and the brackets come
 off the title so the album tag does not carry them.
 
+When a result offers no series, the dialog **says why** — *Google keeps no series
+data for this edition*, *Google answered 403*, *Google's series line is the book's
+own title*, *Google files it in series `<id>` but would not name it*. Google keeps
+series data per **edition**, so one result in a list can have it where another does
+not: when a book you know is in a series gets nothing, the reason line is the thing
+to read, and the other results are worth a look.
+
 **Settings → What Google says about series** asks about a stretch of books that
 have no series yet and reports, per book, what Google answered, which of the three
-places the series came from, the raw `seriesInfo` fields, and how many requests it
-took. It is the way to see why a particular book gets nothing offered.
+places the series came from, the raw `seriesInfo` fields, the reason where there is
+none, and how many requests it took.
 
 ![The series report in Settings](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/series-report.png)
 

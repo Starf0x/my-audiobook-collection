@@ -51,10 +51,14 @@ async function search_(book, search, key, trace = null) {
     throw new Error(explain(res.status, body.error?.message));
   }
   const data = await res.json();
-  const items = await Promise.all((data.items || []).map(async (it, i) => ({
-    // only the first result is traced: a probe reports on the match, not the list
-    it, series: await seriesFor(it, key, i === 0 ? trace : null),
-  })));
+  const items = await Promise.all((data.items || []).map(async (it, i) => {
+    // every result is traced, so each can say why it offers no series; the probe
+    // reports on the match, which is the first
+    const own = {};
+    const series = await seriesFor(it, key, own);
+    if (i === 0 && trace) Object.assign(trace, own);
+    return { it, series };
+  }));
   return items.map(({ it, series }) => ({
     ...series,
     author: (it.volumeInfo.authors || []).join(', '),
@@ -91,13 +95,16 @@ async function search_(book, search, key, trace = null) {
 //   3. GET series/get   → the name       — one request, cached by seriesId
 //
 // Every one of these may fail. None of them may take the lookup down with it: a
-// series that cannot be read is a tick the dialog does not offer.
+// series that cannot be read is a tick the dialog does not offer, with a line
+// saying why. The status comes back as well as the body, because "Google refused
+// this" and "Google answered, and had nothing" are different answers, and the
+// difference is the whole diagnosis.
 const ask = async (url) => {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    return res.ok ? await res.json() : null;
-  } catch {
-    return null;
+    return { status: res.status, body: res.ok ? await res.json() : null };
+  } catch (e) {
+    return { status: 0, body: null, failed: e.name === 'TimeoutError' ? 'timed out' : 'could not be reached' };
   }
 };
 
@@ -106,14 +113,14 @@ const ask = async (url) => {
 const seriesNames = new Map();
 
 async function seriesName(id, key) {
-  if (!id) return '';
-  if (seriesNames.has(id)) return seriesNames.get(id);
-  const body = await ask(`https://www.googleapis.com/books/v1/series/get?series_id=${encodeURIComponent(id)}&key=${key}`);
-  const name = (body?.series || []).find((s) => s.title)?.title || '';
+  if (!id) return { name: '', status: 0 };
+  if (seriesNames.has(id)) return { name: seriesNames.get(id), status: 0, cached: true };
+  const r = await ask(`https://www.googleapis.com/books/v1/series/get?series_id=${encodeURIComponent(id)}&key=${key}`);
+  const name = (r.body?.series || []).find((s) => s.title)?.title || '';
   // remembered even when empty: a series Google will not name twice is still one
   // request per book otherwise
   seriesNames.set(id, name);
-  return name;
+  return { name, status: r.status, failed: r.failed };
 }
 
 // A whole number, or none: series_no is an integer, and a novella numbered "2.5"
@@ -129,47 +136,70 @@ const numberIn = (info) => {
   return whole(first.orderNumber) || whole(info.bookDisplayNumber);
 };
 
-// `trace`, when given, is filled in with what Google actually sent and what was
-// made of it. That is the only way to see this from outside: the answers come from
-// a key the owner holds, on their server, so the checking has to happen there.
-async function seriesFor(it, key, trace = null) {
+// Why this book got no series, in a sentence the dialog can show. Guessing at this
+// from outside is what cost two releases: the answers come from a key the owner
+// holds, on their server, so the app has to say what it saw.
+function whyNone(t) {
+  if (t.volumeFailed) return `Google ${t.volumeFailed} when asked for this book's series data.`;
+  if (t.volumeStatus && t.volumeStatus !== 200) {
+    return `Google answered ${t.volumeStatus} when asked for this book's series data`
+      + (t.volumeStatus === 403 ? ', which usually means the key may not read it.' : '.');
+  }
+  if (t.from === 'the book itself') {
+    return `Google's series line for this edition is the book's own title (“${t.shortSeriesBookTitle}”), `
+      + 'so there is no series in it.';
+  }
+  if (t.seriesId) {
+    return `Google files this edition in series ${t.seriesId} but would not say what that series is called`
+      + (t.nameFailed ? ` (it ${t.nameFailed})` : t.nameStatus && t.nameStatus !== 200 ? ` (HTTP ${t.nameStatus})` : '')
+      + '.';
+  }
+  if (t.asked?.includes('volume')) {
+    return 'Google keeps no series data for this edition — nothing in its title or subtitle either. '
+      + 'Another result in this list may be an edition that has it.';
+  }
+  return 'Nothing in the title, the subtitle or Google\'s series data names a series.';
+}
+
+// `trace` is filled in with what Google actually sent and what was made of it: the
+// dialog shows one line of it, and the report in Settings shows all of it.
+async function seriesFor(it, key, trace = {}) {
   const text = seriesOf(it.volumeInfo);
   const here = it.volumeInfo?.seriesInfo || null;
-  if (trace) {
-    Object.assign(trace, {
-      googleTitle: it.volumeInfo?.title || '', subtitle: it.volumeInfo?.subtitle || '',
-      inSearch: !!here, asked: [],
-    });
-  }
+  Object.assign(trace, {
+    googleTitle: it.volumeInfo?.title || '', subtitle: it.volumeInfo?.subtitle || '',
+    inSearch: !!here, asked: [],
+  });
   // the words named it: nothing to ask for, though a number Google already sent
   // fills in one the words left out
   if (text.series) {
     const no = text.seriesNo || (here ? numberIn(here) : 0);
-    if (trace) Object.assign(trace, { from: text.from, series: text.series, seriesNo: no });
-    return { ...text, seriesNo: no };
+    Object.assign(trace, { from: text.from, series: text.series, seriesNo: no });
+    return { ...text, seriesNo: no, why: '' };
   }
   let info = here;
   if (!info) {
-    if (trace) trace.asked.push('volume');
-    info = (await ask(`https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(it.id || '')}?key=${key}`))
-      ?.volumeInfo?.seriesInfo;
+    trace.asked.push('volume');
+    const got = await ask(`https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(it.id || '')}?key=${key}`);
+    Object.assign(trace, { volumeStatus: got.status, volumeFailed: got.failed || '' });
+    info = got.body?.volumeInfo?.seriesInfo || null;
   }
   if (!info) {
-    if (trace) Object.assign(trace, { from: 'nothing', series: '', seriesNo: 0 });
-    return text;
+    Object.assign(trace, { from: 'nothing', series: '', seriesNo: 0 });
+    trace.why = whyNone(trace);
+    return { ...text, why: trace.why };
   }
   const first = (info.volumeSeries || [])[0] || {};
   const no = numberIn(info);
-  if (trace) {
-    Object.assign(trace, {
-      seriesId: first.seriesId || '', orderNumber: first.orderNumber ?? '',
-      bookDisplayNumber: info.bookDisplayNumber || '', shortSeriesBookTitle: info.shortSeriesBookTitle || '',
-      bookType: first.seriesBookType || '',
-    });
-    if (first.seriesId && !seriesNames.has(first.seriesId)) trace.asked.push('series name');
-  }
+  Object.assign(trace, {
+    seriesId: first.seriesId || '', orderNumber: first.orderNumber ?? '',
+    bookDisplayNumber: info.bookDisplayNumber || '', shortSeriesBookTitle: info.shortSeriesBookTitle || '',
+    bookType: first.seriesBookType || '',
+  });
+  if (first.seriesId && !seriesNames.has(first.seriesId)) trace.asked.push('series name');
   const canonical = await seriesName(first.seriesId, key);
-  const named = canonical
+  Object.assign(trace, { nameStatus: canonical.status, nameFailed: canonical.failed || '' });
+  const named = canonical.name
     // last resort, and the reason it is last: this field is a book title as often
     // as it is a series name
     || (info.shortSeriesBookTitle
@@ -177,13 +207,12 @@ async function seriesFor(it, key, trace = null) {
       : '');
   const same = named.toLowerCase() === text.title.toLowerCase();
   const out = { title: text.title, series: same ? '' : named, seriesNo: same || !named ? 0 : no };
-  if (trace) {
-    Object.assign(trace, {
-      from: out.series ? (canonical ? 'series name' : 'short title') : (named ? 'the book itself' : 'nothing'),
-      series: out.series, seriesNo: out.seriesNo,
-    });
-  }
-  return out;
+  Object.assign(trace, {
+    from: out.series ? (canonical.name ? 'series name' : 'short title') : (named ? 'the book itself' : 'nothing'),
+    series: out.series, seriesNo: out.seriesNo,
+  });
+  trace.why = out.series ? '' : whyNone(trace);
+  return { ...out, why: trace.why };
 }
 
 // A search answer names the series in the title's brackets ("The Final Empire

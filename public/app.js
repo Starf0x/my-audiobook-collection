@@ -874,7 +874,7 @@ $('#seriesReport').onclick = () => work($('#seriesReport'), 'The series report',
       <td>${esc(b.googleTitle || '—')}${b.subtitle ? `<div class="hint">${esc(b.subtitle)}</div>` : ''}</td>
       <td class="${b.series ? 'better' : 'worse'}">${b.series
         ? esc(b.series) + (b.seriesNo ? ' · book ' + b.seriesNo : '')
-        : esc(b.error || 'nothing')}</td>
+        : esc(b.error || 'nothing')}${b.series || !b.why ? '' : `<div class="hint">${esc(b.why)}</div>`}</td>
       <td>${esc(b.from || '—')}${said ? `<div class="hint">${esc(said)}</div>` : ''}</td>
       <td>${1 + (b.asked || []).length}${b.inSearch ? '<div class="hint">came with the search</div>' : ''}</td>
     </tr>`;
@@ -1334,7 +1334,9 @@ function authorChoice(i, current, authors) {
 // subtitle: a guess, shown as one, and refusable. Ticked it names the series in
 // the book and in its files; it never moves the book, which is a folder job.
 function seriesChoice(i, book, c) {
-  if (!c.series) return '';
+  // no series, and why not: without this the dialog simply says nothing, and the
+  // reason is on the server where Google was asked
+  if (!c.series) return c.why ? `<div class="hint">No series: ${esc(c.why)}</div>` : '';
   const said = esc(c.series) + (c.seriesNo ? `, book ${c.seriesNo}` : '');
   const filed = book.series || book.tag_series || '';
   return `<label class="pick"><input type="checkbox" id="cs${i}" checked> Series: <strong>${said}</strong></label>
