@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.56.** This document describes what the app is, how every
+**Version described: 1.10.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -98,11 +98,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | --- | --- | --- |
 | `server/index.js` | 512 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 107 | schema, migrations, settings, library list |
+| `server/db.js` | 112 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 456 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 424 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 500 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 120 | the resumable whole-collection tag run |
@@ -112,7 +112,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 94 | the cover drawn for a book that has none |
 | `public/index.html` | 222 | the admin page: columns, dialogs |
-| `public/app.js` | 1615 | the admin page's behaviour |
+| `public/app.js` | 1617 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 395 | the listening page's behaviour |
 | `public/style.css` | 417 | the whole look, both pages, phone included |
@@ -232,6 +232,7 @@ Settings shows it as a table.
 | `PORT` | `8523` | HTTP port |
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
+| `GOOGLE_COUNTRY` | `US` | which country's Google catalogue answers. Series data belongs to a country's Play catalogue, and left to the server's own address Google can answer with a record that has none |
 
 Both secrets live **only** on the container. There is deliberately no field for
 either in Settings: one place cannot drift out of step with another, and both
@@ -510,6 +511,12 @@ credited authors changes the artist tags, not the folder.
 * `seriesInfo` belongs to the volume, not to a search result, so a
   `volumes?q=` answer usually leaves it out entirely.
 
+A fourth: Google keeps series data **per record, not per book**. One search answers
+with several editions of a novel, and one of them can be in a series while the rest
+are in nothing. Which is why `books(tail, key)` builds every URL with
+`country=<GOOGLE_COUNTRY>` on it — the catalogue that answers decides what a
+record contains.
+
 So `seriesFor(item, key, trace)` asks in this order and stops at the first answer:
 the **text** of the result (`seriesOf`, free); `GET volumes/<id>` for the
 `seriesInfo`; `GET series/get` for the name, cached by `seriesId` in a
@@ -552,6 +559,18 @@ the other shapes are tried — they would read *A Long Saga* as a saga called
 *A Long*. A series whose name equals the book's own title is not a series.
 A series taken from the brackets comes **off the title**, so the album tag does not
 carry it.
+
+**Between the results, and then the ebooks.** After every result is resolved,
+`search_` lends a series between them: a result with none takes the series of
+another result that **is the same book** (`sameBook`, comparing titles reduced to
+letters and digits, so a different book that merely matched the words lends
+nothing), and carries `fromEdition` so the dialog can say where it came from.
+Where the *first* result still has none, `ebookSeries(q, expect, key)` asks the
+catalogue where series data actually lives: one `volumes?q=…&filter=ebooks`
+search, whose results usually carry `seriesInfo` in the answer itself, with the
+volume of a matching result asked only if none does. Title-matched the same way.
+Failing that, each reason line gains *"Google's ebook editions of it have none
+either."*
 
 **Seeing what Google actually answered.** The key is on the owner's container, so
 the only place this question can be asked is their server. `lookup(book, search,
@@ -1095,7 +1114,7 @@ Server suites:
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
 | `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
-| `series-two-step` | how Google keeps series, and what it says when there is none: every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
+| `series-two-step` | how Google keeps series, and what it says when there is none: a series lent from the edition that has it to the ones that do not, the ebook catalogue asked when none has it, another book's series never borrowed, `country=` on every request; every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
@@ -1193,6 +1212,7 @@ to insert order and looks broken when the app is right.
 | 1.10.40 | and out of Google's own series line, asked for per result, for the books whose title says nothing |
 | 1.10.48 | series read the way Google actually keeps them — id, order, and the name behind `series/get` — with a report in Settings on what it answered |
 | 1.10.56 | and when there is no series, the dialog says why: what was asked, what Google answered, and whether another result may carry it |
+| 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and

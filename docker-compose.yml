@@ -13,6 +13,8 @@ services:
       # both of these may be left empty
       ADMIN_PASSWORD: ""
       GOOGLE_API_KEY: ""
+      # which country's Google catalogue to answer from; series data belongs to one
+      GOOGLE_COUNTRY: "US"
     volumes:
       - ./data:/data
       - /mnt/user/Audiobooks:/audiobooks

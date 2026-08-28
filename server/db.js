@@ -92,6 +92,11 @@ export const setSetting = (key, value) =>
 // folder and there is no second copy of it to drift out of step.
 export const googleKey = () => process.env.GOOGLE_API_KEY || '';
 
+// Google decides what a volume answer contains from where the request comes from,
+// and series data belongs to the Play catalogue of a country. Left to the server's
+// own address it can answer with no series at all, so the country is said outright.
+export const googleCountry = () => (process.env.GOOGLE_COUNTRY || 'US').trim().toUpperCase().slice(0, 2);
+
 // A library entry is either a folder holding genre folders, or a single genre
 // folder itself. Plain strings are entries stored before that choice existed.
 export const getLibraries = () => {

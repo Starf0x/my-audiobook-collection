@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { writeTag } from './tagpool.js';
-import { db, googleKey, DATA_DIR } from './db.js';
+import { db, googleKey, googleCountry, DATA_DIR } from './db.js';
 
 // Google Books answers 503 when it is briefly busy: wait and ask again.
 const RETRY_AFTER = [10000, 20000, 30000];
@@ -18,6 +18,12 @@ const explain = (status, detail) => ({
 
 export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTER.length + 1, retryUntil: 0 };
 
+// One address for every request, so the country goes on all of them. Series data
+// belongs to a country's Play catalogue, and left to guess from the server's own
+// address Google can answer with a volume that has none at all.
+const books = (tail, key) => `https://www.googleapis.com/books/v1/${tail}`
+  + `${tail.includes('?') ? '&' : '?'}country=${googleCountry()}&key=${key}`;
+
 export async function lookup(book, search, trace = null) {
   const key = googleKey();
   if (!key) throw new Error('No Google Books API key. Set GOOGLE_API_KEY on the container (the Unraid template has a field for it) and restart.');
@@ -31,7 +37,7 @@ export async function lookup(book, search, trace = null) {
 
 async function search_(book, search, key, trace = null) {
   const q = search || `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
-  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&key=${key}`;
+  const url = books(`volumes?q=${encodeURIComponent(q)}&maxResults=5`, key);
 
   let res;
   for (let attempt = 0; ; attempt++) {
@@ -57,8 +63,49 @@ async function search_(book, search, key, trace = null) {
     const own = {};
     const series = await seriesFor(it, key, own);
     if (i === 0 && trace) Object.assign(trace, own);
-    return { it, series };
+    return { it, series, own };
   }));
+
+  // Google keeps series data per record, not per book: of five editions of one
+  // novel, one may be in a series and the rest in nothing. The list is one book,
+  // so a series found on any of them is offered on all of them — the alternative
+  // is telling someone their book has no series while another line of the same
+  // answer names it.
+  // A search answers with several editions of the book and, often, with other
+  // books entirely, so a series may only pass between results that are the same
+  // book by title. Within that, the edition that has it lends it: telling someone
+  // their book has no series while another line of the same answer names it is
+  // worse than saying where it came from.
+  const lend = (to, from, where) => {
+    Object.assign(to.series, {
+      series: from.series, seriesNo: from.seriesNo, fromEdition: where, why: '',
+    });
+    Object.assign(to.own, { from: where, series: from.series, seriesNo: from.seriesNo, why: '' });
+  };
+  for (const r of items) {
+    if (r.series.series) continue;
+    const sibling = items.find((o) => o.series.series && sameBook(o.series.title, r.series.title));
+    if (sibling) lend(r, sibling.series, 'another edition');
+  }
+
+  // Nothing anywhere in the answer for the book that was asked about. Series data
+  // belongs to the Play catalogue, and a print record often carries none where the
+  // ebook of the same book does, so the ebooks are asked once — the last place
+  // there is to look.
+  const primary = items[0];
+  if (primary && !primary.series.series) {
+    if (trace) trace.asked.push('ebook search');
+    const ebook = await ebookSeries(q, primary.series.title, key);
+    for (const r of items) {
+      if (r.series.series || !sameBook(r.series.title, primary.series.title)) continue;
+      if (ebook) lend(r, ebook, 'the ebook edition');
+      else if (r.series.why) {
+        r.series.why += ' Google\'s ebook editions of it have none either.';
+        r.own.why = r.series.why;
+      }
+    }
+  }
+  if (trace && primary) Object.assign(trace, primary.own);
   return items.map(({ it, series }) => ({
     ...series,
     author: (it.volumeInfo.authors || []).join(', '),
@@ -108,6 +155,36 @@ const ask = async (url) => {
   }
 };
 
+// The ebook catalogue, asked once when nothing else in the answer has a series.
+// The results it gives usually carry seriesInfo in the search answer itself, so
+// this is one request; the volume of a matching result is asked only if none does.
+// A different book that happens to match the words must not lend its series, so
+// the title has to be the same book.
+const sameBook = (a, b) => {
+  const bare = (t) => (t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return !!bare(a) && bare(a) === bare(b);
+};
+
+async function ebookSeries(q, expect, key) {
+  const r = await ask(books(`volumes?q=${encodeURIComponent(q)}&filter=ebooks&maxResults=3`, key));
+  const items = (r.body?.items || []).filter((it) => sameBook(seriesOf(it.volumeInfo).title, expect));
+  // the free reading first: text, and any seriesInfo that came with the answer
+  for (const it of items) {
+    const text = seriesOf(it.volumeInfo);
+    if (text.series) return { series: text.series, seriesNo: text.seriesNo };
+    const info = it.volumeInfo?.seriesInfo;
+    if (!info) continue;
+    const got = await seriesFor(it, key, {});
+    if (got.series) return { series: got.series, seriesNo: got.seriesNo };
+  }
+  // then one that has to be asked for
+  for (const it of items.slice(0, 1)) {
+    const got = await seriesFor(it, key, {});
+    if (got.series) return { series: got.series, seriesNo: got.seriesNo };
+  }
+  return null;
+}
+
 // seriesId -> name, for the life of the process. A collection's books share a
 // handful of series, so this is what keeps a shelf's worth of lookups cheap.
 const seriesNames = new Map();
@@ -115,7 +192,7 @@ const seriesNames = new Map();
 async function seriesName(id, key) {
   if (!id) return { name: '', status: 0 };
   if (seriesNames.has(id)) return { name: seriesNames.get(id), status: 0, cached: true };
-  const r = await ask(`https://www.googleapis.com/books/v1/series/get?series_id=${encodeURIComponent(id)}&key=${key}`);
+  const r = await ask(books(`series/get?series_id=${encodeURIComponent(id)}`, key));
   const name = (r.body?.series || []).find((s) => s.title)?.title || '';
   // remembered even when empty: a series Google will not name twice is still one
   // request per book otherwise
@@ -155,8 +232,7 @@ function whyNone(t) {
       + '.';
   }
   if (t.asked?.includes('volume')) {
-    return 'Google keeps no series data for this edition — nothing in its title or subtitle either. '
-      + 'Another result in this list may be an edition that has it.';
+    return 'Google keeps no series data for this edition — nothing in its title or subtitle either.';
   }
   return 'Nothing in the title, the subtitle or Google\'s series data names a series.';
 }
@@ -180,7 +256,7 @@ async function seriesFor(it, key, trace = {}) {
   let info = here;
   if (!info) {
     trace.asked.push('volume');
-    const got = await ask(`https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(it.id || '')}?key=${key}`);
+    const got = await ask(books(`volumes/${encodeURIComponent(it.id || '')}`, key));
     Object.assign(trace, { volumeStatus: got.status, volumeFailed: got.failed || '' });
     info = got.body?.volumeInfo?.seriesInfo || null;
   }
