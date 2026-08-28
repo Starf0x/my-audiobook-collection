@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.16.** This document describes what the app is, how every
+**Version described: 2.0.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -118,7 +118,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/app.js` | 1653 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 408 | the listening page's behaviour |
-| `public/style.css` | 502 | the whole look, both pages, phone included |
+| `public/style.css` | 511 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1055,6 +1055,13 @@ tall for a thumb.
 `#openSettings` is still the id that opens the dialog, so everything that drove it
 before still works.
 
+**And the same size as its neighbour.** Settings holds as much as the Home
+Assistant page does, so `#settings` is `min(820px, 94vw)` wide — the page's own
+`max-width` — and `min(92vh, 1000px)` tall with `overflow-y: auto`, so moving
+between the two is not a jump between a narrow box and a full page. Every other
+dialog asks one thing and stays at `min(620px, 92vw)`. On a phone all of them are
+already full-screen sheets.
+
 **Dialogs** (native `<dialog>`): Settings (libraries with *Is a Genre*, a folder
 browser, genres, import path, the disk check, cover tidy, and the whole-collection
 tag run with its state line); *Who is listening*; *Import* (source, genre, author,
@@ -1311,7 +1318,7 @@ Server suites:
 | `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
 | `ha` | what Home Assistant is handed, against a fixture long enough that the hours are real numbers: the counts, the hours total/listened/left with a book part-way through a track and another marked done, the continue queue's track, position, percentage and hours left, the playlist's order and `from=`, `continue.m3u` with its two headers, the generated YAML, `HA_TOKEN` refusing and accepting both ways while the audio stays open, and `BASE_URL` deciding every URL |
 | `ha-push` | the app driving Home Assistant, against a stand-in HA that checks the Bearer token and records every call: the address and token saved without the token ever coming back, the ping naming which HA answered, media players filtered and sorted, the six sensors previewed and then written one POST each, playing a book as play_media then media_seek with the right payloads, "carry on" with no book named, a light refused, a refused token explained and remembered, forgetting and re-pasting a token, and an address with a dashboard path or nothing behind it |
-| `settings-menu` | the header pulldown: no bare Settings button, two items, hanging under the button and inside the window, closing on a click elsewhere and on Escape, the first opening the dialog and the second going to `/ha`, and at 390px opening as a sheet that fits the screen with thumb-sized rows |
+| `settings-menu` | the header pulldown and the size of what it opens: the dialog 820px wide like the Home Assistant page and near the window's height; no bare Settings button, two items, hanging under the button and inside the window, closing on a click elsewhere and on Escape, the first opening the dialog and the second going to `/ha`, and at 390px opening as a sheet that fits the screen with thumb-sized rows |
 | `ha-ui` | the Settings block: the numbers it shows, the book it names with its track and percentage, and the YAML offered as selectable text when the clipboard is refused |
 | `cover-colours` | the drawn cover's two colours: a pair 42° apart, spun 37° a day, every day of a week different, the same picture twice on one day, two books still unalike, a year to come back round, and a cache that expires at midnight and never lasts a day |
 | `cover-click` | on both pages: clicking a cover plays that book and clicking it again pauses it, the picture shows ⏸ while it plays and ▶ otherwise, the player's own cover does the same, the other book's cover takes the pause with it, and the *Listened* tick inside the cover starts nothing |
@@ -1392,6 +1399,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.24 | the Settings dialog is the size of the Home Assistant page |
 | 2.0.16 | Settings became a pulldown over the two kinds of settings: the library, and Home Assistant |
 | 2.0.8 | a Home Assistant page of its own: a long-lived token, six sensors written straight into HA, and its media players played from here — no YAML anywhere |
 | 2.0.0 | Home Assistant: the totals, the hours, the continue queue and the new books as one JSON document, and a playlist that carries a book on to any media player |

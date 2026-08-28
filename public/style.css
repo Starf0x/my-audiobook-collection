@@ -500,3 +500,12 @@ strong.warn { color: #ffb4a8; }
   .menu > ul { position: fixed; left: 12px; right: 12px; min-width: 0; }
   .menu > ul li { padding: 12px; }
 }
+
+/* Settings holds as much as the Home Assistant page does, so it is the same width
+   and the same height on screen: 820px of content, near the full window, with the
+   scrolling inside it. The other dialogs ask one question each and stay narrow. */
+#settings {
+  width: min(820px, 94vw); max-width: min(820px, 94vw);
+  height: min(92vh, 1000px); max-height: 92vh;
+  padding: 18px 20px 24px; overflow-y: auto;
+}
