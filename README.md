@@ -423,6 +423,25 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
+Google has no series field, so the series is read out of what it does answer: the
+brackets on the end of a title (*The Final Empire (Mistborn, #1)*, *(The Dark
+Tower V)*, *(Book 3 of The Expanse)*, *(A Mistborn Novel)*) and the subtitle,
+which is where it goes when the title is clean. There has to be a series in the
+words for one to be offered: *(Unabridged)* and *(Penguin Classics)* are not
+series, and neither is a number on its own. What it finds is shown as a tick
+beside the name and the volume number, on by default and refusable, and the
+brackets come off the title so the album tag does not carry them.
+
+![A lookup result offering the series it read out of the title](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/series-lookup.png)
+
+Applying it names the series in the book and **does not move the book** — a
+series folder is a folder, and moving between folders is *Edit metadata*. Writing
+the tags puts the series in the grouping frame with its number on the end
+(`Mistborn 2`), which is one of the places a scan reads a series from, so the
+next scan agrees instead of dropping it. A series filled in without writing the
+files survives a scan too. Where the folders already say which series a book is
+in, the folders keep winning, and the volume number then stays theirs.
+
 ## When a scan finds fewer books than you have
 
 A scan now keeps a list of every folder it walked past, and why. When there is

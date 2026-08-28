@@ -181,8 +181,8 @@ async function readMeta(files, bookPath) {
 // statement handle for every book and track, which showed up as growing RSS
 // across repeated scans of a large library.
 const q = {
-  bookByPath: db.prepare(`SELECT id, duration, narrator, year, description, cover
-                          FROM books WHERE path = ?`),
+  bookByPath: db.prepare(`SELECT id, duration, narrator, year, description, cover,
+                          tag_series, series_no FROM books WHERE path = ?`),
   trackPaths: db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx'),
   touchBook: db.prepare(`UPDATE books SET genre = ?, author = ?, series = ?, tagged = ?,
       tag_series = ?, series_no = ?, narrator = ?, year = ?, description = ?, cover = ?
@@ -223,8 +223,11 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
     // what a newer version of this app can work out, without its folders changing.
     const told = await firstFileTells(files[0]);
     q.touchBook.run(genre, author, series, told.tagged,
-      told.tagSeries || (guess ? guess.name : ''),
-      told.seriesNo || (guess ? guess.no : 0),
+      // the files first, then what the folders suggest, then what the book already
+      // says: a series filled in from a lookup without writing the files must not
+      // be blanked by the next scan either
+      told.tagSeries || (guess ? guess.name : '') || existing.tag_series,
+      told.seriesNo || (guess ? guess.no : 0) || existing.series_no,
       told.narrator || existing.narrator, told.year || existing.year,
       told.description || existing.description,
       // a picture inside the files wins; then whatever the book already had, so a

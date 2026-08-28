@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.24.** This document describes what the app is, how every
+**Version described: 1.10.32.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.24` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.32` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,26 +96,26 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 391 | Express app: every route, and nothing else |
-| `server/user.js` | 51 | who the process writes as: `PUID`, `PGID`, `UMASK` |
+| `server/index.js` | 499 | Express app: every route, and nothing else |
+| `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 107 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 330 | walking the library, reading tags, filing books |
+| `server/scan.js` | 456 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 170 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 253 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
-| `server/tagall.js` | 115 | the resumable whole-collection tag run |
-| `server/import.js` | 334 | import candidates, quality comparison, filing |
-| `server/trash.js` | 173 | move, delete to trash, restore, purge |
+| `server/tagall.js` | 120 | the resumable whole-collection tag run |
+| `server/import.js` | 427 | import candidates, quality comparison, filing |
+| `server/trash.js` | 180 | move, delete to trash, restore, purge |
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 94 | the cover drawn for a book that has none |
-| `public/index.html` | 197 | the admin page: columns, dialogs |
-| `public/app.js` | 1424 | the admin page's behaviour |
+| `public/index.html` | 207 | the admin page: columns, dialogs |
+| `public/app.js` | 1586 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
-| `public/listen.js` | 364 | the listening page's behaviour |
-| `public/style.css` | 395 | the whole look, both pages, phone included |
+| `public/listen.js` | 395 | the listening page's behaviour |
+| `public/style.css` | 417 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -497,6 +497,34 @@ database. **Author and genre are navigation keys derived from folders**, so they
 are never changed by a lookup — only written into the tags. Picking one of two
 credited authors changes the artist tags, not the folder.
 
+**The series, which Google does not answer with.** There is no series field in a
+volume answer, so `seriesOf(volumeInfo)` reads one out of the text: the brackets
+(round or square) on the end of the title, and failing that the subtitle. A chunk
+becomes a series only if it matches one of four shapes — `Name, #N` / `Name, Book
+N` / `Name N` / `Name V` (the announcing word is optional, the number is not),
+`Book N of Name`, `A Name Novel`, `The Name Series` — and only if what is left is
+not a bare number and does not itself start with `book`/`vol`/`part`/`no`, which
+is what keeps `(Unabridged)`, `(Penguin Classics)`, `(1949)` and `(Book 1 of 3)`
+from becoming series. Numbers may be digits, words (`one`–`ten`) or roman
+numerals. `seriesInfo.bookDisplayNumber`, when Google happens to send it, fills in
+a number the words did not give — never a name. A series taken from the brackets
+comes **off the title**, so the album tag does not carry it.
+
+It is offered as a tick (`#cs<i>`, on by default) and, when accepted, is stored as
+the **tag** kind of series: `tag_series` and `series_no`. It never moves the book —
+that is *Edit metadata*, which is folders. Two rules follow:
+
+* the tag write puts it in `TIT1` as `<series> <no>` (`Mistborn 2`), one of the
+  places `seriesFromTags`/`splitVolume` read a series from, so the next scan
+  agrees rather than dropping it. `node-id3` has no `MVNM`/`MVIN`, hence `TIT1`.
+* `series_no` is one column shared by both kinds, so it is only written when the
+  series being applied is the one the book is shown under (no folder series, or a
+  folder series of the same name). Otherwise a number from another series would
+  reorder the book inside its own folder's series.
+
+An unticked series sends `series: ''`, and the server then keeps whatever the book
+had rather than blanking it.
+
 What a tag write puts in every MP3 of a book:
 
 | Frame | From |
@@ -807,7 +835,8 @@ tag run with its state line); *Who is listening*; *Import* (source, genre, autho
 series, title, and a line showing exactly where it will land); the **conflict**
 dialog comparing two copies row by row with the better value marked; *Find
 metadata* (five results, a search box, the author choice when two are credited,
-and category-as-genre buttons); *Edit metadata* (title, author, series, narrator,
+the series it read out of the title or subtitle as a tick beside its name and
+volume number, and category-as-genre buttons); *Edit metadata* (title, author, series, narrator,
 year, description — with the book's folder and file count at the foot, above the
 buttons); *Move…*.
 
@@ -960,6 +989,13 @@ skips them will reproduce the bugs.
 28. **Tooling note for whoever rebuilds this**: writing JavaScript through a
     shell mangles template literals, `${…}` and `\d`. Use a file-writing tool for
     anything containing them, and grep the result afterwards.
+29. **A series a lookup found has to reach the files.** A scan trusts the
+    files, so a series stored only in the database is dropped by the next one
+    unless the fast path keeps what it has and the tag write puts it in `TIT1`.
+    Both, in this app: the write for the books whose tags are written, the fast
+    path for the ones whose are not. And one `series_no` column serves both kinds
+    of series, so only the series the book is *shown* under may set it.
+
 
 ## 10. Measured performance
 
@@ -996,6 +1032,9 @@ Server suites:
 | `admin-test` | every changing route refused while locked, listening routes still answering, right/wrong password, the cookie, lock again, no route to set a password, a stored hash cleared at startup |
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
+| `series-lookup` | the series read out of what Google answers: brackets and subtitles in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count |
+| `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
+| `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
@@ -1087,6 +1126,7 @@ to insert order and looks broken when the app is right.
 | 1.10.8 | an emptied import folder empties the list that offers its books |
 | 1.10.16 | the app writes as the user that owns the share, and a move never half-happens |
 | 1.10.24 | with nothing set it follows the data folder's owner, and Settings reports what every folder allows |
+| 1.10.32 | a lookup finds the series too, read out of the title and subtitle Google answers with |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
