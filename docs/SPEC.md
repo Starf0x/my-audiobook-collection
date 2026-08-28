@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.48.** This document describes what the app is, how every
+**Version described: 1.10.56.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.48` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.56` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -102,7 +102,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 456 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 395 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 424 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 120 | the resumable whole-collection tag run |
@@ -112,7 +112,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 94 | the cover drawn for a book that has none |
 | `public/index.html` | 222 | the admin page: columns, dialogs |
-| `public/app.js` | 1613 | the admin page's behaviour |
+| `public/app.js` | 1616 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 395 | the listening page's behaviour |
 | `public/style.css` | 417 | the whole look, both pages, phone included |
@@ -520,9 +520,22 @@ out. Where Google will not name a series, `shortSeriesBookTitle` is the last
 resort, with its trailing volume number split off. A name equal to the book's own
 title is refused.
 
-`ask()` wraps both extra requests: an 8-second `AbortSignal.timeout`, `null` on
-any failure or non-2xx. A series that cannot be read is a tick the dialog does not
-offer — never a lookup that fails.
+`ask()` wraps both extra requests: an 8-second `AbortSignal.timeout`, and it
+returns the **status** alongside the body, because "Google refused this" and
+"Google answered, and had nothing" are different answers and the difference is the
+whole diagnosis. A series that cannot be read is a tick the dialog does not offer —
+never a lookup that fails.
+
+**And it says why.** Every result carries a `why` when it offers no series, from
+`whyNone(trace)`: the volume request failed or timed out; it answered 403 (with
+"the key may not read it"); Google's series line is the book's own title, quoted;
+Google files it in series `<id>` but would not name that series; Google keeps no
+series data for this edition, *and another result in the list may be an edition
+that has it*; or nothing anywhere names one. The dialog prints it as
+`No series: <why>` where the tick would be, and the report prints it under the
+empty cell. Without this the dialog is silent about a book it found nothing for,
+and diagnosing that from outside is impossible: the answers come from a key on the
+owner's server.
 
 For the text, a chunk becomes a series only if it matches one of four shapes —
 `Name, #N` / `Name, Book N` / `Name N` / `Name V` (the announcing word is optional,
@@ -1082,7 +1095,7 @@ Server suites:
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
 | `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
-| `series-two-step` | how Google keeps series: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
+| `series-two-step` | how Google keeps series, and what it says when there is none: every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
@@ -1179,6 +1192,7 @@ to insert order and looks broken when the app is right.
 | 1.10.32 | a lookup finds the series too, read out of the title and subtitle Google answers with |
 | 1.10.40 | and out of Google's own series line, asked for per result, for the books whose title says nothing |
 | 1.10.48 | series read the way Google actually keeps them — id, order, and the name behind `series/get` — with a report in Settings on what it answered |
+| 1.10.56 | and when there is no series, the dialog says why: what was asked, what Google answered, and whether another result may carry it |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
