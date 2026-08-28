@@ -51,7 +51,15 @@ async function search_(book, search, key) {
     throw new Error(explain(res.status, body.error?.message));
   }
   const data = await res.json();
-  return (data.items || []).map((it) => ({
+  // A search answer often carries no seriesInfo even where Google has one; asking
+  // for the volume itself gets it. Only for the results whose own text said
+  // nothing, all at once, and a failure there just leaves that result as it was.
+  const items = await Promise.all((data.items || []).map(async (it) => {
+    if (seriesOf(it.volumeInfo).series) return it;
+    const seriesInfo = await volumeSeriesInfo(it.id, key);
+    return seriesInfo ? { ...it, volumeInfo: { ...it.volumeInfo, seriesInfo } } : it;
+  }));
+  return items.map((it) => ({
     ...seriesOf(it.volumeInfo),
     author: (it.volumeInfo.authors || []).join(', '),
     // kept apart as well: a book two people wrote is a choice, not a string
@@ -68,10 +76,25 @@ async function search_(book, search, key) {
   }));
 }
 
-// Google Books has no series field in the answer it gives for a volume, but it
-// does put the series in the title's brackets ("The Final Empire (Mistborn, #1)")
-// or in the subtitle ("The Stormlight Archive, Book 2"). Both are read here, and
-// the brackets come off the title so the album tag does not carry them.
+// The series line of one volume, or nothing. This runs while a lookup the user is
+// watching is open, so it must never throw and never hang: a missing series is a
+// tick the dialog does not offer, which is what happened before it was asked for.
+async function volumeSeriesInfo(id, key) {
+  if (!id) return null;
+  try {
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes/${encodeURIComponent(id)}?key=${key}`,
+      { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    return (await res.json()).volumeInfo?.seriesInfo || null;
+  } catch {
+    return null;
+  }
+}
+
+// A search answer names the series in the title's brackets ("The Final Empire
+// (Mistborn, #1)") or in the subtitle ("The Stormlight Archive, Book 2"), and
+// where it names neither, Google's own seriesInfo does. All three are read here,
+// and the brackets come off the title so the album tag does not carry them.
 const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
 const ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
 const numberOf = (raw) => {
@@ -83,31 +106,35 @@ const NO = '\\d{1,3}|[ivx]{1,4}|one|two|three|four|five|six|seven|eight|nine|ten
 const LABEL = 'book|bk\\.?|vol\\.?|volume|part|no\\.?|nr\\.?|deel';
 // Only these shapes count as a series. Anything else in brackets — "(Unabridged)",
 // "(Penguin Classics)" — is not one, and guessing there would be worse than silence.
-const SHAPES = [
+const VOLUME_ON_THE_END = {
   // Mistborn, #1 · The Stormlight Archive, Book 2 · The Expanse #1 · Discworld 8
   // · The Dark Tower V. The number has to be there; what announces it need not be.
-  new RegExp(`^(.+?)[,:]?\\s*(?:#\\s*|(?:${LABEL})\\s*#?\\s*)?(${NO})$`, 'i'),
+  re: new RegExp(`^(.+?)[,:]?\\s*(?:#\\s*|(?:${LABEL})\\s*#?\\s*)?(${NO})$`, 'i'),
+  numberFirst: false,
+};
+const SHAPES = [
+  VOLUME_ON_THE_END,
   // Book 3 of The Expanse · Volume Two in the Wheel of Time Series
-  new RegExp(`^(?:${LABEL})\\s*(${NO})\\s+(?:of|in)\\s+(.+)$`, 'i'),
+  { re: new RegExp(`^(?:${LABEL})\\s*(${NO})\\s+(?:of|in)\\s+(.+)$`, 'i'), numberFirst: true },
   // A Mistborn Novel · An Expanse Story
-  /^an?\s+(.+?)\s+(?:novel|novella|story|mystery|thriller|adventure|book)$/i,
+  { re: /^an?\s+(.+?)\s+(?:novel|novella|story|mystery|thriller|adventure|book)$/i, numberFirst: false },
   // The Wheel of Time Series
-  /^(.+?)\s+(?:series|saga|cycle)$/i,
+  { re: /^(.+?)\s+(?:series|saga|cycle)$/i, numberFirst: false },
 ];
-const seriesIn = (chunk) => {
+const seriesIn = (chunk, shapes = SHAPES) => {
   const text = (chunk || '').replace(/\s+/g, ' ').trim();
-  for (const [i, shape] of SHAPES.entries()) {
-    const m = text.match(shape);
+  for (const { re, numberFirst } of shapes) {
+    const m = text.match(re);
     if (!m) continue;
-    // the second shape names the number first, the others name it last
-    const name = (i === 1 ? m[2] : m[1])
+    const name = (numberFirst ? m[2] : m[1])
       .replace(/[\s,:]+$/, '')
-      .replace(/\s+(?:series|saga)$/i, '')
+      // "Series" describes; "Saga" and "Cycle" are part of names like The Twilight Saga
+      .replace(/\s+series$/i, '')
       // "in the Wheel of Time" is a sentence around the name; "of The Expanse"
       // hands over a name that begins with its own article, so the capital stays
       .replace(/^the\s+/, '')
       .trim();
-    const no = i === 1 ? numberOf(m[1]) : numberOf(m[2]);
+    const no = numberOf(numberFirst ? m[1] : m[2]);
     // "Book 1 of 3" is not a series called "Book 1 of", and a number is not a name
     const empty = !name || /^\d+$/.test(name) || new RegExp(`^(?:${LABEL}|#)\\b`, 'i').test(name);
     if (!empty && name.length <= 60) return { series: name, seriesNo: no };
@@ -118,13 +145,26 @@ export function seriesOf(info = {}) {
   const title = info.title || '';
   // the brackets at the end of a title, if that is what they hold
   const bracket = title.match(/^(.*\S)\s*[([]([^()[\]]+)[)\]]\s*$/);
-  const found = (bracket && seriesIn(bracket[2])) || seriesIn(info.subtitle) || null;
-  // Google sometimes knows the number even when the words do not say it
-  const told = numberOf(info.seriesInfo?.bookDisplayNumber);
+  const inBracket = bracket ? seriesIn(bracket[2]) : null;
+  const clean = inBracket ? bracket[1] : title;
+  // Google's own series line, which is where the series is for a book whose title
+  // says nothing: "A Kiss of Shadows" is book 1 of "Merry Gentry" and only
+  // seriesInfo knows it. shortSeriesBookTitle carries the name and the number.
+  const si = info.seriesInfo || {};
+  const told = numberOf(si.bookDisplayNumber);
+  // that line is already a name, so only a volume number is split off it — none of
+  // the other shapes, which would read "A Long Saga" as a saga called "A Long"
+  const own = si.shortSeriesBookTitle
+    ? seriesIn(si.shortSeriesBookTitle, [VOLUME_ON_THE_END])
+      || { series: si.shortSeriesBookTitle.trim(), seriesNo: told }
+    : null;
+  const found = inBracket || seriesIn(info.subtitle) || own;
+  // a "series" named after the book itself is the book, not a series
+  const same = found && found.series.toLowerCase() === clean.toLowerCase();
   return {
-    title: found && bracket && seriesIn(bracket[2]) ? bracket[1] : title,
-    series: found ? found.series : '',
-    seriesNo: found ? found.seriesNo || told : 0,
+    title: clean,
+    series: found && !same ? found.series : '',
+    seriesNo: found && !same ? found.seriesNo || told : 0,
   };
 }
 
