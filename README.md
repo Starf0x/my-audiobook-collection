@@ -24,6 +24,7 @@ The full manual, with screenshots of every part of it, is in the
 * The cover is a play button too: click the picture to start a book, click it again to pause it
 * Covers drawn for books with no art of their own rotate their two colours every day
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
+* **Home Assistant** reads the collection and carries a book on to any media player in the house
 * Runs as a single Docker container, SQLite storage, no external services
 * One job at a time: whichever button started the job greys out until it is done, wherever it was pressed
 * Except tag writes: two books, or two series, can be written at once, each with its own bar
@@ -115,6 +116,8 @@ check the paths it filled in:
 | File mode mask | `000` | the mode of what it creates. `000` is what an Unraid share normally is; `022` makes it read-only to others |
 | Admin password | empty | guards everything that changes the collection; the only place it is set |
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
+| Home Assistant token | empty | set it to make the `/api/ha` addresses ask for it; masked in the form |
+| Base URL | empty | only behind a reverse proxy: the address other machines reach the app on |
 | Google country | `US` | which country's Google catalogue to answer from. Series data belongs to a country's catalogue and the US one has the most of it, so leave this unless you have reason not to |
 
 The last three are optional, and the two variables are masked in the form. Then
@@ -417,6 +420,55 @@ Settings moves every cover file no book refers to into `covers/duplicates`,
 overwriting a file of the same name already there. Once that folder holds more
 than a thousand files it says so and asks whether to delete them; decline and
 they are zipped into one archive beside them and the loose files removed.
+
+## Home Assistant
+
+Home Assistant needs no custom component for this: the app answers with what HA
+polls and with a playlist HA can hand to a media player.
+
+![The Home Assistant section in Settings, showing what it answers](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/home-assistant.png)
+
+| Address | What it is |
+| --- | --- |
+| `GET /api/ha` | one JSON document: the totals, the continue queue, the new books |
+| `GET /api/ha/book/<id>.m3u?from=<track>` | a book as a playlist, optionally from a track on |
+| `GET /api/ha/continue.m3u` | whichever book is being listened to, from where it stopped |
+| `GET /api/ha/example.yaml` | the configuration to paste into HA, with this server's address in it |
+
+**Settings → Home Assistant** copies that YAML to the clipboard and shows what the
+app answers right now, so "can HA see it?" is settled in the app rather than in
+HA's logs.
+
+What the JSON carries: the number of **books** and of **files**, the **hours** in
+the collection, the hours **listened** and the hours **left**; the **continue
+queue** — title, author, series, which track of how many, how many seconds into
+it, how far in as a percentage, and how many hours are left; and the **new books**,
+newest first. A book marked *Listened* counts whole in the hours; a book in
+progress counts the tracks behind the listener plus the seconds into the one they
+are on. `?user=<name>` picks whose progress is reported, and with one listener it
+is that one.
+
+**Carrying a book on to a speaker.** A media player cannot be told "play book 412
+from 2h24m", but it can be handed a URL, and most players take an M3U and play it
+through. So the generated script calls `media_player.play_media` with
+`/api/ha/continue.m3u` — which starts at the track the listener is on — and then
+`media_player.media_seek` with the seconds into that track. That playlist also
+answers with `X-Audiobook-Id` and `X-Audiobook-Seek` headers for an automation
+that would rather not read the JSON as well.
+
+Two settings on the container, both optional: **`HA_TOKEN`** closes these
+addresses off (they answer anyone on the network otherwise, as the listening page
+does), and **`BASE_URL`** is the address other machines reach the app on when that
+is not the one they asked at — behind a reverse proxy, say. The URLs inside the
+answers are built from it, and a media player has to be able to fetch the audio
+itself.
+
+The app does not learn where a speaker got to: positions come from the listening
+page. Play on a speaker, and carrying on in the browser starts where the browser
+last was.
+
+The whole of it, with dashboard examples, is in
+[docs/home-assistant.md](docs/home-assistant.md).
 
 ## Google Books API key
 

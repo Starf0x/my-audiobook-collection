@@ -437,3 +437,10 @@ table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
   .card .cover:hover::after { opacity: 0; }
   .card .cover.playing::after { opacity: .92; }
 }
+
+/* the Home Assistant configuration, when the clipboard is not allowed */
+pre.ha {
+  max-height: 260px; overflow: auto; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 12px; font-size: 11.5px; user-select: text;
+  -webkit-user-select: text; white-space: pre; margin: 8px 0 0;
+}
