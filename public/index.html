@@ -17,7 +17,14 @@
   <button id="adminBtn" class="ghost" hidden>Lock</button>
   <select id="scanWhich" title="Which library folder to scan"></select>
   <button id="scan" class="ghost">Scan library</button>
-  <button id="openSettings" class="ghost">Settings</button>
+  <!-- two kinds of settings now, so the button is a pulldown over both -->
+  <details id="settingsMenu" class="menu">
+    <summary class="ghost">Settings ▾</summary>
+    <ul>
+      <li id="openSettings">Library and maintenance</li>
+      <li id="openHa">Home Assistant</li>
+    </ul>
+  </details>
 </header>
 
 <main>
