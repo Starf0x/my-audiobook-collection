@@ -112,7 +112,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 94 | the cover drawn for a book that has none |
 | `public/index.html` | 222 | the admin page: columns, dialogs |
-| `public/app.js` | 1616 | the admin page's behaviour |
+| `public/app.js` | 1615 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 395 | the listening page's behaviour |
 | `public/style.css` | 417 | the whole look, both pages, phone included |
