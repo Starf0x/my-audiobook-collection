@@ -466,6 +466,8 @@ series data per **edition**, so one result in a list can have it where another d
 not: when a book you know is in a series gets nothing, the reason line is the thing
 to read, and the other results are worth a look.
 
+![Two editions of one book: one with no series data, one with the series](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/series-why.png)
+
 **Settings → What Google says about series** asks about a stretch of books that
 have no series yet and reports, per book, what Google answered, which of the three
 places the series came from, the raw `seriesInfo` fields, the reason where there is
