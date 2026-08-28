@@ -67,25 +67,22 @@ async function search_(book, search, key, trace = null) {
   }));
 
   // Google keeps series data per record, not per book: of five editions of one
-  // novel, one may be in a series and the rest in nothing. The list is one book,
-  // so a series found on any of them is offered on all of them — the alternative
-  // is telling someone their book has no series while another line of the same
-  // answer names it.
-  // A search answers with several editions of the book and, often, with other
-  // books entirely, so a series may only pass between results that are the same
-  // book by title. Within that, the edition that has it lends it: telling someone
-  // their book has no series while another line of the same answer names it is
-  // worse than saying where it came from.
+  // novel, one may be in a series and the rest in nothing. A search also answers
+  // with other books entirely, so a series may only pass between results that are
+  // the same book by title. Within that, the edition that has it lends it — telling
+  // someone their book has no series while another line of the same answer names it
+  // is worse than saying where it came from.
+  const SAID = { edition: 'another edition', ebook: 'the ebook edition', record: 'another record' };
   const lend = (to, from, where) => {
     Object.assign(to.series, {
       series: from.series, seriesNo: from.seriesNo, fromEdition: where, why: '',
     });
-    Object.assign(to.own, { from: where, series: from.series, seriesNo: from.seriesNo, why: '' });
+    Object.assign(to.own, { from: SAID[where], series: from.series, seriesNo: from.seriesNo, why: '' });
   };
   for (const r of items) {
     if (r.series.series) continue;
     const sibling = items.find((o) => o.series.series && sameBook(o.series.title, r.series.title));
-    if (sibling) lend(r, sibling.series, 'another edition');
+    if (sibling) lend(r, sibling.series, 'edition');
   }
 
   // Nothing anywhere in the answer for the book that was asked about. Series data
@@ -94,13 +91,22 @@ async function search_(book, search, key, trace = null) {
   // there is to look.
   const primary = items[0];
   if (primary && !primary.series.series) {
+    const expect = primary.series.title;
     if (trace) trace.asked.push('ebook search');
-    const ebook = await ebookSeries(q, primary.series.title, key);
+    let found = await ebookSeries(q, expect, key);
+    let where = 'ebook';
+    if (!found) {
+      // the other records of the same book, of which Google keeps many
+      if (trace) trace.asked.push('all records');
+      found = await moreRecords(q, expect, key);
+      where = 'record';
+    }
     for (const r of items) {
-      if (r.series.series || !sameBook(r.series.title, primary.series.title)) continue;
-      if (ebook) lend(r, ebook, 'the ebook edition');
+      if (r.series.series || !sameBook(r.series.title, expect)) continue;
+      if (found) lend(r, found, where);
       else if (r.series.why) {
-        r.series.why += ' Google\'s ebook editions of it have none either.';
+        r.series.why += ' Neither have its ebook editions, nor any of the other records '
+          + 'Google keeps of it — type the series into Edit metadata and it stays.';
         r.own.why = r.series.why;
       }
     }
@@ -160,10 +166,43 @@ const ask = async (url) => {
 // this is one request; the volume of a matching result is asked only if none does.
 // A different book that happens to match the words must not lend its series, so
 // the title has to be the same book.
+// The same book, whatever a cataloguer did to the words: one record is called
+// "A Kiss of Shadows", the next "Kiss of Shadows: A Novel". Word for word, without
+// the articles and without the publisher's tail.
 const sameBook = (a, b) => {
-  const bare = (t) => (t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const bare = (t) => String(t || '').toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/:\s*(?:a|an|the)?\s*(?:novel|book|story|romance|mystery|thriller)\b.*$/i, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter((w) => w && !['the', 'a', 'an'].includes(w))
+    .sort()
+    .join(' ');
   return !!bare(a) && bare(a) === bare(b);
 };
+
+// Google holds dozens of records per book and a lookup reads five. When none of
+// those five knows the series, the rest are worth reading: the record somebody
+// entered as "Mistral's Kiss (Merry Gentry Book 5)" names it in its title even
+// when the one Google matched does not. One request, forty records, and only the
+// ones that are this same book count — a sibling in the series must not lend its
+// own volume number, and another book by the author must not lend anything.
+async function moreRecords(q, expect, key) {
+  const r = await ask(books(`volumes?q=${encodeURIComponent(q)}&maxResults=40&projection=full`, key));
+  const mine = (r.body?.items || []).filter((it) => sameBook(seriesOf(it.volumeInfo).title, expect));
+  for (const it of mine) {
+    const text = seriesOf(it.volumeInfo);
+    if (text.series) return { series: text.series, seriesNo: text.seriesNo };
+  }
+  // and any series data that came with the answer, which costs nothing to read
+  for (const it of mine) {
+    if (!it.volumeInfo?.seriesInfo) continue;
+    const got = await seriesFor(it, key, {});
+    if (got.series) return { series: got.series, seriesNo: got.seriesNo };
+  }
+  return null;
+}
 
 async function ebookSeries(q, expect, key) {
   const r = await ask(books(`volumes?q=${encodeURIComponent(q)}&filter=ebooks&maxResults=3`, key));
