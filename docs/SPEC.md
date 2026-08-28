@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.72.** This document describes what the app is, how every
+**Version described: 1.11.0.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.72` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.11.0` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,7 +96,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 512 | Express app: every route, and nothing else |
+| `server/index.js` | 515 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 112 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -110,12 +110,12 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/trash.js` | 180 | move, delete to trash, restore, purge |
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
-| `server/placeholder.js` | 94 | the cover drawn for a book that has none |
+| `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `public/index.html` | 222 | the admin page: columns, dialogs |
-| `public/app.js` | 1622 | the admin page's behaviour |
+| `public/app.js` | 1635 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
-| `public/listen.js` | 395 | the listening page's behaviour |
-| `public/style.css` | 417 | the whole look, both pages, phone included |
+| `public/listen.js` | 408 | the listening page's behaviour |
+| `public/style.css` | 439 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -784,7 +784,11 @@ removed the last `onerror` fallbacks from the pages.
 
 The drawing, on a 400×600 canvas (2:3, the shape of real art):
 
-* hue = first two bytes of the md5 of the title, mod 360; a second hue at +42°
+* hue = first two bytes of the md5 of the title, mod 360, **plus 37° per day**
+  (`dayIndex()`, days since the epoch in the server's own timezone); a second hue
+  at +42°. So a book holds its cover all day, the shelf turns over every night, and
+  the cycle is 360 days because 37 and 360 are coprime. `placeholderCover` takes
+  `day` as an argument, which is the only way a test can look at another day.
 * background: diagonal gradient `hsl(h, 34%, 19%)` → `hsl(h2, 42%, 8%)`, with two
   soft radial glows (top-left in the first hue, bottom-right in the second) —
   the same treatment as the app's own background
@@ -800,8 +804,16 @@ The drawing, on a 400×600 canvas (2:3, the shape of real art):
   at 0.66; omitted when unknown
 * a hairline inner border, white at 0.09
 
-Sent as `image/svg+xml` with `Cache-Control: public, max-age=604800`. Nothing is
+Sent as `image/svg+xml` with `Cache-Control: public, max-age=<seconds to local
+midnight>` (`untilTomorrow()`, never under 60): the colours change then, and a
+week — right for a real picture — would hold yesterday's on screen. `coverV` puts
+the day into the marker for a book with no art, so the URL changes too. Nothing is
 written to disk. A book with a drawn cover still counts as needing tags.
+
+The gradient ids carry the hue and the day (`g${h}x${day}`). SVG ids are global to
+the document the picture lands in, so two drawn covers inlined in one page would
+both be painted with the first one's gradient — which is exactly what happened to
+the page that made the screenshot above.
 
 ### 7.10 Search
 
@@ -993,7 +1005,19 @@ for the book that is loaded but paused **and** for any button marked
 distinction is what makes a reload keep saying *Resume*: nothing is loaded in the
 player then, but the shelf still means "carry on with this". A button that has been
 the playing one is marked `data-resume` too, so it stays a *Resume* when another
-book takes over. It runs from the `play`, `pause` and `ended` events and at the
+book takes over.
+
+**The cover is a play button as well.** The picture on a card carries
+`onclick="playBook(id)"`, so one click starts the book and the next pauses it —
+`playBook` was already a toggle. `#pCover`, the picture in the player, pauses and
+resumes whatever is loaded there. `markPlaying()` also writes `data-glyph` on each
+`.card .cover` (⏸ for the book that is playing, ▶ otherwise) and a `.playing` class;
+CSS draws it with `content: attr(data-glyph)`, on hover for any cover and always for
+the one that is playing, since a touch screen has no hover. The handler sits on the
+**image**, not on `.cover`, because the *Listened* tick lives in that box and a
+click on it must not start the book.
+
+It runs from the `play`, `pause` and `ended` events and at the
 end of `drawBooks` and `loadHome`, so a redraw does not forget which book is
 playing. The `onclick` attribute stays `playBook(...)`, because the stylesheet and
 the tests find the play button by it.
@@ -1155,6 +1179,8 @@ Server suites:
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
 | `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
 | `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
+| `cover-colours` | the drawn cover's two colours: a pair 42° apart, spun 37° a day, every day of a week different, the same picture twice on one day, two books still unalike, a year to come back round, and a cache that expires at midnight and never lasts a day |
+| `cover-click` | on both pages: clicking a cover plays that book and clicking it again pauses it, the picture shows ⏸ while it plays and ▶ otherwise, the player's own cover does the same, the other book's cover takes the pause with it, and the *Listened* tick inside the cover starts nothing |
 | `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
 | `two-writes-ui` | pressing one book's *Write into MP3s* greys that button and the file-moving ones, leaves the other books' write buttons alive, and gives each write its own named bar |
 | `tagall-test` | the resumable run: paused across a restart, resumed to completion, every file written once, a fresh run starting over, a `running` row settled to `paused` at startup |
@@ -1231,6 +1257,7 @@ to insert order and looks broken when the app is right.
 | 1.10.56 | and when there is no series, the dialog says why: what was asked, what Google answered, and whether another result may carry it |
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
+| 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and

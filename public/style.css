@@ -418,3 +418,22 @@ table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
 /* a dialog input is a full-width field; a tick is not */
 .cand label.pick input { width: 14px; height: 14px; padding: 0; margin: 0 6px 0 0;
   vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+
+/* The cover is a play button: it says what a click will do, and keeps saying it
+   while that book plays. On a touch screen there is no hover, so the glyph shows
+   for the book that is playing and nothing else. */
+.card .cover { position: relative; }
+.card .cover img[onclick] { cursor: pointer; }
+.card .cover::after {
+  content: attr(data-glyph);
+  position: absolute; top: 52px; left: 0; right: 0; text-align: center;
+  font-size: 30px; color: #fff; text-shadow: 0 2px 10px #000;
+  opacity: 0; transition: opacity .12s; pointer-events: none;
+}
+.card .cover:hover::after { opacity: .92; }
+.card .cover.playing::after { opacity: .92; }
+#pCover { cursor: pointer; }
+@media (hover: none) {
+  .card .cover:hover::after { opacity: 0; }
+  .card .cover.playing::after { opacity: .92; }
+}

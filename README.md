@@ -21,6 +21,8 @@ The full manual, with screenshots of every part of it, is in the
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
 * Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * The Play button of the book that is playing is its Pause button, on the card you started it from
+* The cover is a play button too: click the picture to start a book, click it again to pause it
+* Covers drawn for books with no art of their own rotate their two colours every day
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
 * Runs as a single Docker container, SQLite storage, no external services
 * One job at a time: whichever button started the job greys out until it is done, wherever it was pressed
@@ -391,9 +393,17 @@ here; the other three do.
 
 Not every book comes with art, and a shelf of empty rectangles is hard to read.
 A book with no cover of its own gets one drawn for it: the title, the author and
-a pair of headphones, in colours taken from the title, so the same book always
-looks the same and two books beside each other rarely look alike. It stands in
-for art that has gone missing from disk as well.
+a pair of headphones, in colours taken from the title, so two books beside each
+other rarely look alike. It stands in for art that has gone missing from disk as
+well.
+
+**The two colours turn over every night.** The pair — one hue and its partner 42°
+along — is spun 37° a day, so the shelf you open in the morning is not the one you
+left, while a book keeps the same cover all day and the whole set takes a year to
+come back round. Real cover art never changes, and a browser is told it may keep a
+drawn cover only until midnight.
+
+![The same four drawn covers today, tomorrow and the day after](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/cover-days.png)
 
 Nothing is written to disk for this — it is drawn when the page asks for the
 cover. A book with a drawn cover still counts as one that **needs tags**, so

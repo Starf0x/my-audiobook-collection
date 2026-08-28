@@ -12,7 +12,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
-import { placeholderCover } from './placeholder.js';
+import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -35,9 +35,11 @@ app.use(express.static(PUBLIC, { index: false }));
 
 // Covers are named after the image itself, so this marker in the URL changes
 // exactly when the picture does, and a browser may then keep it for a week. A
-// book with no picture gets one drawn from its title, so that names it instead.
+// book with no picture gets one drawn from its title and the day — the drawn
+// colours turn over at midnight — so both go into the marker, or a browser would
+// show yesterday's picture until the week was out.
 const coverV = (b) => crypto.createHash('md5')
-  .update(b.cover || `title:${b.title || ''}`).digest('hex').slice(0, 12);
+  .update(b.cover || `title:${b.title || ''}:day${dayIndex()}`).digest('hex').slice(0, 12);
 
 // Which build is answering. Without it there is no way to tell from the outside
 // whether a container has actually been updated.
@@ -422,8 +424,9 @@ app.get('/api/cover/:id', (req, res) => {
   if (!book) return res.status(404).end();
   // No art, or art that is no longer on disk: a drawn cover rather than a hole
   // in the shelf. It is derived from the title, so it may be cached like a file.
+  // kept only until the day turns, when its two colours move on
   const drawn = () => res.type('image/svg+xml')
-    .set('Cache-Control', 'public, max-age=604800').send(placeholderCover(book));
+    .set('Cache-Control', `public, max-age=${untilTomorrow()}`).send(placeholderCover(book));
   if (!book.cover) return drawn();
   const file = book.cover.startsWith('file:') ? book.cover.slice(5) : path.join(DATA_DIR, 'covers', book.cover);
   if (!fs.existsSync(file)) return drawn();
