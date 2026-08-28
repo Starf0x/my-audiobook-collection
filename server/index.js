@@ -13,7 +13,8 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
-import { haState, bookPlaylist, haYaml, tokenOk, haToken } from './ha.js';
+import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, haSettings, saveHaSettings, haPing, haPlayers,
+  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -30,6 +31,7 @@ const PUBLIC = path.join(path.dirname(url.fileURLToPath(import.meta.url)), '../p
 const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC, name));
 app.get('/', page('listen.html'));
 app.get('/admin', page('index.html'));
+app.get('/ha', page('ha.html'));
 app.get('/listen.html', (req, res) => res.redirect('/'));
 app.get('/index.html', (req, res) => res.redirect('/admin'));
 app.use(express.static(PUBLIC, { index: false }));
@@ -445,10 +447,6 @@ const forHA = (req, res, next) => (tokenOk(req)
 
 app.get('/api/ha', forHA, (req, res) => res.json(haState(req, VERSION)));
 
-// the configuration to paste into HA, with this server's address filled in
-app.get('/api/ha/example.yaml', forHA, (req, res) =>
-  res.type('text/yaml; charset=utf-8').send(haYaml(req)));
-
 app.get('/api/ha/book/:id.m3u', forHA, (req, res) => {
   const from = Math.max(0, Number(req.query.from) || 0);
   const list = bookPlaylist(req, Number(req.params.id), from);
@@ -471,6 +469,50 @@ app.get('/api/ha/continue.m3u', forHA, (req, res) => {
     .set('X-Audiobook-Seek', String(first.position))
     .send(list);
 });
+
+// --- the Home Assistant page -------------------------------------------
+// This half talks to HA rather than waiting to be asked, so it is the admin's to
+// set up: an address, a long-lived token from HA, and which listener to report on.
+app.get('/api/ha/config', requireAdmin, (req, res) => {
+  rememberRequest(req);
+  res.json({
+    ...haSettings(),
+    lastPush,
+    listeners: db.prepare('SELECT name FROM users ORDER BY name').all().map((u) => u.name),
+    base: baseUrlOf(req),
+  });
+});
+
+app.post('/api/ha/config', requireAdmin, (req, res) => {
+  const saved = saveHaSettings(req.body || {});
+  rememberRequest(req);
+  scheduleHaPush(VERSION);
+  res.json(saved);
+});
+
+app.post('/api/ha/test', requireAdmin, wrap(async (req, res) => res.json(await haPing())));
+app.get('/api/ha/players', requireAdmin, wrap(async (req, res) => res.json(await haPlayers())));
+
+// what would be written into HA, without writing it
+app.get('/api/ha/entities', requireAdmin, (req, res) => res.json(
+  haEntities(req, VERSION).map(([entity, state, attributes]) => ({ entity, state, attributes }))));
+
+app.post('/api/ha/push', requireAdmin, wrap(async (req, res) => {
+  rememberRequest(req);
+  res.json(await haPush(req, VERSION));
+}));
+
+// Playing a book is the one of these an automation may want to call, so the token
+// meant for Home Assistant is accepted here as well as an admin session. Only when
+// one is actually set: an unset HA_TOKEN must not open this to the whole network.
+const adminOrHA = (req, res, next) => (isAdmin(req) || (inboundToken() && tokenOk(req))
+  ? next()
+  : res.status(401).json({ error: 'Admin only, or set HA_TOKEN on the container and pass it as ?token=.' }));
+
+app.post('/api/ha/play', adminOrHA, wrap(async (req, res) => {
+  rememberRequest(req);
+  res.json(await haPlay(req, { ...(req.body || {}), version: VERSION }));
+}));
 
 app.get('/api/stream/:trackId', (req, res) => {
   const track = db.prepare('SELECT path FROM tracks WHERE id = ?').get(Number(req.params.trackId));
@@ -547,6 +589,9 @@ app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
 settleTagAll();
 purgeExpired(Date.now());
 setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
+
+// a container that was already set up keeps pushing to Home Assistant on its own
+scheduleHaPush(VERSION);
 
 const port = process.env.PORT || 8523;
 app.listen(port, () => console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR})`));

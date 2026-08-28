@@ -869,42 +869,9 @@ $('#checkPerms').onclick = async () => {
     <table class="cmp"><tr><th>What</th><th>Where</th><th>Owner · mode</th><th></th></tr>${rows}</table>`;
 };
 
-// The two things Home Assistant needs: the configuration to paste, and a look at
-// what the app answers, so "is it reachable from there?" can be settled here.
-$('#haYaml').onclick = async () => {
-  let yaml;
-  try {
-    const r = await fetch('/api/ha/example.yaml');
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
-    yaml = await r.text();
-  } catch (e) { return toast(e.message); }
-  try {
-    await navigator.clipboard.writeText(yaml);
-    toast('The YAML is on the clipboard. Paste it into configuration.yaml and restart Home Assistant.');
-  } catch {
-    // no clipboard on this page (an insecure origin, usually): show it instead
-    $('#haOut').innerHTML = `<p class="hint">Copying is not allowed on this address, so here it is
-      to select by hand:</p><pre class="ha">${esc(yaml)}</pre>`;
-  }
-};
-
-$('#haShow').onclick = async () => {
-  $('#haOut').innerHTML = '<p class="hint">Asking…</p>';
-  let s;
-  try { s = await api('/api/ha'); } catch (e) { $('#haOut').innerHTML = ''; return toast(e.message); }
-  const rows = [
-    ['Books', s.books], ['Files', s.files],
-    ['Hours in the collection', s.hours.total], ['Hours listened', s.hours.listened],
-    ['Hours left', s.hours.left], ['Books marked listened', s.listened_books],
-    ['Listener reported on', s.listener || '— every listener at once —'],
-    ['To continue', s.continue.length ? `${s.continue.length}, first: ${s.continue[0].title}`
-      + ` (track ${s.continue[0].track} of ${s.continue[0].tracks}, ${s.continue[0].percent}%)` : 'nothing'],
-    ['Newest book', s.new.length ? s.new[0].title : '—'],
-  ].map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join('');
-  $('#haOut').innerHTML = `<table class="cmp"><tr><th>What</th><th>Now</th></tr>${rows}</table>
-    <p class="hint">The whole answer is at <code>/api/ha</code>; a player is handed
-      <code>/api/ha/continue.m3u</code>.</p>`;
-};
+// Home Assistant has a page of its own: an address, a token and media players are
+// more than a dialog section can hold.
+$('#toHa').onclick = () => { location.href = '/ha'; };
 
 // What Google answered for a stretch of books, as a table to read and to send on.
 // Its own request count per book is the part worth seeing: a series in the title
