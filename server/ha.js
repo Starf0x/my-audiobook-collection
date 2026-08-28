@@ -1,9 +1,12 @@
-// Home Assistant, without a custom component.
+// Home Assistant, in both directions.
 //
-// Everything HA needs fits in two answers: one JSON document it can poll with a
-// `rest` sensor, and one playlist it can hand to a media player. Nothing here
-// pushes: HA asks, which is the only way that works through a container with no
-// broker and no cloud account.
+// Outward: with a long-lived access token from HA, this app writes its own
+// entities into HA (`POST /api/states/...`) and calls its services, so nothing has
+// to be configured on the HA side — no YAML, no custom component, no restart. That
+// is what the Home Assistant page in the app is for.
+//
+// Inward: `GET /api/ha` still answers with the same state for anyone who would
+// rather poll, and the playlists below are what a media player is actually given.
 //
 // The playlist is the part that makes "continue this book on the kitchen speaker"
 // possible at all. A media player cannot be told "play book 12 from 3h14m", but it
@@ -11,7 +14,7 @@
 // playlist starts at the track the listener is on and runs to the end of the book;
 // the seconds into that track come back in the JSON, for HA to pass to
 // `media_player.media_seek` once playback has started.
-import { db } from './db.js';
+import { db, getSetting, setSetting } from './db.js';
 
 // Where this app is reachable from, which is not always where the request came
 // from: HA may talk to a hostname the browser never uses, and a media player has
@@ -26,10 +29,10 @@ export function baseUrl(req) {
 
 // One token, read from the container. Without it these answers are as open as the
 // listening page already is on the same network; with it, HA has to say it.
-export const haToken = () => (process.env.HA_TOKEN || '').trim();
+export const inboundToken = () => (process.env.HA_TOKEN || '').trim();
 
 export function tokenOk(req) {
-  const want = haToken();
+  const want = inboundToken();
   if (!want) return true;
   const said = req.query.token
     || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -131,65 +134,208 @@ export function haState(req, version = '') {
   };
 }
 
-// The configuration to paste into Home Assistant, with this server's own address
-// already in it — the one thing a copied example always gets wrong. The token is
-// never printed: whoever set it on the container types it here themselves.
-export function haYaml(req) {
-  const base = baseUrl(req);
-  const q = haToken() ? '?token=YOUR_HA_TOKEN' : '';
-  return `# My Audiobook Collection — paste into configuration.yaml (or a package) and restart.
-${haToken() ? '# This container has HA_TOKEN set, so replace YOUR_HA_TOKEN below with it.\n' : ''}rest:
-  - resource: ${base}/api/ha${q}
-    scan_interval: 300
-    sensor:
-      - name: Audiobooks
-        unique_id: audiobook_books
-        value_template: "{{ value_json.books }}"
-        unit_of_measurement: books
-        json_attributes: [hours, continue, new, listeners]
-      - name: Audiobook files
-        unique_id: audiobook_files
-        value_template: "{{ value_json.files }}"
-        unit_of_measurement: files
-      - name: Audiobook hours
-        unique_id: audiobook_hours
-        value_template: "{{ value_json.hours.total }}"
-        unit_of_measurement: h
-      - name: Audiobook hours listened
-        unique_id: audiobook_hours_listened
-        value_template: "{{ value_json.hours.listened }}"
-        unit_of_measurement: h
-      - name: Audiobook next up
-        unique_id: audiobook_next_up
-        value_template: "{{ (value_json.continue | first).title | default('nothing') }}"
-        json_attributes: [continue]
+// --- driving Home Assistant --------------------------------------------
+// The direction that needs no YAML: given the address of a Home Assistant and a
+// long-lived access token made in it, this app writes its own sensors into HA's
+// state machine and calls HA's services. Nothing is configured on the HA side and
+// nothing is restarted there. The token is typed into the app's Home Assistant
+// page by whoever made it, kept in the settings table, and never sent back to a
+// browser — the page is only ever told whether one is there.
+const KEY = { url: 'haUrl', token: 'haToken', every: 'haEvery', player: 'haPlayer', listener: 'haListener' };
 
-script:
-  continue_audiobook:
-    alias: Continue the audiobook
-    fields:
-      player:
-        name: Media player
-        selector:
-          entity:
-            domain: media_player
-    sequence:
-      # the playlist starts at the track the listener is on …
-      - service: media_player.play_media
-        target:
-          entity_id: "{{ player }}"
-        data:
-          media_content_type: music
-          media_content_id: ${base}/api/ha/continue.m3u${q}
-      # … and this puts it at the second they stopped on
-      - delay: "00:00:03"
-      - service: media_player.media_seek
-        target:
-          entity_id: "{{ player }}"
-        data:
-          seek_position: >
-            {{ (state_attr('sensor.audiobook_next_up', 'continue') | first).position | int(0) }}
-`;
+export const haSettings = () => ({
+  url: getSetting(KEY.url),
+  hasToken: !!getSetting(KEY.token),
+  every: Number(getSetting(KEY.every) || 0), // minutes between pushes; 0 = only when asked
+  player: getSetting(KEY.player),
+  listener: getSetting(KEY.listener),
+});
+
+export function saveHaSettings(body = {}) {
+  if (body.url !== undefined) setSetting(KEY.url, String(body.url).trim().replace(/\/+$/, ''));
+  // an empty token leaves the one that is there; "-" forgets it
+  if (body.token) setSetting(KEY.token, body.token === '-' ? '' : String(body.token).trim());
+  if (body.every !== undefined) setSetting(KEY.every, String(Math.max(0, Number(body.every) || 0)));
+  if (body.player !== undefined) setSetting(KEY.player, String(body.player).trim());
+  if (body.listener !== undefined) setSetting(KEY.listener, String(body.listener).trim());
+  return haSettings();
+}
+
+// Why a call failed, in words that say what to do. A wrong token and an address
+// with a dashboard path on the end are the two mistakes everyone makes here.
+const explainHA = (status) => ({
+  401: 'Home Assistant did not accept the token. Make a new long-lived access token in Home '
+    + 'Assistant (your profile → Security → Long-lived access tokens) and paste it here.',
+  403: 'Home Assistant refused the token. It may belong to a user without permission.',
+  404: 'Home Assistant answered, but not with its API. The address should be the one you open HA '
+    + 'at — http://192.168.2.200:8123 — with no dashboard path after it.',
+}[status] || `Home Assistant answered HTTP ${status}.`);
+
+async function call(path, { method = 'GET', body } = {}) {
+  const url = getSetting(KEY.url);
+  const token = getSetting(KEY.token);
+  if (!url) throw new Error('No Home Assistant address yet. Fill it in on the Home Assistant page.');
+  if (!token) throw new Error('No token yet. Paste a long-lived access token on the Home Assistant page.');
+  let res;
+  try {
+    res = await fetch(`${url}/api${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    throw new Error(e.name === 'TimeoutError'
+      ? `Home Assistant at ${url} did not answer within ten seconds.`
+      : `Could not reach Home Assistant at ${url}. Check the address, and that this container may reach it.`);
+  }
+  if (!res.ok) throw new Error(explainHA(res.status));
+  return res.status === 204 ? null : res.json();
+}
+
+// Is it there, is the token good, and which Home Assistant is it?
+export async function haPing() {
+  const hello = await call('/');
+  const conf = await call('/config').catch(() => null);
+  return {
+    message: hello?.message || 'API running.',
+    name: conf?.location_name || '',
+    haVersion: conf?.version || '',
+  };
+}
+
+// Every media player HA knows, by the name a person would recognise.
+export async function haPlayers() {
+  const states = await call('/states');
+  return (Array.isArray(states) ? states : [])
+    .filter((s) => String(s.entity_id).startsWith('media_player.'))
+    .map((s) => ({
+      entity_id: s.entity_id,
+      name: s.attributes?.friendly_name || s.entity_id,
+      state: s.state,
+      playing: s.attributes?.media_title || '',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// The entities this app keeps in HA. Written straight into the state machine, so
+// they appear the moment the first push lands. HA forgets states written this way
+// when it restarts, which is why the push repeats on a timer.
+export function haEntities(req, version) {
+  const asked = { headers: req.headers, protocol: req.protocol, query: { user: haSettings().listener } };
+  const s = haState(asked, version);
+  const next = s.continue.find((b) => !b.listened) || s.continue[0] || null;
+  const attrs = (extra) => ({ attribution: 'My Audiobook Collection', ...extra });
+  const short = (b) => ({
+    id: b.id, title: b.title, author: b.author, track: b.track, tracks: b.tracks,
+    position: b.position, percent: b.percent, playlist: b.continueFrom,
+  });
+  return [
+    ['sensor.audiobooks', String(s.books), attrs({
+      friendly_name: 'Audiobooks', unit_of_measurement: 'books', icon: 'mdi:bookshelf',
+      files: s.files, listener: s.listener, listeners: s.listeners,
+      hours_total: s.hours.total, hours_listened: s.hours.listened, hours_left: s.hours.left,
+      listened_books: s.listened_books,
+      new: s.new.map((b) => ({ id: b.id, title: b.title, author: b.author, hours: b.hours, playlist: b.playlist })),
+    })],
+    ['sensor.audiobook_files', String(s.files), attrs({
+      friendly_name: 'Audiobook files', unit_of_measurement: 'files', icon: 'mdi:file-music',
+    })],
+    ['sensor.audiobook_hours', String(s.hours.total), attrs({
+      friendly_name: 'Audiobook hours', unit_of_measurement: 'h', icon: 'mdi:clock-outline',
+    })],
+    ['sensor.audiobook_hours_listened', String(s.hours.listened), attrs({
+      friendly_name: 'Audiobook hours listened', unit_of_measurement: 'h', icon: 'mdi:headphones',
+      hours_left: s.hours.left,
+    })],
+    ['sensor.audiobook_hours_left', String(s.hours.left), attrs({
+      friendly_name: 'Audiobook hours left', unit_of_measurement: 'h', icon: 'mdi:timer-sand',
+    })],
+    ['sensor.audiobook_next_up', next ? next.title : 'nothing', attrs({
+      friendly_name: 'Audiobook next up', icon: 'mdi:play-circle-outline',
+      ...(next ? { book_id: next.id, ...short(next), hours_left: next.left_hours } : {}),
+      queue: s.continue.filter((b) => !b.listened).map(short),
+    })],
+  ];
+}
+
+// What the last push did, for the page to show — the one on the timer included.
+export const lastPush = { at: '', entities: 0, error: '' };
+
+// Push them all: one request per entity, which is what HA's API takes.
+export async function haPush(req, version) {
+  const written = [];
+  try {
+    for (const [entity, state, attributes] of haEntities(req, version)) {
+      await call(`/states/${entity}`, { method: 'POST', body: { state, attributes } });
+      written.push(entity);
+    }
+  } catch (e) {
+    Object.assign(lastPush, { error: e.message });
+    throw e;
+  }
+  Object.assign(lastPush, { at: new Date().toISOString(), entities: written.length, error: '' });
+  return { entities: written, at: lastPush.at };
+}
+
+// Play a book on one of HA's media players: the playlist first, then the seek — a
+// player takes a URL, and a position can only be asked for once it has something
+// to seek within. A player that cannot seek still plays, from the track's start.
+export async function haPlay(req, { player, bookId, from = 0, seek = 0, version = '' } = {}) {
+  const entity = String(player || haSettings().player || '').trim();
+  if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
+  // no book named: the one being listened to, from where it stopped. That is what
+  // an automation wants — "carry on" is a single call with a player in it.
+  if (!bookId) {
+    const asked = { headers: req.headers, protocol: req.protocol, query: { user: haSettings().listener } };
+    const next = haState(asked, version).continue.find((b) => !b.listened);
+    if (!next) throw new Error('Nothing to continue: no book has been started yet.');
+    ({ id: bookId } = next);
+    from = next.track - 1;
+    seek = next.position;
+  }
+  const id = Number(bookId);
+  if (!bookPlaylist(req, id, Number(from) || 0)) throw new Error('That book has no files to play.');
+  const media = `${baseUrl(req)}/api/ha/book/${id}.m3u`
+    + (Number(from) ? `?from=${Number(from)}` : '');
+  await call('/services/media_player/play_media', {
+    method: 'POST',
+    body: { entity_id: entity, media_content_type: 'music', media_content_id: media },
+  });
+  const at = Math.round(Number(seek) || 0);
+  let seeked = false;
+  if (at > 0) {
+    await new Promise((r) => setTimeout(r, 3000));
+    try {
+      await call('/services/media_player/media_seek', {
+        method: 'POST', body: { entity_id: entity, seek_position: at },
+      });
+      seeked = true;
+    } catch { /* not every player can seek */ }
+  }
+  return { player: entity, media, seek: at, seeked };
+}
+
+// The push that runs on its own. It needs a request to build URLs from, so the
+// last real one is kept: URLs in HA that only work from a browser are no use, and
+// inventing a hostname here would be worse than waiting for a real request.
+let timer = null;
+let lastReq = null;
+export const rememberRequest = (req) => { lastReq = { headers: { ...req.headers }, protocol: req.protocol, query: {} }; };
+
+export function scheduleHaPush(version) {
+  if (timer) clearInterval(timer);
+  timer = null;
+  const { every, url, hasToken } = haSettings();
+  if (!every || !url || !hasToken) return;
+  timer = setInterval(() => {
+    if (!lastReq) return;
+    haPush(lastReq, version).catch(() => { /* lastPush.error already says why */ });
+  }, every * 60000);
+  timer.unref?.();
 }
 
 // The book as a playlist a media player can be handed. #EXTM3U with a title per
