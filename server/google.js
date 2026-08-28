@@ -52,7 +52,7 @@ async function search_(book, search, key) {
   }
   const data = await res.json();
   return (data.items || []).map((it) => ({
-    title: it.volumeInfo.title || '',
+    ...seriesOf(it.volumeInfo),
     author: (it.volumeInfo.authors || []).join(', '),
     // kept apart as well: a book two people wrote is a choice, not a string
     authors: it.volumeInfo.authors || [],
@@ -66,6 +66,66 @@ async function search_(book, search, key) {
     description: it.volumeInfo.description || '',
     thumbnail: (it.volumeInfo.imageLinks || {}).thumbnail || '',
   }));
+}
+
+// Google Books has no series field in the answer it gives for a volume, but it
+// does put the series in the title's brackets ("The Final Empire (Mistborn, #1)")
+// or in the subtitle ("The Stormlight Archive, Book 2"). Both are read here, and
+// the brackets come off the title so the album tag does not carry them.
+const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+const ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+const numberOf = (raw) => {
+  const s = (raw || '').trim().toLowerCase();
+  if (/^\d{1,3}$/.test(s)) return Number(s);
+  return WORDS[s] || ROMAN[s] || 0;
+};
+const NO = '\\d{1,3}|[ivx]{1,4}|one|two|three|four|five|six|seven|eight|nine|ten';
+const LABEL = 'book|bk\\.?|vol\\.?|volume|part|no\\.?|nr\\.?|deel';
+// Only these shapes count as a series. Anything else in brackets — "(Unabridged)",
+// "(Penguin Classics)" — is not one, and guessing there would be worse than silence.
+const SHAPES = [
+  // Mistborn, #1 · The Stormlight Archive, Book 2 · The Expanse #1 · Discworld 8
+  // · The Dark Tower V. The number has to be there; what announces it need not be.
+  new RegExp(`^(.+?)[,:]?\\s*(?:#\\s*|(?:${LABEL})\\s*#?\\s*)?(${NO})$`, 'i'),
+  // Book 3 of The Expanse · Volume Two in the Wheel of Time Series
+  new RegExp(`^(?:${LABEL})\\s*(${NO})\\s+(?:of|in)\\s+(.+)$`, 'i'),
+  // A Mistborn Novel · An Expanse Story
+  /^an?\s+(.+?)\s+(?:novel|novella|story|mystery|thriller|adventure|book)$/i,
+  // The Wheel of Time Series
+  /^(.+?)\s+(?:series|saga|cycle)$/i,
+];
+const seriesIn = (chunk) => {
+  const text = (chunk || '').replace(/\s+/g, ' ').trim();
+  for (const [i, shape] of SHAPES.entries()) {
+    const m = text.match(shape);
+    if (!m) continue;
+    // the second shape names the number first, the others name it last
+    const name = (i === 1 ? m[2] : m[1])
+      .replace(/[\s,:]+$/, '')
+      .replace(/\s+(?:series|saga)$/i, '')
+      // "in the Wheel of Time" is a sentence around the name; "of The Expanse"
+      // hands over a name that begins with its own article, so the capital stays
+      .replace(/^the\s+/, '')
+      .trim();
+    const no = i === 1 ? numberOf(m[1]) : numberOf(m[2]);
+    // "Book 1 of 3" is not a series called "Book 1 of", and a number is not a name
+    const empty = !name || /^\d+$/.test(name) || new RegExp(`^(?:${LABEL}|#)\\b`, 'i').test(name);
+    if (!empty && name.length <= 60) return { series: name, seriesNo: no };
+  }
+  return null;
+};
+export function seriesOf(info = {}) {
+  const title = info.title || '';
+  // the brackets at the end of a title, if that is what they hold
+  const bracket = title.match(/^(.*\S)\s*[([]([^()[\]]+)[)\]]\s*$/);
+  const found = (bracket && seriesIn(bracket[2])) || seriesIn(info.subtitle) || null;
+  // Google sometimes knows the number even when the words do not say it
+  const told = numberOf(info.seriesInfo?.bookDisplayNumber);
+  return {
+    title: found && bracket && seriesIn(bracket[2]) ? bracket[1] : title,
+    series: found ? found.series : '',
+    seriesNo: found ? found.seriesNo || told : 0,
+  };
 }
 
 // What one tag write reports, for the bar that follows it. Every write has its
@@ -116,9 +176,18 @@ async function apply_(book, pick, writeTags, progress) {
 
   // author and genre stay as the folder tree named them: they are the navigation
   // keys, and a scan derives them from the folders anyway. Only the tag gets pick.
-  db.prepare('UPDATE books SET title = ?, narrator = ?, year = ?, description = ?, cover = ? WHERE id = ?')
+  // The series is the tag kind, not the folder kind: it names the series without
+  // moving the book. Moving it is Edit metadata's Series field, which is a folder.
+  const series = pick.series || book.tag_series || '';
+  // one number, and the series the book is shown under has first claim on it: a
+  // book living in a series folder must not be reordered inside it by a number
+  // that belongs to another series entirely
+  const numbers = pick.series && (!book.series || book.series.toLowerCase() === pick.series.toLowerCase());
+  db.prepare(`UPDATE books SET title = ?, narrator = ?, year = ?, description = ?, cover = ?,
+              tag_series = ?, series_no = ? WHERE id = ?`)
     .run(pick.title || book.title, pick.narrator || book.narrator,
-         pick.year || book.year, pick.description || book.description, cover, book.id);
+         pick.year || book.year, pick.description || book.description, cover,
+         series, numbers ? (pick.seriesNo || 0) : book.series_no || 0, book.id);
 
   if (!writeTags) return { written: 0 };
 
@@ -144,6 +213,10 @@ async function apply_(book, pick, writeTags, progress) {
       // category only becomes one once the admin picks it and the book moves there
       genre: book.genre,
       composer: pick.narrator || book.narrator || '',
+      // the grouping frame is where the series lives, with its number on the end
+      // the way the app reads one back: without this the next scan, which trusts
+      // the files, would drop the series again
+      ...(series ? { contentGroup: series + (pick.seriesNo ? ` ${pick.seriesNo}` : '') } : {}),
       ...(description ? { comment: { language: 'eng', text: description } } : {}),
       ...(coverFile ? { APIC: coverFile } : {}),
     };
