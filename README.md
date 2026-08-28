@@ -423,14 +423,22 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
-Google has no series field, so the series is read out of what it does answer: the
-brackets on the end of a title (*The Final Empire (Mistborn, #1)*, *(The Dark
-Tower V)*, *(Book 3 of The Expanse)*, *(A Mistborn Novel)*) and the subtitle,
-which is where it goes when the title is clean. There has to be a series in the
-words for one to be offered: *(Unabridged)* and *(Penguin Classics)* are not
-series, and neither is a number on its own. What it finds is shown as a tick
-beside the name and the volume number, on by default and refusable, and the
-brackets come off the title so the album tag does not carry them.
+The series comes from three places, in this order. The **brackets** on the end of
+a title (*The Final Empire (Mistborn, #1)*, *(The Dark Tower V)*, *(Book 3 of The
+Expanse)*, *(A Mistborn Novel)*); the **subtitle**, which is where it goes when
+the title is clean (*The Stormlight Archive, Book Three*); and **Google's own
+series line**, which is the only place it is for a book like *A Kiss of Shadows* —
+a clean title, no subtitle, and book 1 of *Merry Gentry* all the same. That line
+is usually missing from a search answer, so for each result that still has no
+series the volume itself is asked about, once, in parallel with the others: a
+lookup with nothing in the words costs a second round trip, and a refused or slow
+one costs the series rather than the lookup.
+
+There has to be a series *somewhere* for one to be offered: *(Unabridged)* and
+*(Penguin Classics)* are not series, neither is a number on its own, and a series
+named after the book itself is the book. What it finds is shown as a tick beside
+the name and the volume number, on by default and refusable, and the brackets come
+off the title so the album tag does not carry them.
 
 ![A lookup result offering the series it read out of the title](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/series-lookup.png)
 
