@@ -13,6 +13,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
+import { haState, bookPlaylist, haYaml, tokenOk, haToken } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -435,6 +436,42 @@ app.get('/api/cover/:id', (req, res) => {
 });
 
 // --- playback ----------------------------------------------------------
+// --- Home Assistant ----------------------------------------------------
+// Two answers and no component: a JSON document to poll, and a playlist to hand
+// to a media player. Both refuse when HA_TOKEN is set and not said.
+const forHA = (req, res, next) => (tokenOk(req)
+  ? next()
+  : res.status(401).json({ error: 'HA_TOKEN is set on this container; pass it as ?token= or a Bearer header.' }));
+
+app.get('/api/ha', forHA, (req, res) => res.json(haState(req, VERSION)));
+
+// the configuration to paste into HA, with this server's address filled in
+app.get('/api/ha/example.yaml', forHA, (req, res) =>
+  res.type('text/yaml; charset=utf-8').send(haYaml(req)));
+
+app.get('/api/ha/book/:id.m3u', forHA, (req, res) => {
+  const from = Math.max(0, Number(req.query.from) || 0);
+  const list = bookPlaylist(req, Number(req.params.id), from);
+  if (!list) return res.status(404).type('text/plain').send('No such book, or no files in it.');
+  // audio/x-mpegurl is what players expect of an .m3u; utf-8 for the titles
+  res.type('audio/x-mpegurl; charset=utf-8').send(list);
+});
+
+// The book to carry on with, as one address that never changes: HA can point a
+// media player at this and get whatever the listener is in the middle of.
+app.get('/api/ha/continue.m3u', forHA, (req, res) => {
+  const state = haState(req, VERSION);
+  const first = state.continue.find((b) => !b.listened) || state.continue[0];
+  if (!first) return res.status(404).type('text/plain').send('Nothing to continue.');
+  const list = bookPlaylist(req, first.id, first.track - 1);
+  if (!list) return res.status(404).type('text/plain').send('That book has no files.');
+  res.type('audio/x-mpegurl; charset=utf-8')
+    // so an automation can seek without asking the JSON as well
+    .set('X-Audiobook-Id', String(first.id))
+    .set('X-Audiobook-Seek', String(first.position))
+    .send(list);
+});
+
 app.get('/api/stream/:trackId', (req, res) => {
   const track = db.prepare('SELECT path FROM tracks WHERE id = ?').get(Number(req.params.trackId));
   if (!track || !fs.existsSync(track.path)) return res.status(404).end();

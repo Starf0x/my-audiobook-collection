@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.11.0.** This document describes what the app is, how every
+**Version described: 2.0.0.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.11.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.0` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,7 +96,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 515 | Express app: every route, and nothing else |
+| `server/index.js` | 552 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 112 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -111,11 +111,12 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
-| `public/index.html` | 222 | the admin page: columns, dialogs |
-| `public/app.js` | 1635 | the admin page's behaviour |
+| `server/ha.js` | 213 | what Home Assistant reads, and the playlists it hands on |
+| `public/index.html` | 233 | the admin page: columns, dialogs |
+| `public/app.js` | 1672 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 408 | the listening page's behaviour |
-| `public/style.css` | 439 | the whole look, both pages, phone included |
+| `public/style.css` | 446 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -232,6 +233,8 @@ Settings shows it as a table.
 | `PORT` | `8523` | HTTP port |
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
+| `HA_TOKEN` | empty | when set, every `/api/ha…` address needs it as `?token=` or `Authorization: Bearer`. The audio itself stays open, or a speaker could not play it |
+| `BASE_URL` | empty | the address other machines reach the app on, when that is not the one they asked at (a reverse proxy). Every URL inside the Home Assistant answers is built from it |
 | `GOOGLE_COUNTRY` | `US` | which country's Google catalogue answers. Series data belongs to a country's Play catalogue, and left to the server's own address Google can answer with a record that has none |
 
 Both secrets live **only** on the container. There is deliberately no field for
@@ -345,6 +348,10 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
+| `GET /api/ha?user=` | token | the whole state: totals, hours, continue queue, new books |
+| `GET /api/ha/book/:id.m3u?from=` | token | a book as an `#EXTM3U` playlist, from a track on |
+| `GET /api/ha/continue.m3u?user=` | token | the book being listened to, from where it stopped, plus `X-Audiobook-Id` and `X-Audiobook-Seek` |
+| `GET /api/ha/example.yaml` | token | the HA configuration with this server's address in it |
 | `GET /api/stream/:trackId` | — | audio, with byte-range support |
 | `POST /api/progress` | — | position, per user |
 | `GET /api/lookup/status` | — | retry state of a lookup |
@@ -815,6 +822,50 @@ the document the picture lands in, so two drawn covers inlined in one page would
 both be painted with the first one's gradient — which is exactly what happened to
 the page that made the screenshot above.
 
+### 7.9a Home Assistant (`ha.js`)
+
+No custom component, and nothing pushed: HA polls, which is the only shape that
+works for a container with no broker and no cloud account.
+
+`haState(req, version)` answers with the totals (`books`, `files`,
+`listened_books`), `hours: {total, listened, left}`, the `continue` queue and the
+`new` books. The hours are rounded to a tenth. **Listened hours** count a book
+marked done in full, and a book in progress as the tracks whose `idx` is below the
+listener's plus `position`:
+
+```sql
+SUM(CASE WHEN p.done = 1 THEN b.duration ELSE
+  COALESCE((SELECT SUM(t.duration) FROM tracks t
+            WHERE t.book_id = b.id AND t.idx < p.track_idx), 0) + p.position END)
+```
+
+`?user=` picks whose progress is reported; with exactly one listener in the app it
+is that one, and with none named the sums cover everybody.
+
+**Carrying a book on to a media player** is the part that needed design. A player
+cannot be told "play book 412 from 2h24m", but it takes a URL, and most players
+accept an `#EXTM3U` and play it through. So `bookPlaylist(req, id, from)` writes
+the book as a playlist, `from` dropping the tracks already heard, and the JSON
+carries `position` — the seconds into the track it starts at — for
+`media_player.media_seek`. `/api/ha/continue.m3u` is that in one fixed address:
+the first unfinished book of the queue, from its track, with `X-Audiobook-Id` and
+`X-Audiobook-Seek` headers so an automation need not read the JSON too.
+
+`baseUrl(req)` decides what goes into those URLs: `BASE_URL` when set, else
+`x-forwarded-proto`/`x-forwarded-host` or the request's own — a media player has to
+fetch the audio itself, so a URL that only works from the browser is no use.
+`haYaml(req)` writes the HA configuration with that address already in it, which is
+the one thing a copied example always gets wrong; when `HA_TOKEN` is set it prints
+`YOUR_HA_TOKEN` as a placeholder and never the token itself.
+
+`tokenOk(req)` gates every `/api/ha…` route when `HA_TOKEN` is set. `/api/stream`
+is deliberately **not** gated: a speaker fetching the audio sends no token, and the
+listening page has always been open on the same network.
+
+Positions are not read back from a player. The app knows what the listening page
+told it, so playing on a speaker and later carrying on in the browser starts where
+the browser last was — said plainly in the README rather than half-solved.
+
 ### 7.10 Search
 
 One box, one query. Every word must appear somewhere in the same book, matched
@@ -1111,7 +1162,11 @@ skips them will reproduce the bugs.
     Both, in this app: the write for the books whose tags are written, the fast
     path for the ones whose are not. And one `series_no` column serves both kinds
     of series, so only the series the book is *shown* under may set it.
-30. **Google's `seriesInfo` carries no series name**, and is attached to the
+30. **A media player must be able to fetch the audio itself.** Anything handed to
+    Home Assistant carries absolute URLs built from `BASE_URL` (or the forwarded
+    host), never a relative path and never `localhost`. And `/api/stream` stays open
+    even when `HA_TOKEN` is set, because a speaker sends no token.
+31. **Google's `seriesInfo` carries no series name**, and is attached to the
     volume rather than to a search result. Read the name from `series/get` by
     `seriesId` and cache it; never trust `shortSeriesBookTitle` as the name, which
     is documented as the book's title within the series and is sometimes the book's
@@ -1179,6 +1234,8 @@ Server suites:
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
 | `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
 | `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
+| `ha` | what Home Assistant is handed, against a fixture long enough that the hours are real numbers: the counts, the hours total/listened/left with a book part-way through a track and another marked done, the continue queue's track, position, percentage and hours left, the playlist's order and `from=`, `continue.m3u` with its two headers, the generated YAML, `HA_TOKEN` refusing and accepting both ways while the audio stays open, and `BASE_URL` deciding every URL |
+| `ha-ui` | the Settings block: the numbers it shows, the book it names with its track and percentage, and the YAML offered as selectable text when the clipboard is refused |
 | `cover-colours` | the drawn cover's two colours: a pair 42° apart, spun 37° a day, every day of a week different, the same picture twice on one day, two books still unalike, a year to come back round, and a cache that expires at midnight and never lasts a day |
 | `cover-click` | on both pages: clicking a cover plays that book and clicking it again pauses it, the picture shows ⏸ while it plays and ▶ otherwise, the player's own cover does the same, the other book's cover takes the pause with it, and the *Listened* tick inside the cover starts nothing |
 | `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
@@ -1258,6 +1315,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.0 | Home Assistant: the totals, the hours, the continue queue and the new books as one JSON document, and a playlist that carries a book on to any media player |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
