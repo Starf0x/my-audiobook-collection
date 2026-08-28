@@ -94,6 +94,21 @@
   <button id="checkPerms" class="ghost">Check folder permissions</button>
   <div id="permsOut"></div>
 
+  <label>What Google says about series</label>
+  <p class="hint">Asks Google about the first books that have no series yet, and reports what came
+    back: the series it names, where that came from — the title, the subtitle, or Google's own series
+    data — and how many requests it took. Use it to see why a book gets no series offered. It spends
+    one to three requests of your daily Google quota per book.</p>
+  <div class="row">
+    <button id="seriesReport" class="ghost">Ask about 15 books</button>
+    <select id="seriesReportN">
+      <option value="15" selected>15 books</option>
+      <option value="30">30 books</option>
+      <option value="40">40 books</option>
+    </select>
+  </div>
+  <div id="seriesOut"></div>
+
   <label>Books against the disk</label>
   <p class="hint">Opens every file of every book to find what a scan cannot see: a folder that
     is gone, a truncated download, a share that answers but will not read. This reads your whole

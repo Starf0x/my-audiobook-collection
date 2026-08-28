@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.40.** This document describes what the app is, how every
+**Version described: 1.10.48.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.40` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.48` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,13 +96,13 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 499 | Express app: every route, and nothing else |
+| `server/index.js` | 512 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 107 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 456 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 293 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 395 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 120 | the resumable whole-collection tag run |
@@ -111,8 +111,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 94 | the cover drawn for a book that has none |
-| `public/index.html` | 207 | the admin page: columns, dialogs |
-| `public/app.js` | 1586 | the admin page's behaviour |
+| `public/index.html` | 222 | the admin page: columns, dialogs |
+| `public/app.js` | 1613 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 395 | the listening page's behaviour |
 | `public/style.css` | 417 | the whole look, both pages, phone included |
@@ -348,6 +348,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/progress` | — | position, per user |
 | `GET /api/lookup/status` | — | retry state of a lookup |
 | `GET /api/lookup`, `GET /api/lookup/:id` | admin | Google Books results |
+| `GET /api/lookup/series-report?limit=` | admin | per book: what Google answered about its series, which of the three places it came from, and what it cost |
 | `GET /api/apply/status` | — | tag-write progress |
 | `POST /api/apply/:id` | admin | apply a chosen result, optionally writing tags |
 
@@ -497,21 +498,41 @@ database. **Author and genre are navigation keys derived from folders**, so they
 are never changed by a lookup — only written into the tags. Picking one of two
 credited authors changes the artist tags, not the folder.
 
-**The series, which a search answer usually does not name.** `seriesOf(volumeInfo)`
-reads one out of three places, in order: the brackets (round or square) on the end
-of the title; the subtitle; and `seriesInfo.shortSeriesBookTitle` — Google's own
-series line, which carries the name with the volume number stuck to it
-(`Merry Gentry 1`), with `bookDisplayNumber` for the number when the name has none.
-The third one matters: *A Kiss of Shadows* has a clean title, no subtitle, and is
-book 1 of *Merry Gentry*, which nothing but that line says.
+**The series, and how Google keeps it.** Three facts shape all of this:
 
-For the first two, a chunk becomes a series only if it matches one of four shapes —
+* a volume carries `volumeInfo.seriesInfo`, and it holds **no series name** — only
+  `volumeSeries[].seriesId`, `orderNumber` (the real sequence),
+  `bookDisplayNumber` (for display; it can read `2.5`) and
+  `shortSeriesBookTitle`, documented as *the book's* title in the context of the
+  series, and so as often the book's own name as the series';
+* the name lives behind `GET series/get?series_id=`, which answers
+  `{ series: [{ seriesId, title, seriesType, isComplete, … }] }`;
+* `seriesInfo` belongs to the volume, not to a search result, so a
+  `volumes?q=` answer usually leaves it out entirely.
+
+So `seriesFor(item, key, trace)` asks in this order and stops at the first answer:
+the **text** of the result (`seriesOf`, free); `GET volumes/<id>` for the
+`seriesInfo`; `GET series/get` for the name, cached by `seriesId` in a
+module-level `Map` for the life of the process — a shelf of one series pays for
+its name once. Where the text already named a series, nothing is asked at all,
+though a `seriesInfo` that came *with* the search fills in a number the words left
+out. Where Google will not name a series, `shortSeriesBookTitle` is the last
+resort, with its trailing volume number split off. A name equal to the book's own
+title is refused.
+
+`ask()` wraps both extra requests: an 8-second `AbortSignal.timeout`, `null` on
+any failure or non-2xx. A series that cannot be read is a tick the dialog does not
+offer — never a lookup that fails.
+
+For the text, a chunk becomes a series only if it matches one of four shapes —
 `Name, #N` / `Name, Book N` / `Name N` / `Name V` (the announcing word is optional,
 the number is not), `Book N of Name`, `A Name Novel`, `The Name Series` — and only
 if what is left is not a bare number and does not itself start with
 `book`/`vol`/`part`/`no`, which is what keeps `(Unabridged)`, `(Penguin Classics)`,
 `(1949)` and `(Book 1 of 3)` from becoming series. Numbers may be digits, words
-(`one`–`ten`) or roman numerals. Only `Series` is stripped as a describing word:
+(`one`–`ten`) or roman numerals; a number from Google is taken only when whole,
+since `series_no` is an integer and a novella printed as `2.5` filed as 2 would sit
+on top of book 2. Only `Series` is stripped as a describing word:
 `Saga` and `Cycle` are parts of names (*The Twilight Saga*). Google's line is
 **already a name**, so only a trailing volume number is split off it and none of
 the other shapes are tried — they would read *A Long Saga* as a saga called
@@ -519,14 +540,18 @@ the other shapes are tried — they would read *A Long Saga* as a saga called
 A series taken from the brackets comes **off the title**, so the album tag does not
 carry it.
 
-**The second request.** `seriesInfo` is usually absent from a `volumes?q=` answer
-even where Google has one, so every result that still has no series after reading
-its text is asked about individually (`GET volumes/<id>`), all of them at once,
-inside the same `lookup()` the dialog is already waiting on. `volumeSeriesInfo`
-never throws and never hangs — an 8-second `AbortSignal.timeout`, and any failure
-returns `null`, because a missing series must cost a tick and not the lookup. A
-result whose text already named a series is not asked about, so the common case
-stays one request.
+**Seeing what Google actually answered.** The key is on the owner's container, so
+the only place this question can be asked is their server. `lookup(book, search,
+trace)` takes an optional object which `seriesFor` fills in for the first result:
+`googleTitle`, `subtitle`, `inSearch`, `seriesId`, `orderNumber`,
+`bookDisplayNumber`, `shortSeriesBookTitle`, `bookType`, `asked` (which of the two
+extra requests were made), `from` (`title` | `subtitle` | `series name` |
+`short title` | `the book itself` | `nothing` | `no result`) and the `series` /
+`seriesNo` decided on. `probeSeries(books)` runs that over a list, one book at a
+time, and `GET /api/lookup/series-report?limit=<1..40>` hands the table to
+Settings, taking the books with no series first. It is a diagnostic that spends
+quota, so it is a button with a count on it and never something a page does by
+itself.
 
 It is offered as a tick (`#cs<i>`, on by default) and, when accepted, is stored as
 the **tag** kind of series: `tag_series` and `series_no`. It never moves the book —
@@ -1013,6 +1038,12 @@ skips them will reproduce the bugs.
     Both, in this app: the write for the books whose tags are written, the fast
     path for the ones whose are not. And one `series_no` column serves both kinds
     of series, so only the series the book is *shown* under may set it.
+30. **Google's `seriesInfo` carries no series name**, and is attached to the
+    volume rather than to a search result. Read the name from `series/get` by
+    `seriesId` and cache it; never trust `shortSeriesBookTitle` as the name, which
+    is documented as the book's title within the series and is sometimes the book's
+    own. A diagnostic that spends the owner's API quota is a button they press,
+    never something a page does on its own.
 
 
 ## 10. Measured performance
@@ -1051,7 +1082,7 @@ Server suites:
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
 | `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
-| `series-two-step` | a result whose text names no series is asked about once more, with the key, and only that one; a refused, broken or self-named answer costs the series and not the lookup |
+| `series-two-step` | how Google keeps series: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
@@ -1147,6 +1178,7 @@ to insert order and looks broken when the app is right.
 | 1.10.24 | with nothing set it follows the data folder's owner, and Settings reports what every folder allows |
 | 1.10.32 | a lookup finds the series too, read out of the title and subtitle Google answers with |
 | 1.10.40 | and out of Google's own series line, asked for per result, for the books whose title says nothing |
+| 1.10.48 | series read the way Google actually keeps them — id, order, and the name behind `series/get` — with a report in Settings on what it answered |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
