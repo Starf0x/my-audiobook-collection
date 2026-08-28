@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 1.10.64.** This document describes what the app is, how every
+**Version described: 1.10.72.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v1.10.72` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -102,7 +102,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 456 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 500 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 539 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 120 | the resumable whole-collection tag run |
@@ -112,7 +112,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 94 | the cover drawn for a book that has none |
 | `public/index.html` | 222 | the admin page: columns, dialogs |
-| `public/app.js` | 1617 | the admin page's behaviour |
+| `public/app.js` | 1622 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 395 | the listening page's behaviour |
 | `public/style.css` | 417 | the whole look, both pages, phone included |
@@ -569,8 +569,25 @@ Where the *first* result still has none, `ebookSeries(q, expect, key)` asks the
 catalogue where series data actually lives: one `volumes?q=…&filter=ebooks`
 search, whose results usually carry `seriesInfo` in the answer itself, with the
 volume of a matching result asked only if none does. Title-matched the same way.
-Failing that, each reason line gains *"Google's ebook editions of it have none
-either."*
+Failing *that*, `moreRecords(q, expect, key)` widens the same query from five
+records to **forty** (`maxResults=40&projection=full`): Google holds dozens of
+records per book, and one entered as *A Kiss of Shadows (Merry Gentry Book 1)*
+names the series in its title where the matched record does not. Only records that
+are the same book count — a sibling in the series must not lend its own volume
+number, and another book by the author must not lend anything — and only the text
+and any `seriesInfo` that arrived with the answer are read, so it stays one
+request. Each lending sets `fromEdition` to `edition`, `ebook` or `record`,
+which the page turns into a sentence. Failing everything, each reason line gains
+*"Neither have its ebook editions, nor any of the other records Google keeps of it
+— type the series into Edit metadata and it stays."*
+
+**The limit, stated.** The series panel on books.google.com comes from Google's
+internal Play catalogue. The Books API is a different surface: no parameter makes
+an answer contain a field Google did not put in it, and for many records
+`seriesInfo` is simply absent. Everything above widens the search for a record
+that *does* carry it; where none does, the honest answer is the reason line and
+*Edit metadata*. **Do not add a second service to fill the gap** — that was tried
+and rejected: this app talks to Google Books and to nothing else.
 
 **Seeing what Google actually answered.** The key is on the owner's container, so
 the only place this question can be asked is their server. `lookup(book, search,
@@ -1114,7 +1131,7 @@ Server suites:
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
 | `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
-| `series-two-step` | how Google keeps series, and what it says when there is none: a series lent from the edition that has it to the ones that do not, the ebook catalogue asked when none has it, another book's series never borrowed, `country=` on every request; every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
+| `series-two-step` | how Google keeps series, and what it says when there is none: a series lent from the edition that has it to the ones that do not, the ebook catalogue and then all forty records asked when none has it, a sibling volume's number never borrowed, another book's series never borrowed, `country=` on every request; every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
@@ -1213,6 +1230,7 @@ to insert order and looks broken when the app is right.
 | 1.10.48 | series read the way Google actually keeps them — id, order, and the name behind `series/get` — with a report in Settings on what it answered |
 | 1.10.56 | and when there is no series, the dialog says why: what was asked, what Google answered, and whether another result may carry it |
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
+| 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
 progress bar per job, the resumable whole-collection tag write, the disk check and
