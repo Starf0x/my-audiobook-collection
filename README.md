@@ -455,12 +455,24 @@ So the app asks in this order and stops at the first answer:
 | `series/get` | one request, then cached | the name Google keeps for that series |
 | another result of the same book | nothing | the series one edition has and the others do not |
 | the ebook catalogue | one request, only when nothing else had one | the series of the ebook edition |
+| every other record of the book | one request, only when that found none | a series named in the title of a record the first five missed |
 
-The last two are what make it work in practice. A series found on any edition in
+The last three are what make it work in practice. A series found on any edition in
 the list is offered on all of them — matched by title, so a different book that
 happened to match the words lends nothing — and it says where it came from. When no
-edition in the list has one, the ebook catalogue is asked once, because that is
-where Google's series data actually lives.
+edition in the list has one, the ebook catalogue is asked once. Failing that, the
+lookup widens from five records to forty: Google holds dozens of records per book,
+and the one somebody entered as *A Kiss of Shadows (Merry Gentry Book 1)* names the
+series in its title even when the record Google matched does not. Only records of
+that same book count, so a sibling in the series cannot lend its own volume number
+and another book by the author cannot lend anything.
+
+**What it cannot do.** The series panel on books.google.com comes from Google's
+internal Play catalogue, not from the Books API, and there is no parameter that
+makes an API answer contain a field Google did not put in it. For a book where
+every record, its ebooks and all forty records are silent, the reason line says so
+and the answer is *Edit metadata* — type the series once and it stays, in the book
+and in the tags.
 
 A book whose title says its series is never asked about again; a book like *A Kiss
 of Shadows* costs two extra requests, and the second of them once per series, not
