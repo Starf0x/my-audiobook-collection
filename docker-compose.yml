@@ -15,6 +15,10 @@ services:
       GOOGLE_API_KEY: ""
       # which country's Google catalogue to answer from; series data belongs to one
       GOOGLE_COUNTRY: "US"
+      # Home Assistant: a token to require on /api/ha*, and the address other
+      # machines reach this app on when that is not the one they asked at
+      HA_TOKEN: ""
+      BASE_URL: ""
     volumes:
       - ./data:/data
       - /mnt/user/Audiobooks:/audiobooks
