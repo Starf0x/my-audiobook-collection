@@ -1303,6 +1303,20 @@ function authorChoice(i, current, authors) {
       album artist tags; the author folder keeps its name.</div>`;
 }
 
+// Google has no series field, so the series is read out of the title and the
+// subtitle: a guess, shown as one, and refusable. Ticked it names the series in
+// the book and in its files; it never moves the book, which is a folder job.
+function seriesChoice(i, book, c) {
+  if (!c.series) return '';
+  const said = esc(c.series) + (c.seriesNo ? `, book ${c.seriesNo}` : '');
+  const filed = book.series || book.tag_series || '';
+  return `<label class="pick"><input type="checkbox" id="cs${i}" checked> Series: <strong>${said}</strong></label>
+    <div class="hint">${filed.toLowerCase() === c.series.toLowerCase()
+      ? 'The series this book is already filed under.'
+      : (filed ? `Filed under <em>${esc(filed)}</em> now. ` : '')
+        + 'Goes into the book and into the tags. It does not move the book: a series folder is <em>Edit metadata</em>.'}</div>`;
+}
+
 window.findMeta = async function (id, query) {
   $('#lookupBody').innerHTML = '';
   const book = await api(`/api/books/${id}`);
@@ -1325,6 +1339,7 @@ window.findMeta = async function (id, query) {
         <div class="sub">${esc(c.author)}${c.year ? ' · ' + esc(c.year) : ''}</div>
         <div class="desc">${esc(c.description)}</div>
         ${authorChoice(i, book.author, c.authors || [])}
+        ${seriesChoice(i, book, c)}
         ${genreChoice(i, book.genre, c.genres || [], known)}
         <div class="row">
           <button onclick="applyMeta(${id},${i},false)">Use metadata</button>
@@ -1342,7 +1357,12 @@ window.findMeta = async function (id, query) {
 
 window.applyMeta = async function (id, i, writeTags) {
   const chosen = $(`#ca${i}`) ? $(`#ca${i}`).value : '';
-  const pick = chosen ? { ...window._cands[i], author: chosen } : window._cands[i];
+  const keepSeries = $(`#cs${i}`) ? $(`#cs${i}`).checked : true;
+  const pick = {
+    ...window._cands[i],
+    ...(chosen ? { author: chosen } : {}),
+    ...(keepSeries ? {} : { series: '', seriesNo: 0 }),
+  };
   const genre = $(`#cg${i}`) ? $(`#cg${i}`).value : '';
   $('#lookup').close();
   if (writeTags) {

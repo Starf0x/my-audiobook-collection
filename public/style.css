@@ -411,3 +411,10 @@ button.playing {
 table.cmp td.mono { font-family: ui-monospace, monospace; font-size: 11.5px; word-break: break-all; }
 table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
 #permsOut { margin-top: 10px; }
+
+/* the series a lookup suggests: a tick beside it, not a field to fill in */
+.cand label.pick { display: block; margin: 10px 0 2px; font-size: 13px; color: var(--text);
+  text-transform: none; letter-spacing: 0; text-align: left; }
+/* a dialog input is a full-width field; a tick is not */
+.cand label.pick input { width: 14px; height: 14px; padding: 0; margin: 0 6px 0 0;
+  vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
