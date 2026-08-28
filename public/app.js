@@ -1339,8 +1339,10 @@ function seriesChoice(i, book, c) {
   if (!c.series) return c.why ? `<div class="hint">No series: ${esc(c.why)}</div>` : '';
   const said = esc(c.series) + (c.seriesNo ? `, book ${c.seriesNo}` : '');
   const filed = book.series || book.tag_series || '';
+  // a series Google keeps on another record of the same book, not on this one
+  const borrowed = c.fromEdition ? `Google files it there under ${esc(c.fromEdition)} of this book. ` : '';
   return `<label class="pick"><input type="checkbox" id="cs${i}" checked> Series: <strong>${said}</strong></label>
-    <div class="hint">${filed.toLowerCase() === c.series.toLowerCase()
+    <div class="hint">${borrowed}${filed.toLowerCase() === c.series.toLowerCase()
       ? 'The series this book is already filed under.'
       : (filed ? `Filed under <em>${esc(filed)}</em> now. ` : '')
         + 'Goes into the book and into the tags. It does not move the book: a series folder is <em>Edit metadata</em>.'}</div>`;

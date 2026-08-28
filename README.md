@@ -113,6 +113,7 @@ check the paths it filled in:
 | File mode mask | `000` | the mode of what it creates. `000` is what an Unraid share normally is; `022` makes it read-only to others |
 | Admin password | empty | guards everything that changes the collection; the only place it is set |
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
+| Google country | `US` | which country's Google catalogue to answer from. Series data belongs to a country's catalogue and the US one has the most of it, so leave this unless you have reason not to |
 
 The last three are optional, and the two variables are masked in the form. Then
 **Apply**, and open the WebUI:
@@ -439,6 +440,12 @@ sequence number (`orderNumber`; `bookDisplayNumber` is for printing and can read
 *2.5*), and a "short title" that is as often the book's own name as the series'.
 The name itself is a third endpoint, `series/get`.
 
+Worse, Google keeps that data **per record, not per book**. A search for one novel
+answers with several editions, and one of them can be in a series while the others
+are in nothing at all. Every request also says which **country's** catalogue to
+answer from (`GOOGLE_COUNTRY`, `US` by default): left to guess from your server's
+address, Google can hand back a record with no series data on it.
+
 So the app asks in this order and stops at the first answer:
 
 | Step | Costs | What it gets |
@@ -446,6 +453,14 @@ So the app asks in this order and stops at the first answer:
 | the words of the result | nothing | *Mistborn* from a title or subtitle |
 | `volumes/<id>` | one request | the series id and the sequence number |
 | `series/get` | one request, then cached | the name Google keeps for that series |
+| another result of the same book | nothing | the series one edition has and the others do not |
+| the ebook catalogue | one request, only when nothing else had one | the series of the ebook edition |
+
+The last two are what make it work in practice. A series found on any edition in
+the list is offered on all of them — matched by title, so a different book that
+happened to match the words lends nothing — and it says where it came from. When no
+edition in the list has one, the ebook catalogue is asked once, because that is
+where Google's series data actually lives.
 
 A book whose title says its series is never asked about again; a book like *A Kiss
 of Shadows* costs two extra requests, and the second of them once per series, not
