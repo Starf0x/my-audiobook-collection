@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.0.** This document describes what the app is, how every
+**Version described: 2.0.8.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.8` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,7 +96,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 552 | Express app: every route, and nothing else |
+| `server/index.js` | 597 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 112 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -111,16 +111,19 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
-| `server/ha.js` | 213 | what Home Assistant reads, and the playlists it hands on |
-| `public/index.html` | 233 | the admin page: columns, dialogs |
-| `public/app.js` | 1672 | the admin page's behaviour |
+| `server/ha.js` | 359 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `public/ha.html` | 84 | the Home Assistant page |
+| `public/ha.js` | 177 | its behaviour |
+| `public/index.html` | 228 | the admin page: columns, dialogs |
+| `public/app.js` | 1639 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 408 | the listening page's behaviour |
-| `public/style.css` | 446 | the whole look, both pages, phone included |
+| `public/style.css` | 471 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
-`GET /` sends `listen.html`, `GET /admin` sends `index.html`, and
+`GET /` sends `listen.html`, `GET /admin` sends `index.html`, `GET /ha` sends
+`ha.html` — the Home Assistant page, which is too much for a dialog section — and
 `/listen.html` and `/index.html` redirect to those — the file names are gone from
 the address, and old links still work. `app.use(express.json({ limit: '1mb' }))`.
 
@@ -348,6 +351,12 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
+| `GET/POST /api/ha/config` | admin | the address, whether a token is saved, how often to send, which listener; the token itself is write-only |
+| `POST /api/ha/test` | admin | ask Home Assistant who it is, with the saved token |
+| `GET /api/ha/players` | admin | every `media_player.*` HA knows, by friendly name |
+| `GET /api/ha/entities` | admin | what a push would write, without writing it |
+| `POST /api/ha/push` | admin | write all six sensors into HA now |
+| `POST /api/ha/play` | admin **or** `HA_TOKEN` | play a book on one of HA's players; no `bookId` means the one being listened to |
 | `GET /api/ha?user=` | token | the whole state: totals, hours, continue queue, new books |
 | `GET /api/ha/book/:id.m3u?from=` | token | a book as an `#EXTM3U` playlist, from a track on |
 | `GET /api/ha/continue.m3u?user=` | token | the book being listened to, from where it stopped, plus `X-Audiobook-Id` and `X-Audiobook-Seek` |
@@ -866,6 +875,53 @@ Positions are not read back from a player. The app knows what the listening page
 told it, so playing on a speaker and later carrying on in the browser starts where
 the browser last was — said plainly in the README rather than half-solved.
 
+#### Driving Home Assistant, from a page of its own
+
+The direction that needs nothing on the HA side. `/ha` is a full page rather than a
+dialog section because it holds an address, a secret, a schedule and a list of
+somebody else's devices.
+
+**The token.** A long-lived access token is made in Home Assistant (profile →
+Security) and pasted into the page. It lives in the `settings` table under
+`haToken` and is **write-only from the page's point of view**: `GET /api/ha/config`
+answers with `hasToken` and never the token, an empty `token` in a POST leaves the
+saved one alone, and `"-"` forgets it. That shape is what lets the page save the
+schedule without having to hold the secret.
+
+**`call(path, opts)`** is the one way out: `Authorization: Bearer <token>`, a
+10-second timeout, and `explainHA(status)` turning 401/403/404 into what to do
+about it — a refused token, or an address with a dashboard path on the end, which
+are the two mistakes everyone makes. Anything else says which HTTP status came
+back.
+
+* `haPing()` → `GET /` and `GET /config`: which Home Assistant, which version.
+* `haPlayers()` → `GET /states`, filtered to `media_player.` and sorted by the
+  friendly name someone gave the device.
+* `haEntities(req, version)` builds six `[entity, state, attributes]` rows from
+  `haState` — the sensors listed in the README — with `friendly_name`, `icon`,
+  `unit_of_measurement` and `attribution` so they look native in HA.
+* `haPush()` writes them with `POST /states/<entity>`, one request each, and keeps
+  `lastPush` (when, how many, the error) for the page to show.
+* `haPlay(req, {player, bookId, from, seek})` calls
+  `POST /services/media_player/play_media` with the book's playlist URL, waits
+  three seconds, then `media_seek` with the seconds into that track; a player that
+  cannot seek is caught and the book still plays. With no `bookId` it takes the
+  first unfinished book of the queue, which is what an automation wants.
+* `scheduleHaPush(version)` re-arms an `unref`'d interval on every config save and
+  at startup. It has no request of its own, so `rememberRequest(req)` keeps the
+  last real one: URLs a media player cannot reach are worse than a late push, and
+  inventing a hostname would produce exactly those.
+
+**Two facts about HA's REST API** that shape this. States written with
+`POST /states/...` are not restored when HA restarts, which is why the push repeats
+on a timer rather than firing once. And nothing there is a device or an entity
+registry entry, so the sensors carry no `unique_id` and cannot be renamed in HA's
+UI — the trade for needing no component.
+
+**No YAML.** The generator that used to write a `configuration.yaml` fragment was
+removed at the owner's word: *"it must be used with the integration, no YAML code
+copying."* Do not bring it back.
+
 ### 7.10 Search
 
 One box, one query. Every word must appear somewhere in the same book, matched
@@ -1166,7 +1222,11 @@ skips them will reproduce the bugs.
     Home Assistant carries absolute URLs built from `BASE_URL` (or the forwarded
     host), never a relative path and never `localhost`. And `/api/stream` stays open
     even when `HA_TOKEN` is set, because a speaker sends no token.
-31. **Google's `seriesInfo` carries no series name**, and is attached to the
+31. **A secret the page can set but never read.** The Home Assistant token goes in
+    and never comes out: the page is told `hasToken`, an empty token leaves the
+    saved one alone, and only `"-"` clears it. Any page that could read a secret
+    back would leak it to whoever opens that page.
+32. **Google's `seriesInfo` carries no series name**, and is attached to the
     volume rather than to a search result. Read the name from `series/get` by
     `seriesId` and cache it; never trust `shortSeriesBookTitle` as the name, which
     is documented as the book's title within the series and is sometimes the book's
@@ -1235,6 +1295,7 @@ Server suites:
 | `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
 | `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
 | `ha` | what Home Assistant is handed, against a fixture long enough that the hours are real numbers: the counts, the hours total/listened/left with a book part-way through a track and another marked done, the continue queue's track, position, percentage and hours left, the playlist's order and `from=`, `continue.m3u` with its two headers, the generated YAML, `HA_TOKEN` refusing and accepting both ways while the audio stays open, and `BASE_URL` deciding every URL |
+| `ha-push` | the app driving Home Assistant, against a stand-in HA that checks the Bearer token and records every call: the address and token saved without the token ever coming back, the ping naming which HA answered, media players filtered and sorted, the six sensors previewed and then written one POST each, playing a book as play_media then media_seek with the right payloads, "carry on" with no book named, a light refused, a refused token explained and remembered, forgetting and re-pasting a token, and an address with a dashboard path or nothing behind it |
 | `ha-ui` | the Settings block: the numbers it shows, the book it names with its track and percentage, and the YAML offered as selectable text when the clipboard is refused |
 | `cover-colours` | the drawn cover's two colours: a pair 42° apart, spun 37° a day, every day of a week different, the same picture twice on one day, two books still unalike, a year to come back round, and a cache that expires at midnight and never lasts a day |
 | `cover-click` | on both pages: clicking a cover plays that book and clicking it again pauses it, the picture shows ⏸ while it plays and ▶ otherwise, the player's own cover does the same, the other book's cover takes the pause with it, and the *Listened* tick inside the cover starts nothing |
@@ -1315,6 +1376,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.8 | a Home Assistant page of its own: a long-lived token, six sensors written straight into HA, and its media players played from here — no YAML anywhere |
 | 2.0.0 | Home Assistant: the totals, the hours, the continue queue and the new books as one JSON document, and a playlist that carries a book on to any media player |
 
 Earlier in the 1.8 line: series from three sources, collapsible genres, one
