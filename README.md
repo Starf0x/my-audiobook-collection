@@ -116,7 +116,7 @@ check the paths it filled in:
 | File mode mask | `000` | the mode of what it creates. `000` is what an Unraid share normally is; `022` makes it read-only to others |
 | Admin password | empty | guards everything that changes the collection; the only place it is set |
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
-| Home Assistant token | empty | set it to make the `/api/ha` addresses ask for it; masked in the form |
+| Home Assistant token | empty | only for the polling addresses: set it to make `/api/ha…` ask for it. The page above needs no container setting |
 | Base URL | empty | only behind a reverse proxy: the address other machines reach the app on |
 | Google country | `US` | which country's Google catalogue to answer from. Series data belongs to a country's catalogue and the US one has the most of it, so leave this unless you have reason not to |
 
@@ -423,51 +423,47 @@ they are zipped into one archive beside them and the loose files removed.
 
 ## Home Assistant
 
-Home Assistant needs no custom component for this: the app answers with what HA
-polls and with a playlist HA can hand to a media player.
+**Nothing to configure in Home Assistant** — no YAML, no custom component, no
+restart. The app talks to HA rather than waiting to be polled: give it the address
+of your Home Assistant and one **long-lived access token** made in it, and it
+writes its own sensors into HA and plays books on HA's media players.
 
-![The Home Assistant section in Settings, showing what it answers](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/home-assistant.png)
+It has a page of its own: **Settings → Open the Home Assistant page**, or
+`http://<your-server>:8523/ha`.
 
-| Address | What it is |
-| --- | --- |
-| `GET /api/ha` | one JSON document: the totals, the continue queue, the new books |
-| `GET /api/ha/book/<id>.m3u?from=<track>` | a book as a playlist, optionally from a track on |
-| `GET /api/ha/continue.m3u` | whichever book is being listened to, from where it stopped |
-| `GET /api/ha/example.yaml` | the configuration to paste into HA, with this server's address in it |
+![The Home Assistant page](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/ha-page.png)
 
-**Settings → Home Assistant** copies that YAML to the clipboard and shows what the
-app answers right now, so "can HA see it?" is settled in the app rather than in
-HA's logs.
+1. **The connection** — the address you open HA at, and a token from HA (your
+   profile → *Security* → *Long-lived access tokens* → *Create token*). *Test the
+   connection* answers with which Home Assistant replied and its version, or with
+   what is wrong. The token is kept in the app's database, never shown again and
+   never sent back to a browser; *Forget the token* removes it.
+2. **What it publishes** — six sensors: `sensor.audiobooks` (with the files, the
+   hours total/listened/left, the books marked listened and the new books as
+   attributes), `sensor.audiobook_files`, `sensor.audiobook_hours`,
+   `sensor.audiobook_hours_listened`, `sensor.audiobook_hours_left` and
+   `sensor.audiobook_next_up` (the title to carry on with, with its track, the
+   seconds in, the percentage, and the whole queue). Pick whose progress to report
+   and how often to send — Home Assistant forgets states written straight into it
+   when it restarts, so a repeat keeps them there. *Show what will be sent* lists
+   it without sending.
+3. **Play a book on a media player** — the players HA knows, by their own names.
+   Press *Play here* beside a book and the app hands that player the playlist from
+   the track you are on, then asks it to skip to the second you stopped at. A
+   player that cannot seek still plays, from the start of that track.
 
-What the JSON carries: the number of **books** and of **files**, the **hours** in
-the collection, the hours **listened** and the hours **left**; the **continue
-queue** — title, author, series, which track of how many, how many seconds into
-it, how far in as a percentage, and how many hours are left; and the **new books**,
-newest first. A book marked *Listened* counts whole in the hours; a book in
-progress counts the tracks behind the listener plus the seconds into the one they
-are on. `?user=<name>` picks whose progress is reported, and with one listener it
-is that one.
+Hours listened count a book marked *Listened* whole, and a book in progress as the
+tracks behind the listener plus the seconds into the one they are on.
 
-**Carrying a book on to a speaker.** A media player cannot be told "play book 412
-from 2h24m", but it can be handed a URL, and most players take an M3U and play it
-through. So the generated script calls `media_player.play_media` with
-`/api/ha/continue.m3u` — which starts at the track the listener is on — and then
-`media_player.media_seek` with the seconds into that track. That playlist also
-answers with `X-Audiobook-Id` and `X-Audiobook-Seek` headers for an automation
-that would rather not read the JSON as well.
+Two things worth knowing: the **player fetches the audio itself**, so behind a
+reverse proxy set `BASE_URL` on the container to the address other machines use;
+and **positions do not come back from a player**, so a book played on a speaker
+and then carried on in the browser starts where the browser last was.
 
-Two settings on the container, both optional: **`HA_TOKEN`** closes these
-addresses off (they answer anyone on the network otherwise, as the listening page
-does), and **`BASE_URL`** is the address other machines reach the app on when that
-is not the one they asked at — behind a reverse proxy, say. The URLs inside the
-answers are built from it, and a media player has to be able to fetch the audio
-itself.
-
-The app does not learn where a speaker got to: positions come from the listening
-page. Play on a speaker, and carrying on in the browser starts where the browser
-last was.
-
-The whole of it, with dashboard examples, is in
+If you would rather have HA poll, it still can: `GET /api/ha` is the whole state,
+`GET /api/ha/continue.m3u` is the book being listened to from where it stopped, and
+`HA_TOKEN` on the container makes those ask for a token. The whole of it, with
+dashboard and automation examples, is in
 [docs/home-assistant.md](docs/home-assistant.md).
 
 ## Google Books API key

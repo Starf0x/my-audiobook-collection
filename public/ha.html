@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Assistant · My Audiobook Collection</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="one-col">
+<header>
+  <h1 id="brand">🎧 My Audiobook Collection</h1>
+  <span class="spacer"></span>
+  <span id="haWhere" class="hint"></span>
+  <button id="toAdmin" class="ghost">Admin</button>
+  <button id="toListen" class="ghost">Listening page</button>
+</header>
+
+<main class="page">
+  <h2>Home Assistant</h2>
+  <p class="hint lead">This app writes its own sensors into Home Assistant and plays books on its
+    media players. Nothing is configured on the Home Assistant side: no YAML, no custom component,
+    no restart. It needs the address of your Home Assistant and one <strong>long-lived access
+    token</strong> made in it.</p>
+
+  <section class="box">
+    <h3>1 · The connection</h3>
+    <label for="haUrl">Home Assistant address</label>
+    <input id="haUrl" placeholder="http://192.168.2.200:8123" spellcheck="false">
+    <p class="hint">The address you open Home Assistant at, with no dashboard path after it.</p>
+
+    <label for="haTok">Long-lived access token</label>
+    <input id="haTok" type="password" placeholder="paste the token here" spellcheck="false"
+      autocomplete="off">
+    <p class="hint">In Home Assistant: your own profile (bottom left) → <em>Security</em> →
+      <em>Long-lived access tokens</em> → <em>Create token</em>. Copy it there and paste it here — it
+      is shown once. It is kept in this app's database and never shown again here.
+      <span id="tokState"></span></p>
+
+    <div class="row">
+      <button id="haSave">Save</button>
+      <button id="haTest" class="ghost">Test the connection</button>
+      <button id="haForget" class="ghost">Forget the token</button>
+    </div>
+    <div id="haTestOut"></div>
+  </section>
+
+  <section class="box">
+    <h3>2 · What it publishes</h3>
+    <label for="haListener">Whose progress to report</label>
+    <select id="haListener"></select>
+    <label for="haEvery">Send to Home Assistant</label>
+    <select id="haEvery">
+      <option value="0">only when I press Send</option>
+      <option value="5">every 5 minutes</option>
+      <option value="15" selected>every 15 minutes</option>
+      <option value="60">every hour</option>
+    </select>
+    <p class="hint">Home Assistant forgets sensors written straight into it when it restarts, so a
+      repeat keeps them there. <span id="pushState"></span></p>
+    <div class="row">
+      <button id="haPush">Send now</button>
+      <button id="haPreview" class="ghost">Show what will be sent</button>
+    </div>
+    <div id="haEntities"></div>
+  </section>
+
+  <section class="box">
+    <h3>3 · Play a book on a media player</h3>
+    <p class="hint">The players Home Assistant knows. Pick one, then carry on with a book: the
+      playlist starts at the track you are on, and the app asks the player to skip to the second you
+      stopped at.</p>
+    <div class="row">
+      <select id="haPlayer"><option value="">— no player yet —</option></select>
+      <button id="haRefreshPlayers" class="ghost">Ask Home Assistant again</button>
+    </div>
+    <div id="haQueue"></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script src="ha.js"></script>
+</body>
+</html>
