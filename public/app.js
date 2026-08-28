@@ -291,8 +291,9 @@ async function drawBooks(books, heading, kind = 'Series') {
       if (series) html += `<div class="series-head">Series · ${esc(series)}</div>`;
     }
     html += `<div class="card" data-started="${b.started ? 1 : 0}">
-      <div class="cover">
-        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="">
+      <div class="cover" data-glyph="▶">
+        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt=""
+          onclick="playBook(${b.id})" title="Play or pause">
         <label class="listened">
           <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
         </label>
@@ -414,7 +415,19 @@ function markPlaying() {
     label(b, Number(b.getAttribute('onclick').match(/\d+/)[0]));
   });
   document.querySelectorAll('#books button[data-play]').forEach((b) => label(b, Number(b.dataset.play)));
+  // and the picture itself, which is a play button too: it shows what a click on
+  // it will do, and stays lit while that book is playing
+  document.querySelectorAll('#books .card .cover').forEach((cover) => {
+    const img = cover.querySelector('img[onclick^="playBook"]');
+    const mine = img && Number(img.getAttribute('onclick').match(/\d+/)[0]) === playing;
+    cover.dataset.glyph = mine && !audio.paused ? '⏸' : '▶';
+    cover.classList.toggle('playing', !!mine && !audio.paused);
+  });
 }
+$('#pCover').onclick = () => {
+  if (!state.book) return;
+  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+};
 audio.addEventListener('play', markPlaying);
 audio.addEventListener('pause', markPlaying);
 audio.addEventListener('ended', markPlaying);
