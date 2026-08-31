@@ -546,6 +546,15 @@ strong.warn { color: #ffb4a8; }
   height: min(92vh, 1000px); max-height: 92vh;
   padding: 18px 20px 24px; overflow-y: auto;
 }
+/* On a phone every dialog is a sheet over the whole screen. An id beats the
+   element rule above whatever the order, so the biggest dialog has to say it
+   again, or Settings alone would sit inset with the page showing around it. */
+@media (max-width: 720px) {
+  #settings {
+    width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    padding: 16px 14px 28px;
+  }
+}
 
 /* the download of the whole book: a link, so the browser does the saving */
 footer #pGet {
