@@ -93,8 +93,7 @@ export async function guessFor(source, reason = '') {
   try {
     const tags = (await parseFile(found[0].file)).common || {};
     if (!guess.author && (tags.albumartist || tags.artist)) guess.author = tags.albumartist || tags.artist;
-    if (tags.album) guess.title = tags.album;
-    else if (!guess.title && tags.title) guess.title = tags.title;
+    if (!guess.title) guess.title = tags.album || tags.title || '';
     if (!guess.genre && tags.genre?.[0]) guess.genre = tags.genre[0];
   } catch { /* the tags are a bonus; the folders already said enough */ }
   return guess;
