@@ -356,6 +356,77 @@ $('#pCover').onclick = () => {
   if (!state.book) return;
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 };
+// --- the transport ------------------------------------------------------
+// A browser's own audio controls cannot be recoloured: the timeline lives in a
+// shadow tree the page may not touch, which is why the line that says how far
+// into a track you are was whatever grey the browser felt like. So the controls
+// are ours, and the <audio> element is only the engine underneath.
+const clock = (s) => {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const sec = String(Math.floor(s % 60)).padStart(2, '0');
+  return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
+
+// the yellow runs to where you are; the rest is the track behind it
+const paint = (el, fraction) => el.style.setProperty('--played', `${(fraction * 100).toFixed(2)}%`);
+
+let dragging = false;
+const drawTime = () => {
+  const total = audio.duration;
+  $('#pAt').textContent = clock(audio.currentTime);
+  $('#pOf').textContent = isFinite(total) ? clock(total) : '—';
+  if (dragging) return;
+  const at = isFinite(total) && total > 0 ? audio.currentTime / total : 0;
+  $('#seek').value = String(Math.round(at * 1000));
+  paint($('#seek'), at);
+};
+audio.addEventListener('timeupdate', drawTime);
+audio.addEventListener('durationchange', drawTime);
+audio.addEventListener('loadedmetadata', drawTime);
+audio.addEventListener('emptied', drawTime);
+
+const seekTo = () => {
+  const at = Number($('#seek').value) / 1000;
+  paint($('#seek'), at);
+  if (isFinite(audio.duration)) audio.currentTime = at * audio.duration;
+};
+$('#seek').oninput = () => { dragging = true; paint($('#seek'), Number($('#seek').value) / 1000); };
+$('#seek').onchange = () => { dragging = false; seekTo(); };
+
+$('#pPlay').onclick = () => {
+  if (!state.book) return;
+  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+};
+const drawPlay = () => {
+  $('#pPlay').textContent = audio.paused ? '▶' : '⏸';
+  $('#pPlay').classList.toggle('playing', !audio.paused);
+};
+audio.addEventListener('play', drawPlay);
+audio.addEventListener('pause', drawPlay);
+audio.addEventListener('ended', drawPlay);
+
+// volume, kept per browser: the one thing the native controls did that a page
+// cannot get back by itself
+const VOL = 'volume';
+audio.volume = Math.min(1, Math.max(0, Number(localStorage[VOL] ?? 1)));
+$('#vol').value = String(Math.round(audio.volume * 100));
+paint($('#vol'), audio.volume);
+const drawVol = () => {
+  $('#pVolBtn').textContent = audio.muted || !audio.volume ? '🔇' : '🔊';
+  paint($('#vol'), audio.muted ? 0 : audio.volume);
+};
+$('#vol').oninput = () => {
+  audio.muted = false;
+  audio.volume = Number($('#vol').value) / 100;
+  localStorage[VOL] = String(audio.volume);
+  drawVol();
+};
+$('#pVolBtn').onclick = () => { audio.muted = !audio.muted; drawVol(); };
+drawVol();
+drawPlay();
+drawTime();
+
 audio.addEventListener('play', markPlaying);
 audio.addEventListener('pause', markPlaying);
 audio.addEventListener('ended', markPlaying);
