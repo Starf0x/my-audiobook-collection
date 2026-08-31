@@ -427,6 +427,119 @@ function markPlaying() {
     cover.classList.toggle('playing', !!mine && !audio.paused);
   });
 }
+// --- the cover's own menu -----------------------------------------------
+// Right-click a cover — or hold it, on a phone, where there is no right button —
+// and the one thing a cover can offer beyond playing is there: the whole book.
+const coverMenu = $('#coverMenu');
+const bookOfCover = (el) => {
+  const img = el.closest('img, .tile');
+  if (!img) return null;
+  if (img.id === 'pCover') return state.book ? { id: state.book.id, title: state.book.title } : null;
+  const tile = img.closest('.tile');
+  if (tile) return { id: Number(tile.dataset.id), title: tile.querySelector('.t')?.textContent || '' };
+  const card = img.closest('.card');
+  const play = card && card.querySelector('[onclick^="playBook"]');
+  if (!play) return null;
+  // the heading carries a note glyph saying how far along the book is: the words
+  // are the text of the heading itself, not of the span inside it
+  const words = [...(card.querySelector('h3')?.childNodes || [])]
+    .filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ');
+  return { id: Number(play.getAttribute('onclick').match(/\d+/)[0]), title: words.trim() };
+};
+const hideCoverMenu = () => { coverMenu.hidden = true; };
+const showCoverMenu = (book, x, y) => {
+  $('#cmTitle').textContent = book.title || 'This book';
+  const done = coverMenu.querySelector('[data-act="listened"]');
+  if (done) done.textContent = doneNow(book.id) ? '☐ Mark as not listened' : '☑ Mark as listened';
+  coverMenu.dataset.id = String(book.id);
+  coverMenu.hidden = false;
+  // opened at the pointer, then pulled back inside the window
+  const box = coverMenu.getBoundingClientRect();
+  coverMenu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - box.width - 6))}px`;
+  coverMenu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - box.height - 6))}px`;
+};
+document.addEventListener('contextmenu', (e) => {
+  const book = bookOfCover(e.target);
+  if (!book) return;
+  e.preventDefault();
+  showCoverMenu(book, e.clientX, e.clientY);
+});
+// no right button on a touch screen: hold the cover instead
+let held = null;
+document.addEventListener('touchstart', (e) => {
+  const book = bookOfCover(e.target);
+  if (!book) return;
+  const at = e.touches[0];
+  held = setTimeout(() => { held = null; showCoverMenu(book, at.clientX, at.clientY); }, 550);
+}, { passive: true });
+for (const ended of ['touchend', 'touchmove', 'touchcancel']) {
+  document.addEventListener(ended, () => { clearTimeout(held); held = null; }, { passive: true });
+}
+document.addEventListener('click', (e) => { if (!coverMenu.contains(e.target)) hideCoverMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCoverMenu(); });
+window.addEventListener('scroll', hideCoverMenu, true);
+// Only the admin page has the last two of these, so an item that is not there is
+// not wired: one block of code, two pages.
+const onMenu = (act, fn) => {
+  const button = coverMenu.querySelector(`[data-act="${act}"]`);
+  if (button) button.onclick = fn;
+};
+
+// Whether this book is ticked off, as far as the page knows: the tick on its card
+// if a card is on screen, otherwise what the player was told when it loaded it.
+const tickOf = (id) => document.querySelector(`.card .listened input[onchange*="setListened(${id},"]`);
+const doneNow = (id) => {
+  const tick = tickOf(id);
+  if (tick) return tick.checked;
+  return !!(state.book && state.book.id === id && state.book.progress && state.book.progress.done);
+};
+
+onMenu('restart', async () => {
+  const id = Number(coverMenu.dataset.id);
+  hideCoverMenu();
+  if (!state.user) return toast('Create or select a user first.');
+  // the place kept in it goes first, or the player would pick it up again
+  try { await post('/api/progress', { user: state.user, bookId: id, trackIdx: 0, position: 0 }); }
+  catch (e) { return toast(e.message); }
+  if (state.book && state.book.id === id) return playTrack(0, 0);
+  return playBook(id);
+});
+
+onMenu('listened', async () => {
+  const id = Number(coverMenu.dataset.id);
+  const want = !doneNow(id);
+  hideCoverMenu();
+  // a card on screen owns the tick, its glyph and its button: let it do the work
+  const tick = tickOf(id);
+  if (tick) {
+    tick.checked = want;
+    return setListened(id, tick);
+  }
+  if (!state.user) return toast('Create or select a user first.');
+  try { await post('/api/listened', { user: state.user, bookId: id, done: want }); }
+  catch (e) { return toast(e.message); }
+  if (state.book && state.book.id === id) {
+    state.book.progress = { ...(state.book.progress || { track_idx: 0, position: 0 }), done: want };
+  }
+  toast(want ? 'Marked as listened.' : 'Marked as not listened.');
+  return loadStats();
+});
+
+onMenu('download', () => {
+  const id = coverMenu.dataset.id;
+  hideCoverMenu();
+  // a link the browser saves, the same address the player's ⤓ uses
+  const a = document.createElement('a');
+  a.href = `/api/download/${id}`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+
+onMenu('edit', () => { const id = Number(coverMenu.dataset.id); hideCoverMenu(); editMeta(id); });
+onMenu('find', () => { const id = Number(coverMenu.dataset.id); hideCoverMenu(); findMeta(id); });
+
 $('#pCover').onclick = () => {
   if (!state.book) return;
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
@@ -1029,18 +1142,77 @@ $('#skippedList').onclick = async () => {
   const said = items.length
     ? `${items.length} folder(s) the last scan walked past — nothing here was deleted or changed`
     : 'The last scan counted everything it walked past';
+  // A folder with audio in it can be filed: give it a genre, an author and a
+  // title and it is moved where those say, with the same words written into its
+  // files. The reasons that are not about a misplaced folder — nothing in it, a
+  // format this app does not read, a folder it may not open — have nothing to file.
   const rows = (reason) => items.filter((i) => i.reason === reason).map((i) => `<div class="fix">
       <div>
         <strong>${esc(i.path.split(/[\\/]/).pop())}</strong>
         <div class="sub missing">${esc(i.detail)}</div>
         <div class="sub path">${esc(i.path)}</div>
       </div>
+      ${FILEABLE.includes(reason)
+        ? `<div><button data-file="${esc(i.path)}" data-reason="${esc(reason)}">File this book…</button></div>`
+        : ''}
     </div>`).join('');
   $('#books .list').innerHTML = `<div class="row pager"><span class="hint">${esc(said)}</span></div>`
     + [...new Set(items.map((i) => i.reason))]
       .map((reason) => `<div class="series-head">${esc(WHY_SKIPPED[reason] || reason)}</div>${rows(reason)}`)
       .join('');
+  $('#books .list').querySelectorAll('button[data-file]').forEach((b) => {
+    b.onclick = () => askToFile(b.dataset.file, b.dataset.reason);
+  });
 };
+
+// Which of the reasons a folder was walked past can be put right by filing it.
+const FILEABLE = ['deeper', 'loose', 'aside'];
+
+// Give the folder a genre, an author and a title: that decides where it goes, and
+// the same words are written into its files.
+async function askToFile(source, reason) {
+  let guess;
+  try { guess = await api(`/api/skipped/guess?path=${encodeURIComponent(source)}&reason=${encodeURIComponent(reason)}`); }
+  catch (e) { return toast(e.message); }
+  $('#fWhat').textContent = source;
+  $('#fFound').textContent = guess.files
+    ? `${guess.files} audio file(s)${guess.discs.length > 1 ? ` in ${guess.discs.length} sub-folders, which are put together in order` : ''}.`
+    : 'No audio found in it.';
+  $('#fGenre').innerHTML = guess.genres
+    .map((g) => `<option${g === guess.genre ? ' selected' : ''}>${esc(g)}</option>`).join('');
+  $('#fAuthor').value = guess.author || '';
+  $('#fSeries').value = guess.series || '';
+  $('#fTitle').value = guess.title || '';
+  $('#fTags').checked = true;
+  const where = () => {
+    const genre = $('#fGenre').value;
+    const author = $('#fAuthor').value.trim();
+    const title = $('#fTitle').value.trim();
+    const parts = [genre, author, $('#fSeries').value.trim(), title].filter(Boolean);
+    $('#fWhere').textContent = genre && author && title
+      ? `It goes to ${parts.join(' / ')}`
+      : 'A genre, an author and a title are needed.';
+  };
+  ['#fGenre', '#fAuthor', '#fSeries', '#fTitle'].forEach((sel) => { $(sel).oninput = where; $(sel).onchange = where; });
+  where();
+  $('#fGo').onclick = () => work($('#fGo'), 'Filing the book', async () => {
+    const body = {
+      source, reason, genre: $('#fGenre').value,
+      author: $('#fAuthor').value.trim(), series: $('#fSeries').value.trim(),
+      title: $('#fTitle').value.trim(), writeTags: $('#fTags').checked,
+    };
+    let r;
+    try { r = await post('/api/skipped/file', body); } catch (e) { return toast(e.message); }
+    $('#fileIn').close();
+    toast(`Filed under ${r.genre} / ${r.author}${r.series ? ' / ' + r.series : ''} / ${r.title}`
+      + `${r.written ? `, and written into ${r.written} file(s)` : ''}.`);
+    // the book is in the library now, so the columns and the counts have moved
+    await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadSkipped()]);
+    $('#skippedList').click();
+  });
+  $('#fCancel').onclick = () => $('#fileIn').close();
+  $('#fileIn').showModal();
+}
 
 async function loadBroken() {
   const items = await api('/api/broken').catch(() => []);

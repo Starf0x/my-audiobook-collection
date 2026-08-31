@@ -64,6 +64,14 @@
   <div class="row end"><button id="whoClose" class="ghost" hidden>Cancel</button></div>
 </dialog>
 
+<!-- right-click (or long-press) a cover -->
+<div id="coverMenu" class="cmenu" hidden>
+  <div class="cmenu-title" id="cmTitle"></div>
+  <button data-act="restart">↺ Start again from the beginning</button>
+  <button data-act="listened" id="cmDone">☑ Mark as listened</button>
+  <button data-act="download">⤓ Download the whole book</button>
+</div>
+
 <div id="toast"></div>
 <script src="listen.js"></script>
 </body>
