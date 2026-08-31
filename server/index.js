@@ -6,7 +6,7 @@ import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
-import { scan, progress, lastSkipped } from './scan.js';
+import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
 import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
@@ -14,6 +14,7 @@ import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './a
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
+import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, haSettings, saveHaSettings, haPing, haPlayers,
   haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
@@ -294,6 +295,27 @@ app.get('/api/scan/status', (req, res) => res.json(progress));
 // than I have". Empty until a scan has run in this container.
 app.get('/api/skipped', requireAdmin, (req, res) => res.json(lastSkipped()));
 
+// What to put in the fields for a folder the scan walked past: where it sits says
+// the genre and the author, the first file usually says the title.
+app.get('/api/skipped/guess', requireAdmin, wrap(async (req, res) =>
+  res.json(await guessFor(req.query.path || '', req.query.reason || ''))));
+
+// File it where the given genre, author and title say it belongs, and write those
+// words into its files, so what put it there is what it carries.
+app.post('/api/skipped/file', requireAdmin, wrap(async (req, res) => {
+  const filed = await fileSkipped(req.body || {});
+  forgetSkipped(req.body.source);
+  let written = 0;
+  if (req.body.writeTags && filed.id) {
+    const book = db.prepare('SELECT * FROM books WHERE id = ?').get(filed.id);
+    const done = await applyMetadata(book, {
+      title: book.title, series: req.body.series || '', seriesNo: 0,
+    }, true);
+    written = done.written;
+  }
+  res.json({ ...filed, written });
+}));
+
 // --- library -----------------------------------------------------------
 // A series is a folder where the collection has one, and whatever the files call
 // it where it does not, so a book filed straight under its author still shows up
@@ -410,7 +432,7 @@ app.get('/api/books/:id', (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Not found' });
   book.tracks = db.prepare('SELECT id, idx, title, duration FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id);
-  book.progress = db.prepare('SELECT track_idx, position FROM progress WHERE user = ? AND book_id = ?')
+  book.progress = db.prepare('SELECT track_idx, position, done FROM progress WHERE user = ? AND book_id = ?')
     .get(req.query.user || '', book.id) || null;
   // The folder it actually sits in may name a series the library does not call one
   // (a series of a single book). The move dialog has to prefill from the folders,

@@ -256,6 +256,22 @@ track it is on, and since those are the books you are in the middle of it reads
 is loaded in the player, so a reload does not turn it back into *Play*. Tapping
 the cover does the same as pressing it.
 
+### The right button on a cover
+
+Right-click any cover — the one on a card, one on a shelf, or the one in the
+player — and a small menu opens on it. On a phone, where there is no right button,
+hold the cover for half a second instead.
+
+| Item | What it does |
+| --- | --- |
+| ↺ **Start again from the beginning** | throws away the place kept in the book and plays it from the first track. The place is gone, like unticking *Listened* |
+| ☑ **Mark as listened** | the same tick as the one inside the cover, from wherever you are — including the player, where there is no card to tick. It reads *Mark as not listened* for a book that is already ticked |
+| ⤓ **Download the whole book** | every file of it in one archive, the same as the ⤓ in the player |
+| ✎ **Edit metadata…** | the edit dialog on that book, without going through *Needs tags* (admin page only) |
+| ⌕ **Look up metadata…** | the Google Books lookup for that book (admin page only) |
+
+A click elsewhere, Escape or scrolling closes it.
+
 On a card the button says what pressing it will do: **▶ Play** for a book you have
 not started, **▶ Resume** for one with a place kept in it. Either way it opens the
 player at the bottom of the page, and that same button then reads **⏸ Pause**,
@@ -587,6 +603,25 @@ its full path. Nothing in that list was deleted or changed — it is only a repo
 | audio outside a book folder | loose files in a genre or author folder: a book has to be in a folder of its own |
 | set aside by an import | a `Not Imported - ` or `Replaced - ` copy, which is deliberate |
 | the folder could not be read | a permission or share problem, with the error |
+
+### Putting one of them right from the page
+
+Behind each folder that can be filed — one too deep, audio loose in a genre or
+author folder, or a copy set aside by an import — there is a **File this book…**
+button. It opens a dialog with the genre, author, series and title already filled
+in from the folders it sits in and from the tags of its first file, and it says how
+many audio files it found and where they would go.
+
+Pressing **File it** moves that audio into `genre / author / series / title`, adds
+the book to the library at once, and — unless you untick it — writes those same
+words into the files, so the next scan reads the same thing and the book stays
+where you put it. Files from more than one sub-folder are put together in order
+with the sub-folder's name in front of each, so a boxed set does not lose its
+discs. A book that is already in the right folder and only too deep is flattened
+where it is.
+
+It refuses, and moves nothing, when the folder has gone, has no audio in it, or
+when there is already a book where you are sending it.
 
 The list is what the **last** scan found, kept in memory, so it is empty until you
 scan and after a restart.

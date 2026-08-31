@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.48.** This document describes what the app is, how every
+**Version described: 2.0.56.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.48` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.56` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -112,14 +112,15 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 226 | a zip of a whole book, streamed and stored |
+| `server/skipped.js` | 181 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/ha.js` | 359 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `public/ha.html` | 84 | the Home Assistant page |
 | `public/ha.js` | 177 | its behaviour |
-| `public/index.html` | 246 | the admin page: columns, dialogs |
-| `public/app.js` | 1727 | the admin page's behaviour |
-| `public/listen.html` | 70 | the listening page |
-| `public/listen.js` | 482 | the listening page's behaviour |
-| `public/style.css` | 557 | the whole look, both pages, phone included |
+| `public/index.html` | 275 | the admin page: columns, dialogs |
+| `public/app.js` | 1899 | the admin page's behaviour |
+| `public/listen.html` | 78 | the listening page |
+| `public/listen.js` | 592 | the listening page's behaviour |
+| `public/style.css` | 584 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -924,6 +925,39 @@ UI — the trade for needing no component.
 removed at the owner's word: *"it must be used with the integration, no YAML code
 copying."* Do not bring it back.
 
+#### 7.9c Filing a folder a scan walked past (`skipped.js`)
+
+*Not counted* named every folder a scan could not read as a book and left the
+fixing to a file manager. This module does the fixing, from the same list.
+
+`filesOf(source, reason)` is what the folder would give up: for `loose` only the
+audio lying directly in it — the path in the list is a genre or author folder, and
+moving *that* would move the whole genre — and otherwise every audio file below it,
+each with the sub-folder it came from, deepest last.
+
+`guessFor(source, reason)` fills the dialog before anybody types. The layout says
+most of it: `<library>/<genre>/<author>/…`, so the folders give the genre, the
+author and — for a book one level too deep — the series and the title. The first
+file's tags fill what the folders did not. The genres on offer are the library's own
+genre folders, never a free-text field: a typo there would make a genre.
+
+`fileSkipped({source, reason, genre, author, series, title})` moves the audio into
+`destinationFor(...)`, adds the book with `addOne(..., force: true)` and hands back
+the row it landed on. Three details are not optional:
+
+* **The disc name goes in front of a file only when there is more than one disc.**
+  Otherwise every single-disc book would carry `Disc 01 - ` on every file.
+* **A book that is only too deep is flattened where it is.** Its destination *is*
+  its source; refusing that as "already there" would refuse the commonest case.
+  The refusal is kept for a source that has nothing in sub-folders to flatten.
+* **The folders it emptied go, the genre folder never does.** `pruneEmptyUnder`
+  takes the disc folders, `pruneUpTo` the ones above them, stopping at the genre
+  folder — which is the library itself.
+
+`GET /api/skipped/guess` and `POST /api/skipped/file` are both admin-only; the POST
+also writes the tags through `applyMetadata` when asked, and calls
+`forgetSkipped(source)` so the row leaves the list without a rescan.
+
 #### 7.9b Downloading a whole book (`zip.js`)
 
 The browser's own controls offered a download of the single track that happened to
@@ -1318,6 +1352,14 @@ skips them will reproduce the bugs.
     is documented as the book's title within the series and is sometimes the book's
     own. A diagnostic that spends the owner's API quota is a button they press,
     never something a page does on its own.
+33. **A genre folder is the library, not litter.** Tidying up after a move walks
+    up from where the files came and stops at the genre folder: an empty author
+    folder is litter, an empty genre folder is a genre the user configured, and
+    removing it silently takes a column out of their page.
+34. **Where a too-deep book belongs is where it already is.** The fix for
+    `…/Book/Disc A/01.mp3` is to flatten it into `…/Book/`, so destination equals
+    source. Code that guards "you are sending it where it already is" has to let
+    that case through, or the commonest thing in *Not counted* cannot be fixed.
 
 
 ## 10. Measured performance
@@ -1369,6 +1411,8 @@ Server suites:
 | `import-empty` | the kept list drops a book whose folder has gone, empties when the folder is emptied, picks up a new one from the background pass, ignores a folder left behind with no audio, and reads from scratch on a refresh |
 | `import-empty-ui` | with the panel open and the folder emptied behind its back, the list empties itself within seconds, says the folder is empty, the count follows, and a book dropped in appears — nothing pressed |
 | `skipped` | every way a folder full of audiobooks can be walked past — a book one level too deep, files it cannot read, an empty folder, audio loose in a genre or author folder, a copy set aside — each named with its reason; counted plus not counted is what is on the disk; moving a too-deep book up one level raises the count |
+| `file-skipped` | filing a folder the scan walked past: the three shapes that can be filed each found, the fields filled in from the folders and from the first file's tags, the genres on offer being the library's, a too-deep book flattened where it is with its disc folders in front of each name and the emptied folders gone, loose audio taken out of a genre folder without touching the folder, a series level made when one is given, the tags written, the row off the list at once, the books still there after a rescan with nothing walked past — and its refusals: a folder that has gone, one with nothing left in it, a destination that is taken, an unknown genre |
+| `file-and-menu-ui` | in the page: the *File this book…* button per fileable row, the dialog prefilled, what it says it found and where it goes, that changing a field follows and an empty author says what is missing, the filing itself with its message, the row and the count going, the files together on disk and the book under its series. Then the cover's menu on both pages: its five items on the admin page and three on the listening page, at the pointer and inside the window, closed by a click, Escape or scrolling, never opened by a right-click on anything but a cover, the tick going both ways and taking the card's glyph and the listened count with it, starting again throwing the kept place away and playing the first track, *Edit metadata* opening on that book, the download asking for `/api/download/<id>` and that really being a zip of every file, and the same menu on the player's own cover |
 | `skipped-ui` | the **Not counted** row: absent when empty, there with a count after a scan, the bar saying so, and the list grouped by reason with a path for each |
 | `stay-put` | applying metadata from Needs tags leaves that list on screen — with a genre change too, and from the edit dialog — while from the library it still returns to the author |
 | `same-book` | while a long write runs, every further request for that book is refused with the same reason — singly, three at once, with a different `pick`, and from the whole-collection run; another book writes meanwhile; metadata without a file write is still allowed; the book is free again afterwards |
@@ -1466,6 +1510,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.56 | a right-click on a cover: over again, the tick, the whole book, and the metadata; and a folder the scan walked past filed from the page it was reported on |
 | 2.0.48 | ⤓ in the player downloads the whole book — every file in one streamed archive |
 | 2.0.40 | the player draws its own transport, so its progress line is yellow too — a browser will not let a page recolour its own controls |
 | 2.0.32 | the line that says how far into a book you are is yellow, and wide enough to see |
