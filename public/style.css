@@ -90,7 +90,38 @@ footer {
 footer img { width: 36px; height: 54px; border-radius: 4px; object-fit: cover; background: var(--panel2); }
 footer .meta { min-width: 200px; display: flex; flex-direction: column; }
 footer .meta span { color: var(--dim); font-size: 12px; }
-footer audio { flex: 1; height: 36px; }
+/* The transport is ours (see the note in app.js), so the line that says how far
+   into a track you are is yellow like the one on the shelves, and the whole thing
+   sits in the app's own dark instead of the browser's light grey slab. */
+footer audio { display: none; }
+footer #pPlay { min-width: 40px; font-size: 15px; line-height: 1; padding: 7px 10px; }
+footer #pPlay.playing { background: var(--accent); border-color: transparent; }
+footer .tick { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
+footer #seek { flex: 1; min-width: 120px; }
+footer #vol { width: 96px; flex: 0 0 auto; }
+footer #pVolBtn { padding: 7px 9px; font-size: 14px; line-height: 1; }
+
+/* one look for both sliders: yellow up to --played, the track beyond it */
+footer input[type="range"] {
+  --played: 0%;
+  -webkit-appearance: none; appearance: none;
+  height: 18px; padding: 0; border: 0; background: transparent; cursor: pointer;
+}
+footer input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(90deg, #ffb628 0%, #ffe066 var(--played), #2c3342 var(--played), #2c3342 100%);
+}
+footer input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -4px; border-radius: 50%;
+  background: #ffd452; border: 1px solid #8a6410;
+}
+footer input[type="range"]:focus-visible { outline: 2px solid var(--accent2); outline-offset: 3px; }
+footer input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: #2c3342; }
+footer input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: #ffb628; }
+footer input[type="range"]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; background: #ffd452; border: 1px solid #8a6410;
+}
 
 dialog {
   background: var(--panel); color: var(--text); border: 1px solid var(--line);
@@ -332,7 +363,10 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   footer .meta { min-width: 0; flex: 1 1 auto; overflow: hidden; }
   footer .meta strong, footer .meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   footer #trackSelect { max-width: 45%; }
-  footer audio { order: 10; flex: 1 0 100%; height: 40px; }
+  /* on a phone the seek line gets a row of its own, under the rest */
+  footer #seek { order: 10; flex: 1 0 100%; }
+  footer #vol { width: 72px; }
+  footer .tick { min-width: 40px; }
 
   /* a dialog is a sheet: the whole screen, and it scrolls */
   dialog {
