@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.56.** This document describes what the app is, how every
+**Version described: 2.0.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -938,7 +938,9 @@ each with the sub-folder it came from, deepest last.
 `guessFor(source, reason)` fills the dialog before anybody types. The layout says
 most of it: `<library>/<genre>/<author>/…`, so the folders give the genre, the
 author and — for a book one level too deep — the series and the title. The first
-file's tags fill what the folders did not. The genres on offer are the library's own
+file's tags fill only what the folders did not: a folder name is what the owner
+sees in the list, while an album tag is as often the wrong book, copied in with a
+file. The genres on offer are the library's own
 genre folders, never a free-text field: a typo there would make a genre.
 
 `fileSkipped({source, reason, genre, author, series, title})` moves the audio into
@@ -1510,6 +1512,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.64 | what the folders say about a walked-past book comes before what its tags say |
 | 2.0.56 | a right-click on a cover: over again, the tick, the whole book, and the metadata; and a folder the scan walked past filed from the page it was reported on |
 | 2.0.48 | ⤓ in the player downloads the whole book — every file in one streamed archive |
 | 2.0.40 | the player draws its own transport, so its progress line is yellow too — a browser will not let a page recolour its own controls |
