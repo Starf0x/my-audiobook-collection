@@ -546,3 +546,12 @@ strong.warn { color: #ffb4a8; }
   height: min(92vh, 1000px); max-height: 92vh;
   padding: 18px 20px 24px; overflow-y: auto;
 }
+
+/* the download of the whole book: a link, so the browser does the saving */
+footer #pGet {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 38px; height: 34px; padding: 0 9px; font-size: 15px; line-height: 1;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--panel2);
+  color: var(--text); text-decoration: none; cursor: pointer;
+}
+footer #pGet:hover { filter: brightness(1.15); }
