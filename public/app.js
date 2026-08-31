@@ -429,7 +429,8 @@ function markPlaying() {
 }
 // --- the cover's own menu -----------------------------------------------
 // Right-click a cover — or hold it, on a phone, where there is no right button —
-// and the one thing a cover can offer beyond playing is there: the whole book.
+// and everything a cover can offer beyond playing is there: over again, the
+// Listened tick, the whole book, and on the admin page its metadata.
 const coverMenu = $('#coverMenu');
 const bookOfCover = (el) => {
   const img = el.closest('img, .tile');
@@ -466,16 +467,33 @@ document.addEventListener('contextmenu', (e) => {
 });
 // no right button on a touch screen: hold the cover instead
 let held = null;
+let fromHold = false;
 document.addEventListener('touchstart', (e) => {
   const book = bookOfCover(e.target);
   if (!book) return;
   const at = e.touches[0];
-  held = setTimeout(() => { held = null; showCoverMenu(book, at.clientX, at.clientY); }, 550);
+  held = setTimeout(() => {
+    held = null;
+    fromHold = true;
+    showCoverMenu(book, at.clientX, at.clientY);
+  }, 550);
 }, { passive: true });
 for (const ended of ['touchend', 'touchmove', 'touchcancel']) {
   document.addEventListener(ended, () => { clearTimeout(held); held = null; }, { passive: true });
 }
-document.addEventListener('click', (e) => { if (!coverMenu.contains(e.target)) hideCoverMenu(); });
+// Lifting the finger after a hold sends a click at the cover: without swallowing
+// it the tap would start the book and shut the menu it had just opened. Captured,
+// so it never reaches the picture underneath.
+document.addEventListener('click', (e) => {
+  if (coverMenu.contains(e.target)) return;
+  if (fromHold) {
+    fromHold = false;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+  hideCoverMenu();
+}, true);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCoverMenu(); });
 window.addEventListener('scroll', hideCoverMenu, true);
 // Only the admin page has the last two of these, so an item that is not there is
@@ -496,11 +514,20 @@ const doneNow = (id) => {
 
 onMenu('restart', async () => {
   const id = Number(coverMenu.dataset.id);
+  const wasDone = doneNow(id);
+  const tick = tickOf(id);
   hideCoverMenu();
   if (!state.user) return toast('Create or select a user first.');
-  // the place kept in it goes first, or the player would pick it up again
-  try { await post('/api/progress', { user: state.user, bookId: id, trackIdx: 0, position: 0 }); }
-  catch (e) { return toast(e.message); }
+  try {
+    // a book being listened to again has not been listened to: the tick comes off,
+    // which is also what clears the place kept in it
+    if (wasDone) {
+      if (tick) { tick.checked = false; await setListened(id, tick); }
+      else await post('/api/listened', { user: state.user, bookId: id, done: false });
+    }
+    // and then it starts at the top, or the player would pick the old place up
+    await post('/api/progress', { user: state.user, bookId: id, trackIdx: 0, position: 0 });
+  } catch (e) { return toast(e.message); }
   if (state.book && state.book.id === id) return playTrack(0, 0);
   return playBook(id);
 });

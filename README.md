@@ -264,7 +264,7 @@ hold the cover for half a second instead.
 
 | Item | What it does |
 | --- | --- |
-| ↺ **Start again from the beginning** | throws away the place kept in the book and plays it from the first track. The place is gone, like unticking *Listened* |
+| ↺ **Start again from the beginning** | throws away the place kept in the book, takes the *Listened* tick off if it was on — a book being listened to again has not been listened to — and plays from the first track |
 | ☑ **Mark as listened** | the same tick as the one inside the cover, from wherever you are — including the player, where there is no card to tick. It reads *Mark as not listened* for a book that is already ticked |
 | ⤓ **Download the whole book** | every file of it in one archive, the same as the ⤓ in the player |
 | ✎ **Edit metadata…** | the edit dialog on that book, without going through *Needs tags* (admin page only) |
