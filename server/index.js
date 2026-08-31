@@ -50,7 +50,14 @@ const coverV = (b) => crypto.createHash('md5')
 // whether a container has actually been updated.
 const VERSION = JSON.parse(fs.readFileSync(path.join(PUBLIC, '../package.json'), 'utf8')).version;
 
-const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => res.status(400).json({ error: e.message }));
+// A failure becomes a 400 with the reason in it — unless the answer has already
+// started, as it has when a download breaks off half way: setting a status then
+// throws, and a throw inside this catch is an unhandled rejection, which ends the
+// process. Nothing can be said to that reader any more, so the connection goes.
+const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
+  if (res.headersSent) return res.destroyed ? undefined : res.destroy();
+  return res.status(400).json({ error: e.message });
+});
 
 // --- who may change things ---------------------------------------------
 app.get('/api/admin', (req, res) => res.json({
