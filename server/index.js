@@ -13,6 +13,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
+import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, haSettings, saveHaSettings, haPing, haPlayers,
   haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
@@ -512,6 +513,35 @@ const adminOrHA = (req, res, next) => (isAdmin(req) || (inboundToken() && tokenO
 app.post('/api/ha/play', adminOrHA, wrap(async (req, res) => {
   rememberRequest(req);
   res.json(await haPlay(req, { ...(req.body || {}), version: VERSION }));
+}));
+
+// The whole book, as one archive. The browser's own player offered a download of
+// the single track that happened to be playing; a book is not one track, so this
+// is all of its files. Stored rather than deflated, so the length is known and the
+// browser can show how far along it is.
+app.get('/api/download/:id', wrap(async (req, res) => {
+  const book = db.prepare('SELECT id, title, author FROM books WHERE id = ?').get(Number(req.params.id));
+  if (!book) return res.status(404).json({ error: 'Book not found' });
+  const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
+    .map((t) => t.path)
+    .filter((f) => fs.existsSync(f));
+  if (!files.length) return res.status(404).json({ error: 'None of this book’s files are on disk.' });
+  const names = uniqueNames(files);
+  const entries = files.map((file, i) => ({
+    name: names[i], path: file, size: fs.statSync(file).size,
+  }));
+  // a file name Windows and macOS will both accept
+  const stem = [book.author, book.title].filter(Boolean).join(' - ')
+    .replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() || `book-${book.id}`;
+  res.set({
+    'Content-Type': 'application/zip',
+    'Content-Length': String(zipLength(entries)),
+    // both spellings: the plain one for old clients, the encoded one for accents
+    'Content-Disposition': `attachment; filename="${stem.replace(/[^ -~]/g, '_')}.zip"; `
+      + `filename*=UTF-8''${encodeURIComponent(stem)}.zip`,
+    'Cache-Control': 'no-store',
+  });
+  await writeZipTo(res, entries);
 }));
 
 app.get('/api/stream/:trackId', (req, res) => {

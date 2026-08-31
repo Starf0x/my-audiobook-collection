@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.40.** This document describes what the app is, how every
+**Version described: 2.0.48.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.40` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.48` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,7 +96,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 597 | Express app: every route, and nothing else |
+| `server/index.js` | 627 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 112 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -111,14 +111,15 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
+| `server/zip.js` | 226 | a zip of a whole book, streamed and stored |
 | `server/ha.js` | 359 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `public/ha.html` | 84 | the Home Assistant page |
 | `public/ha.js` | 177 | its behaviour |
-| `public/index.html` | 244 | the admin page: columns, dialogs |
-| `public/app.js` | 1724 | the admin page's behaviour |
-| `public/listen.html` | 68 | the listening page |
-| `public/listen.js` | 479 | the listening page's behaviour |
-| `public/style.css` | 548 | the whole look, both pages, phone included |
+| `public/index.html` | 246 | the admin page: columns, dialogs |
+| `public/app.js` | 1727 | the admin page's behaviour |
+| `public/listen.html` | 70 | the listening page |
+| `public/listen.js` | 482 | the listening page's behaviour |
+| `public/style.css` | 557 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -361,6 +362,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/ha/book/:id.m3u?from=` | token | a book as an `#EXTM3U` playlist, from a track on |
 | `GET /api/ha/continue.m3u?user=` | token | the book being listened to, from where it stopped, plus `X-Audiobook-Id` and `X-Audiobook-Seek` |
 | `GET /api/ha/example.yaml` | token | the HA configuration with this server's address in it |
+| `GET /api/download/:id` | — | the whole book as one zip, streamed, with the exact length promised up front |
 | `GET /api/stream/:trackId` | — | audio, with byte-range support |
 | `POST /api/progress` | — | position, per user |
 | `GET /api/lookup/status` | — | retry state of a lookup |
@@ -922,6 +924,40 @@ UI — the trade for needing no component.
 removed at the owner's word: *"it must be used with the integration, no YAML code
 copying."* Do not bring it back.
 
+#### 7.9b Downloading a whole book (`zip.js`)
+
+The browser's own controls offered a download of the single track that happened to
+be playing. A book is not one track, so `GET /api/download/:id` answers with every
+audio file of it in one archive.
+
+**Stored, not deflated.** An MP3 is already compressed, so deflating costs CPU for
+nothing — and storing has a second effect that matters more: with each size known
+from the disk beforehand, `zipLength(entries)` works out the archive's exact byte
+count before a byte is sent, so `Content-Length` is real and the browser shows a
+progress bar with an end rather than a spinner.
+
+**Streamed.** `writeZipTo(out, entries)` writes a local header, pipes the file
+through with `fs.createReadStream`, and follows it with a data descriptor — the
+CRC is only known once the bytes have gone past, which is what descriptors are for
+(flag bit 3). Nothing is ever held in memory, and every `write` is awaited: a book
+is larger than any socket buffer, and ignoring backpressure is how a small
+container dies sending one.
+
+**ZIP64 where it is needed and nowhere else.** Per entry when a file passes 4 GB,
+per directory entry when its offset does, and the ZIP64 end record when the
+archive or the count does. Some readers still baulk at ZIP64 fields on small
+files, so they are not written by default.
+
+Two details that come from real collections: `uniqueNames()` renames a collision
+rather than letting it overwrite, because two disc folders both hold an `01.mp3`;
+and a file that grew or shrank between the `stat` and the read is padded or cut to
+the size that was promised, since `Content-Length` has already gone out and a
+short archive is worse than a padded one.
+
+The name is `<Author> - <Title>.zip`, sent twice — plain for old clients and
+`filename*=UTF-8''…` for accents. The route is not behind the admin password:
+the audio it contains is already open to anyone who can reach the listening page.
+
 ### 7.10 Search
 
 One box, one query. Every word must appear somewhere in the same book, matched
@@ -1051,7 +1087,8 @@ the arrow keys for nothing, which a div would each have to be taught.
 
 `timeupdate`, `durationchange`, `loadedmetadata` and `emptied` redraw the time
 and the fill; while a drag is in progress (`input` fired, `change` not yet) the
-redraw leaves the thumb alone, or it would fight the finger holding it. Volume is
+redraw leaves the thumb alone, or it would fight the finger holding it. `#pGet` is a plain `<a download>` at `/api/download/<book>`, so the browser does
+the saving. Volume is
 kept in `localStorage.volume` — the one thing the browser's controls did that a
 page cannot get back on its own.
 
@@ -1340,6 +1377,7 @@ Server suites:
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
+| `download` | a whole book as one archive: the type, the name in both spellings, the promised length matching what arrives, **Windows extracting it** with PowerShell and every file compared byte for byte with the one on disk, two discs whose file names collide both surviving renamed apart, a missing book as a 404, and a book whose files are gone saying so instead of sending an empty archive |
 | `transport` | the player's own controls, on both pages and on a phone: no browser controls left, ours in their place, it plays and the button says how to stop it, the yellow grows as it plays, dragging the line seeks to where it was dragged, the button pauses and resumes, the volume slider sets and remembers the volume, mute says so, and a reload keeps it |
 | `played-line` | how far into a book you are, measured rather than read off the stylesheet: the line is there and part filled, its first stop is the yellow, it is 5px, and its contrast against both the track and the tile is at least 5:1 — on both pages and on a phone |
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
@@ -1428,6 +1466,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.48 | ⤓ in the player downloads the whole book — every file in one streamed archive |
 | 2.0.40 | the player draws its own transport, so its progress line is yellow too — a browser will not let a page recolour its own controls |
 | 2.0.32 | the line that says how far into a book you are is yellow, and wide enough to see |
 | 2.0.24 | the Settings dialog is the size of the Home Assistant page |

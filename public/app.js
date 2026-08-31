@@ -374,6 +374,9 @@ window.playBook = async function (id) {
   state.book = book;
   $('#player').hidden = false;
   $('#pCover').src = `/api/cover/${id}?v=${book.coverV || 0}`;
+  // every file of this book in one archive, which is what a download of an
+  // audiobook means; the name comes from the server, so it is the book's
+  $('#pGet').href = `/api/download/${id}`;
   $('#pTitle').textContent = book.title;
   $('#trackSelect').innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join('');
   // a saved track index can outlive the files it pointed at
