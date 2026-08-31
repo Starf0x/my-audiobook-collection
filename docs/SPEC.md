@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.32.** This document describes what the app is, how every
+**Version described: 2.0.40.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.32` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.40` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -114,11 +114,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/ha.js` | 359 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `public/ha.html` | 84 | the Home Assistant page |
 | `public/ha.js` | 177 | its behaviour |
-| `public/index.html` | 235 | the admin page: columns, dialogs |
-| `public/app.js` | 1653 | the admin page's behaviour |
-| `public/listen.html` | 59 | the listening page |
-| `public/listen.js` | 408 | the listening page's behaviour |
-| `public/style.css` | 514 | the whole look, both pages, phone included |
+| `public/index.html` | 244 | the admin page: columns, dialogs |
+| `public/app.js` | 1724 | the admin page's behaviour |
+| `public/listen.html` | 68 | the listening page |
+| `public/listen.js` | 479 | the listening page's behaviour |
+| `public/style.css` | 548 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1034,7 +1034,28 @@ actions — *Play*, *Find metadata*, *Write into MP3s*, *Edit metadata*, *Move�
 **Landing view** (`#home`): shelves of tiles — *Continue listening* with a
 progress bar, and *Recently added*.
 
-That bar (`.tile .tbar`) is 5px of **yellow** — `#ffb628` to `#ffe066` — on a
+**The player's transport is the app's own.** A browser will not let a page
+recolour its audio controls: the timeline lives in a shadow tree the page may not
+touch, so the line saying how far into a track you are was whatever grey the
+browser felt like, on a light slab in a dark interface. So `<audio>` carries no
+`controls` attribute and is `display: none` — it is only the engine — and the
+footer holds `#pPlay` (▶/⏸, lit while playing), `#pAt`, `#seek`, `#pOf`,
+`#pVolBtn` and `#vol`, then the track select.
+
+Both sliders are `<input type="range">` with the fill drawn by CSS from a custom
+property: `--played` is set on the element in JS, and
+`::-webkit-slider-runnable-track` paints
+`linear-gradient(90deg, #ffb628 0, #ffe066 var(--played), #2c3342 var(--played))`,
+with `::-moz-range-progress` for Firefox. A range gives dragging, clicking and
+the arrow keys for nothing, which a div would each have to be taught.
+
+`timeupdate`, `durationchange`, `loadedmetadata` and `emptied` redraw the time
+and the fill; while a drag is in progress (`input` fired, `change` not yet) the
+redraw leaves the thumb alone, or it would fight the finger holding it. Volume is
+kept in `localStorage.volume` — the one thing the browser's controls did that a
+page cannot get back on its own.
+
+The shelf bar (`.tile .tbar`) is 5px of **yellow** — `#ffb628` to `#ffe066` — on a
 `#2c3342` track. It was 4px of the interface's own purple-to-cyan on
 `var(--panel2)`, which against a dark tile you had to hunt for; the job bars in
 `#progress` keep that gradient, because those are about work being done rather
@@ -1319,6 +1340,7 @@ Server suites:
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
+| `transport` | the player's own controls, on both pages and on a phone: no browser controls left, ours in their place, it plays and the button says how to stop it, the yellow grows as it plays, dragging the line seeks to where it was dragged, the button pauses and resumes, the volume slider sets and remembers the volume, mute says so, and a reload keeps it |
 | `played-line` | how far into a book you are, measured rather than read off the stylesheet: the line is there and part filled, its first stop is the yellow, it is 5px, and its contrast against both the track and the tile is at least 5:1 — on both pages and on a phone |
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
 | `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
@@ -1406,6 +1428,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.40 | the player draws its own transport, so its progress line is yellow too — a browser will not let a page recolour its own controls |
 | 2.0.32 | the line that says how far into a book you are is yellow, and wide enough to see |
 | 2.0.24 | the Settings dialog is the size of the Home Assistant page |
 | 2.0.16 | Settings became a pulldown over the two kinds of settings: the library, and Home Assistant |

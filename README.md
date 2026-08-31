@@ -21,6 +21,7 @@ The full manual, with screenshots of every part of it, is in the
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
 * Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * The Play button of the book that is playing is its Pause button, on the card you started it from
+* The player is the app's own: dark, with a yellow line showing how far into the track you are
 * The cover is a play button too: click the picture to start a book, click it again to pause it
 * Covers drawn for books with no art of their own rotate their two colours every day
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
@@ -212,7 +213,7 @@ shelves, as it does on a desktop.
 Everything else follows the screen: the header wraps to two rows with the search
 across the width, a book card puts its cover and text side by side and its buttons
 in a grid under them, dialogs become full-screen sheets that scroll, the player
-keeps cover, title and track on one line with the audio controls across the
+keeps cover, title and track on one line with the transport across the
 bottom, and every row and button is at least 40 pixels tall. Fields are set at
 16px so a phone does not zoom the page when you tap one. A tablet, and a phone on
 its side, still get all three columns — narrower.
