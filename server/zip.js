@@ -177,10 +177,24 @@ const endRecords = (count, centralSize, centralAt) => {
 export async function writeZipTo(out, entries) {
   const dir = [];
   let offset = 0;
+  // One wait, settled by whichever comes first, and every listener taken off
+  // again: a book is thousands of backpressured writes, and a reader who cancels
+  // sends no `drain` at all.
   const put = (buf) => new Promise((ok, no) => {
+    if (out.destroyed) return no(new Error('The download was cancelled.'));
     if (out.write(buf)) return ok();
-    out.once('drain', ok);
-    out.once('error', no);
+    const settle = (err) => {
+      out.off('drain', onDrain);
+      out.off('error', onError);
+      out.off('close', onClose);
+      if (err) no(err); else ok();
+    };
+    const onDrain = () => settle();
+    const onError = (e) => settle(e);
+    const onClose = () => settle(new Error('The download was cancelled.'));
+    out.once('drain', onDrain);
+    out.once('error', onError);
+    out.once('close', onClose);
   });
 
   for (const e of entries) {

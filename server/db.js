@@ -58,6 +58,11 @@ db.exec(`
   -- and a new book would inherit it.
   CREATE TRIGGER IF NOT EXISTS broken_follows_books AFTER DELETE ON books
   BEGIN DELETE FROM broken WHERE book_id = OLD.id; END;
+  -- and for the same reason, what a listener had done and where they were: a scan
+  -- that drops a book whose folder has gone left these behind, and the next book
+  -- added could be given the freed id along with a stranger's place in it
+  CREATE TRIGGER IF NOT EXISTS progress_follows_books AFTER DELETE ON books
+  BEGIN DELETE FROM progress WHERE book_id = OLD.id; END;
   -- every book lookup, delete and tag write filters tracks by book_id
   CREATE INDEX IF NOT EXISTS tracks_book ON tracks (book_id);
 `);
@@ -74,6 +79,9 @@ for (const b of db.prepare("SELECT id, description FROM books WHERE description 
     db.prepare("UPDATE books SET description = '' WHERE id = ?").run(b.id);
   }
 }
+
+// places kept in books that no longer exist, from before the trigger above
+db.exec('DELETE FROM progress WHERE book_id NOT IN (SELECT id FROM books)');
 
 // The admin password used to be settable in the app; it comes from the
 // container now, so a hash left in here means nothing and is dropped.

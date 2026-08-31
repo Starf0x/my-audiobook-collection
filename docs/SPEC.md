@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.64.** This document describes what the app is, how every
+**Version described: 2.0.72.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.72` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -98,9 +98,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | --- | --- | --- |
 | `server/index.js` | 627 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 112 | schema, migrations, settings, library list |
+| `server/db.js` | 120 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 456 | walking the library, reading tags, filing books |
+| `server/scan.js` | 463 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
 | `server/google.js` | 539 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
@@ -111,15 +111,15 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/validate.js` | 116 | checking every book against the disk |
 | `server/covers.js` | 118 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
-| `server/zip.js` | 226 | a zip of a whole book, streamed and stored |
-| `server/skipped.js` | 181 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
+| `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
+| `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/ha.js` | 359 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `public/ha.html` | 84 | the Home Assistant page |
 | `public/ha.js` | 177 | its behaviour |
 | `public/index.html` | 275 | the admin page: columns, dialogs |
-| `public/app.js` | 1899 | the admin page's behaviour |
+| `public/app.js` | 1926 | the admin page's behaviour |
 | `public/listen.html` | 78 | the listening page |
-| `public/listen.js` | 592 | the listening page's behaviour |
+| `public/listen.js` | 619 | the listening page's behaviour |
 | `public/style.css` | 584 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -1362,6 +1362,25 @@ skips them will reproduce the bugs.
     `…/Book/Disc A/01.mp3` is to flatten it into `…/Book/`, so destination equals
     source. Code that guards "you are sending it where it already is" has to let
     that case through, or the commonest thing in *Not counted* cannot be fixed.
+35. **What a listener did has to be deleted with the book.** SQLite hands out
+    rowids again, so a `progress` row left behind by a scan that dropped a book
+    whose folder had gone was given to the next book added — arriving already
+    ticked off and halfway through a track — and the status line counted a book
+    that was not there. A trigger on `books` does it now, the way `broken` has
+    always had one; every table keyed by `book_id` needs the same.
+36. **A reader who cancels sends no `drain`.** Waiting on `write`'s answer with
+    only a `drain` listener never ends when the connection has gone, and adding a
+    listener per write without taking it off again leaks them by the thousand over
+    one book. Wait on `drain`, `error` and `close` together, settle once, and take
+    all three off.
+37. **Nothing can be said to a reader once the answer has started.** The error
+    wrapper answers a failure with a status and a JSON body, which throws when the
+    headers are already out — inside a `.catch`, which makes it an unhandled
+    rejection, and Node ends the process on those. Check `headersSent` first and
+    drop the connection instead.
+38. **The tap that ends a long press is still a click.** A hold that opens a menu
+    on a phone is followed by a `click` on whatever was held: without swallowing
+    that one click the menu shuts again and the cover underneath starts playing.
 
 
 ## 10. Measured performance
@@ -1423,6 +1442,8 @@ Server suites:
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
+| `progress-follows` | a place in a book going with the book: three books, the highest id ticked off and part-heard, its folder taken away; after the rescan nothing counts as listened and nothing waits on the shelf; the next book added takes that freed id and is a fresh book with no place kept in it; and a place in a book that is really there survives a rescan |
+| `download-abort` | five downloads broken off part way and a file taken away mid-send: the app is still there, still answering, nothing on stderr — no listener leak, no error thrown once the headers are out — and a download left alone still arrives whole, the promised length, with every file in it |
 | `download` | a whole book as one archive: the type, the name in both spellings, the promised length matching what arrives, **Windows extracting it** with PowerShell and every file compared byte for byte with the one on disk, two discs whose file names collide both surviving renamed apart, a missing book as a 404, and a book whose files are gone saying so instead of sending an empty archive |
 | `transport` | the player's own controls, on both pages and on a phone: no browser controls left, ours in their place, it plays and the button says how to stop it, the yellow grows as it plays, dragging the line seeks to where it was dragged, the button pauses and resumes, the volume slider sets and remembers the volume, mute says so, and a reload keeps it |
 | `played-line` | how far into a book you are, measured rather than read off the stylesheet: the line is there and part filled, its first stop is the yellow, it is 5px, and its contrast against both the track and the tile is at least 5:1 — on both pages and on a phone |
@@ -1512,6 +1533,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.72 | a place in a book goes when the book goes; a download that is cancelled or breaks lets go of everything; a hold on a phone opens the cover menu without starting the book |
 | 2.0.64 | what the folders say about a walked-past book comes before what its tags say |
 | 2.0.56 | a right-click on a cover: over again, the tick, the whole book, and the metadata; and a folder the scan walked past filed from the page it was reported on |
 | 2.0.48 | ⤓ in the player downloads the whole book — every file in one streamed archive |
