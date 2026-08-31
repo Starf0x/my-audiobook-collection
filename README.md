@@ -22,6 +22,7 @@ The full manual, with screenshots of every part of it, is in the
 * Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * The Play button of the book that is playing is its Pause button, on the card you started it from
 * The player is the app's own: dark, with a yellow line showing how far into the track you are
+* **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
 * The cover is a play button too: click the picture to start a book, click it again to pause it
 * Covers drawn for books with no art of their own rotate their two colours every day
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
