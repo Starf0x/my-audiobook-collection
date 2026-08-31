@@ -288,6 +288,13 @@ export const progress = { running: false, done: 0, total: 0, current: '', books:
 let skippedLast = [];
 export const lastSkipped = () => skippedLast;
 
+// A folder that has been filed as a book is no longer walked past, so it goes off
+// the list at once rather than waiting for the next scan to agree.
+export const forgetSkipped = (dir) => {
+  const gone = path.resolve(dir);
+  skippedLast = skippedLast.filter((s) => path.resolve(s.path) !== gone);
+};
+
 export async function scan(only = '') {
   // running must be true before walking the tree: on a large library that walk
   // takes tens of seconds, and the UI would otherwise read the scan as finished.

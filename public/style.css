@@ -555,3 +555,30 @@ footer #pGet {
   color: var(--text); text-decoration: none; cursor: pointer;
 }
 footer #pGet:hover { filter: brightness(1.15); }
+
+/* a tick in a dialog, which the uppercase label styling would otherwise shout */
+dialog label.pick {
+  display: block; margin: 14px 0 2px; font-size: 13px; color: var(--text);
+  text-transform: none; letter-spacing: 0;
+}
+dialog label.pick input {
+  width: 14px; height: 14px; padding: 0; margin: 0 6px 0 0;
+  vertical-align: middle; accent-color: var(--accent); cursor: pointer;
+}
+
+/* the cover's own menu: a right-click on desktop, a long hold on a phone */
+.cmenu {
+  position: fixed; z-index: 60; min-width: 210px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 18px 40px -18px #000;
+}
+.cmenu .cmenu-title {
+  padding: 6px 10px 8px; color: var(--dim); font-size: 12px;
+  border-bottom: 1px solid var(--line); margin-bottom: 4px;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmenu button {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  padding: 10px 10px; border-radius: 8px; font-weight: 500; color: var(--text);
+}
+.cmenu button:hover { background: var(--panel2); filter: none; }

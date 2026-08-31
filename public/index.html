@@ -203,6 +203,25 @@
   </div>
 </dialog>
 
+<dialog id="fileIn">
+  <h2>File this book</h2>
+  <p class="hint">A folder the scan walked past. Say what book it is, and it is moved to
+    <code>genre / author / series / title</code> and added to the library — with those same words
+    written into its files, so it stays where it belongs after the next scan.</p>
+  <p class="hint path" id="fWhat"></p>
+  <p class="hint" id="fFound"></p>
+  <label>Genre</label><select id="fGenre"></select>
+  <label>Author</label><input id="fAuthor">
+  <label>Series (optional)</label><input id="fSeries">
+  <label>Title</label><input id="fTitle">
+  <label class="pick"><input type="checkbox" id="fTags" checked> Write these into the files as well</label>
+  <p class="hint" id="fWhere"></p>
+  <div class="row end">
+    <button id="fCancel" class="ghost">Cancel</button>
+    <button id="fGo">File it</button>
+  </div>
+</dialog>
+
 <dialog id="move">
   <h2>Move book</h2>
   <p class="hint">Moves the folder on disk. The listened state and playback position stay with the book.</p>
@@ -239,6 +258,16 @@
     <button id="saveEditTags">Save + write into MP3s</button>
   </div>
 </dialog>
+
+<!-- right-click (or long-press) a cover -->
+<div id="coverMenu" class="cmenu" hidden>
+  <div class="cmenu-title" id="cmTitle"></div>
+  <button data-act="restart">↺ Start again from the beginning</button>
+  <button data-act="listened" id="cmDone">☑ Mark as listened</button>
+  <button data-act="download">⤓ Download the whole book</button>
+  <button data-act="edit">✎ Edit metadata…</button>
+  <button data-act="find">⌕ Look up metadata…</button>
+</div>
 
 <div id="toast"></div>
 <script src="app.js"></script>
