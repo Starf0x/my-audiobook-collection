@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.72.** This document describes what the app is, how every
+**Version described: 2.0.80.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.72` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.80` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -120,7 +120,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/app.js` | 1926 | the admin page's behaviour |
 | `public/listen.html` | 78 | the listening page |
 | `public/listen.js` | 619 | the listening page's behaviour |
-| `public/style.css` | 584 | the whole look, both pages, phone included |
+| `public/style.css` | 594 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1378,7 +1378,12 @@ skips them will reproduce the bugs.
     headers are already out — inside a `.catch`, which makes it an unhandled
     rejection, and Node ends the process on those. Check `headersSent` first and
     drop the connection instead.
-38. **The tap that ends a long press is still a click.** A hold that opens a menu
+38. **An id beats an element rule, whatever the media query.** Every dialog is a
+    full-screen sheet on a phone, said as `dialog { … }` inside the phone block.
+    `#settings`, sized later to match the Home Assistant page, quietly took that
+    away from itself on phones too: an id wins over an element selector wherever
+    it stands. A rule of that kind has to be said again for the phone.
+39. **The tap that ends a long press is still a click.** A hold that opens a menu
     on a phone is followed by a `click` on whatever was held: without swallowing
     that one click the menu shuts again and the cover underneath starts playing.
 
@@ -1533,6 +1538,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.80 | Settings is a full-screen sheet on a phone again |
 | 2.0.72 | a place in a book goes when the book goes; a download that is cancelled or breaks lets go of everything; a hold on a phone opens the cover menu without starting the book |
 | 2.0.64 | what the folders say about a walked-past book comes before what its tags say |
 | 2.0.56 | a right-click on a cover: over again, the tick, the whole book, and the metadata; and a folder the scan walked past filed from the page it was reported on |
