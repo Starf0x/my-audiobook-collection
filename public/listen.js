@@ -355,6 +355,116 @@ function markPlaying() {
     cover.classList.toggle('playing', !!mine && !audio.paused);
   });
 }
+// --- the cover's own menu -----------------------------------------------
+// Right-click a cover — or hold it, on a phone, where there is no right button —
+// and the one thing a cover can offer beyond playing is there: the whole book.
+const coverMenu = $('#coverMenu');
+const bookOfCover = (el) => {
+  const img = el.closest('img, .tile');
+  if (!img) return null;
+  if (img.id === 'pCover') return state.book ? { id: state.book.id, title: state.book.title } : null;
+  const tile = img.closest('.tile');
+  if (tile) return { id: Number(tile.dataset.id), title: tile.querySelector('.t')?.textContent || '' };
+  const card = img.closest('.card');
+  const play = card && card.querySelector('[onclick^="playBook"]');
+  if (!play) return null;
+  // the heading carries a note glyph saying how far along the book is: the words
+  // are the text of the heading itself, not of the span inside it
+  const words = [...(card.querySelector('h3')?.childNodes || [])]
+    .filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join(' ');
+  return { id: Number(play.getAttribute('onclick').match(/\d+/)[0]), title: words.trim() };
+};
+const hideCoverMenu = () => { coverMenu.hidden = true; };
+const showCoverMenu = (book, x, y) => {
+  $('#cmTitle').textContent = book.title || 'This book';
+  const done = coverMenu.querySelector('[data-act="listened"]');
+  if (done) done.textContent = doneNow(book.id) ? '☐ Mark as not listened' : '☑ Mark as listened';
+  coverMenu.dataset.id = String(book.id);
+  coverMenu.hidden = false;
+  // opened at the pointer, then pulled back inside the window
+  const box = coverMenu.getBoundingClientRect();
+  coverMenu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - box.width - 6))}px`;
+  coverMenu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - box.height - 6))}px`;
+};
+document.addEventListener('contextmenu', (e) => {
+  const book = bookOfCover(e.target);
+  if (!book) return;
+  e.preventDefault();
+  showCoverMenu(book, e.clientX, e.clientY);
+});
+// no right button on a touch screen: hold the cover instead
+let held = null;
+document.addEventListener('touchstart', (e) => {
+  const book = bookOfCover(e.target);
+  if (!book) return;
+  const at = e.touches[0];
+  held = setTimeout(() => { held = null; showCoverMenu(book, at.clientX, at.clientY); }, 550);
+}, { passive: true });
+for (const ended of ['touchend', 'touchmove', 'touchcancel']) {
+  document.addEventListener(ended, () => { clearTimeout(held); held = null; }, { passive: true });
+}
+document.addEventListener('click', (e) => { if (!coverMenu.contains(e.target)) hideCoverMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCoverMenu(); });
+window.addEventListener('scroll', hideCoverMenu, true);
+// Only the admin page has the last two of these, so an item that is not there is
+// not wired: one block of code, two pages.
+const onMenu = (act, fn) => {
+  const button = coverMenu.querySelector(`[data-act="${act}"]`);
+  if (button) button.onclick = fn;
+};
+
+// Whether this book is ticked off, as far as the page knows: the tick on its card
+// if a card is on screen, otherwise what the player was told when it loaded it.
+const tickOf = (id) => document.querySelector(`.card .listened input[onchange*="setListened(${id},"]`);
+const doneNow = (id) => {
+  const tick = tickOf(id);
+  if (tick) return tick.checked;
+  return !!(state.book && state.book.id === id && state.book.progress && state.book.progress.done);
+};
+
+onMenu('restart', async () => {
+  const id = Number(coverMenu.dataset.id);
+  hideCoverMenu();
+  if (!state.user) return toast('Create or select a user first.');
+  // the place kept in it goes first, or the player would pick it up again
+  try { await post('/api/progress', { user: state.user, bookId: id, trackIdx: 0, position: 0 }); }
+  catch (e) { return toast(e.message); }
+  if (state.book && state.book.id === id) return playTrack(0, 0);
+  return playBook(id);
+});
+
+onMenu('listened', async () => {
+  const id = Number(coverMenu.dataset.id);
+  const want = !doneNow(id);
+  hideCoverMenu();
+  // a card on screen owns the tick, its glyph and its button: let it do the work
+  const tick = tickOf(id);
+  if (tick) {
+    tick.checked = want;
+    return setListened(id, tick);
+  }
+  if (!state.user) return toast('Create or select a user first.');
+  try { await post('/api/listened', { user: state.user, bookId: id, done: want }); }
+  catch (e) { return toast(e.message); }
+  if (state.book && state.book.id === id) {
+    state.book.progress = { ...(state.book.progress || { track_idx: 0, position: 0 }), done: want };
+  }
+  toast(want ? 'Marked as listened.' : 'Marked as not listened.');
+  return loadStats();
+});
+
+onMenu('download', () => {
+  const id = coverMenu.dataset.id;
+  hideCoverMenu();
+  // a link the browser saves, the same address the player's ⤓ uses
+  const a = document.createElement('a');
+  a.href = `/api/download/${id}`;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+});
+
 $('#pCover').onclick = () => {
   if (!state.book) return;
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
