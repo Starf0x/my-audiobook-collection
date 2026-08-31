@@ -53,7 +53,16 @@
     <strong id="pTitle"></strong>
     <span id="pTrack"></span>
   </div>
-  <audio id="audio" controls></audio>
+  <!-- the audio element is the engine; the transport below is ours, because a
+       browser's own controls cannot be recoloured -->
+  <audio id="audio" preload="metadata"></audio>
+  <button id="pPlay" class="ghost" title="Play or pause">▶</button>
+  <span id="pAt" class="tick">0:00</span>
+  <input id="seek" type="range" min="0" max="1000" value="0" step="1"
+    aria-label="Position in this track">
+  <span id="pOf" class="tick">0:00</span>
+  <button id="pVolBtn" class="ghost" title="Mute or unmute">🔊</button>
+  <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="Volume">
   <select id="trackSelect"></select>
 </footer>
 
