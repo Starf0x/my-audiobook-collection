@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.24.** This document describes what the app is, how every
+**Version described: 2.0.32.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.24` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.32` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -118,7 +118,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/app.js` | 1653 | the admin page's behaviour |
 | `public/listen.html` | 59 | the listening page |
 | `public/listen.js` | 408 | the listening page's behaviour |
-| `public/style.css` | 511 | the whole look, both pages, phone included |
+| `public/style.css` | 514 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1034,6 +1034,12 @@ actions — *Play*, *Find metadata*, *Write into MP3s*, *Edit metadata*, *Move�
 **Landing view** (`#home`): shelves of tiles — *Continue listening* with a
 progress bar, and *Recently added*.
 
+That bar (`.tile .tbar`) is 5px of **yellow** — `#ffb628` to `#ffe066` — on a
+`#2c3342` track. It was 4px of the interface's own purple-to-cyan on
+`var(--panel2)`, which against a dark tile you had to hunt for; the job bars in
+`#progress` keep that gradient, because those are about work being done rather
+than about how far into a book somebody is.
+
 **Search**: typing is debounced 200 ms, Enter searches at once, Escape clears.
 Results head the column with `Search · <query> · <n> books`; nothing found says
 `Nothing matches "<query>".` Emptying the box restores what was on screen (series,
@@ -1313,6 +1319,7 @@ Server suites:
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
+| `played-line` | how far into a book you are, measured rather than read off the stylesheet: the line is there and part filled, its first stop is the yellow, it is 5px, and its contrast against both the track and the tile is at least 5:1 — on both pages and on a phone |
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
 | `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
 | `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
@@ -1399,6 +1406,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.0.32 | the line that says how far into a book you are is yellow, and wide enough to see |
 | 2.0.24 | the Settings dialog is the size of the Home Assistant page |
 | 2.0.16 | Settings became a pulldown over the two kinds of settings: the library, and Home Assistant |
 | 2.0.8 | a Home Assistant page of its own: a long-lived token, six sensors written straight into HA, and its media players played from here — no YAML anywhere |
