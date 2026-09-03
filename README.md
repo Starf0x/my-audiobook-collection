@@ -24,7 +24,7 @@ The full manual, with screenshots of every part of it, is in the
 * The player is the app's own: dark, with a yellow line showing how far into the track you are
 * **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
 * The cover is a play button too: click the picture to start a book, click it again to pause it
-* Covers drawn for books with no art of their own rotate their two colours every day
+* The page itself, and the covers drawn for books with no art of their own, turn their colours every day
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
 * **Home Assistant** reads the collection and carries a book on to any media player in the house
 * Runs as a single Docker container, SQLite storage, no external services
@@ -425,6 +425,14 @@ come back round. Real cover art never changes, and a browser is told it may keep
 drawn cover only until midnight.
 
 ![The same four drawn covers today, tomorrow and the day after](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/cover-days.png)
+
+### The page turns with them
+
+The two glows behind the app move with the same day and the same 37°, so on any
+given day the whole thing stands in one colour: the page you open in the morning
+is not the page you left. It keeps the distance between its two glows, so it is
+still this app whatever day it is, and after a year it is back where it began. A
+page left open overnight — on a tablet in the kitchen — turns when the day does.
 
 Nothing is written to disk for this — it is drawn when the page asks for the
 cover. A book with a drawn cover still counts as one that **needs tags**, so
