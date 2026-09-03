@@ -1,6 +1,12 @@
 :root {
   --bg: #0e1014; --panel: #16191f; --panel2: #1c2027; --line: #262b34;
   --text: #e6e8ec; --dim: #a2a9b8; --accent: #7c5cff; --accent2: #22d3ee;
+  /* How far the page has been turned today, in degrees: day.js sets it, and
+     nought is the pair the app was drawn in. The two glows keep their distance
+     from each other, so the page stays this app whatever day it is. */
+  --day: 0;
+  --glow1: hsl(calc(252 + var(--day)) 100% 68% / .34);
+  --glow2: hsl(calc(188 + var(--day)) 86% 53% / .30);
 }
 * { box-sizing: border-box; }
 /* This is an application, not a document: clicking a list, a card or a tile
@@ -18,8 +24,8 @@ body {
   color: var(--text);
   /* a soft glow in the interface colours, so the empty panels are not a flat slab */
   background:
-    radial-gradient(1500px 1100px at 4% 0%, rgba(124, 92, 255, .34), transparent 68%),
-    radial-gradient(1400px 1050px at 96% 96%, rgba(34, 211, 238, .30), transparent 66%),
+    radial-gradient(1500px 1100px at 4% 0%, var(--glow1), transparent 68%),
+    radial-gradient(1400px 1050px at 96% 96%, var(--glow2), transparent 66%),
     var(--bg);
   background-attachment: fixed;
   font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
