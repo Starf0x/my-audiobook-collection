@@ -141,7 +141,9 @@ export function haState(req, version = '') {
 // nothing is restarted there. The token is typed into the app's Home Assistant
 // page by whoever made it, kept in the settings table, and never sent back to a
 // browser — the page is only ever told whether one is there.
-const KEY = { url: 'haUrl', token: 'haToken', every: 'haEvery', player: 'haPlayer', listener: 'haListener' };
+const KEY = { url: 'haUrl', token: 'haToken', every: 'haEvery', player: 'haPlayer', listener: 'haListener',
+  // the address this app is reached at, kept so a push after a restart has one
+  base: 'haBase' };
 
 export const haSettings = () => ({
   url: getSetting(KEY.url),
@@ -319,22 +321,57 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
   return { player: entity, media, seek: at, seeked };
 }
 
-// The push that runs on its own. It needs a request to build URLs from, so the
-// last real one is kept: URLs in HA that only work from a browser are no use, and
-// inventing a hostname here would be worse than waiting for a real request.
+// The push that runs on its own. It needs a request to build URLs from — a URL in
+// HA that only works from one browser is no use — so the last real one is kept,
+// and the address it was reached at is written down as well. That address is what
+// makes a push possible at all after a restart, when no browser has been here yet:
+// HA empties these states when *it* restarts, and this is what puts them back.
 let timer = null;
+let startup = null;
 let lastReq = null;
-export const rememberRequest = (req) => { lastReq = { headers: { ...req.headers }, protocol: req.protocol, query: {} }; };
+
+export const rememberRequest = (req) => {
+  lastReq = { headers: { ...req.headers }, protocol: req.protocol, query: {} };
+  const base = baseUrl(req);
+  if (/^https?:\/\/[^/]+$/.test(base) && base !== getSetting(KEY.base)) setSetting(KEY.base, base);
+};
+
+// A stand-in for a request, built from an address: enough for baseUrl to answer.
+const asIfFrom = (base) => {
+  let at;
+  try {
+    at = new URL(base);
+  } catch {
+    return null;
+  }
+  if (!at.host) return null;
+  const proto = at.protocol.replace(':', '');
+  return { headers: { host: at.host, 'x-forwarded-proto': proto }, protocol: proto, query: {} };
+};
+
+// Whatever this push can use for URLs: the last browser here, else the address
+// that was written down, else the one the container was told outright.
+const pushFrom = () => lastReq
+  || asIfFrom(getSetting(KEY.base))
+  || asIfFrom((process.env.BASE_URL || '').trim());
 
 export function scheduleHaPush(version) {
   if (timer) clearInterval(timer);
+  if (startup) clearTimeout(startup);
   timer = null;
+  startup = null;
   const { every, url, hasToken } = haSettings();
   if (!every || !url || !hasToken) return;
-  timer = setInterval(() => {
-    if (!lastReq) return;
-    haPush(lastReq, version).catch(() => { /* lastPush.error already says why */ });
-  }, every * 60000);
+  const push = () => {
+    const from = pushFrom();
+    if (!from) return;
+    haPush(from, version).catch(() => { /* lastPush.error already says why */ });
+  };
+  // once, soon after starting: a restart of either side is what loses the sensors,
+  // and waiting a whole interval for them is waiting too long
+  startup = setTimeout(push, 15000);
+  startup.unref?.();
+  timer = setInterval(push, every * 60000);
   timer.unref?.();
 }
 

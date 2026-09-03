@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.0.80.** This document describes what the app is, how every
+**Version described: 2.1.0.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.0.80` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.0` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -113,9 +113,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
-| `server/ha.js` | 359 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `public/ha.html` | 84 | the Home Assistant page |
-| `public/ha.js` | 177 | its behaviour |
+| `public/ha.js` | 183 | its behaviour |
 | `public/index.html` | 275 | the admin page: columns, dialogs |
 | `public/app.js` | 1926 | the admin page's behaviour |
 | `public/listen.html` | 78 | the listening page |
@@ -1378,12 +1378,19 @@ skips them will reproduce the bugs.
     headers are already out — inside a `.catch`, which makes it an unhandled
     rejection, and Node ends the process on those. Check `headersSent` first and
     drop the connection instead.
-38. **An id beats an element rule, whatever the media query.** Every dialog is a
+38. **Home Assistant forgets what is written into its state machine.** These
+    sensors are states written over the REST API, and HA empties them when it
+    restarts, so a repeat is the only thing that keeps them there. The repeat has
+    to work with nobody watching: it needs the address this app is reached at, so
+    that address is written down when a browser is here and used again after a
+    restart — waiting for a visitor meant an updated container and a restarted HA
+    left no sensors at all.
+39. **An id beats an element rule, whatever the media query.** Every dialog is a
     full-screen sheet on a phone, said as `dialog { … }` inside the phone block.
     `#settings`, sized later to match the Home Assistant page, quietly took that
     away from itself on phones too: an id wins over an element selector wherever
     it stands. A rule of that kind has to be said again for the phone.
-39. **The tap that ends a long press is still a click.** A hold that opens a menu
+40. **The tap that ends a long press is still a click.** A hold that opens a menu
     on a phone is followed by a `click` on whatever was held: without swallowing
     that one click the menu shuts again and the cover underneath starts playing.
 
@@ -1456,6 +1463,7 @@ Server suites:
 | `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
 | `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
 | `ha` | what Home Assistant is handed, against a fixture long enough that the hours are real numbers: the counts, the hours total/listened/left with a book part-way through a track and another marked done, the continue queue's track, position, percentage and hours left, the playlist's order and `from=`, `continue.m3u` with its two headers, the generated YAML, `HA_TOKEN` refusing and accepting both ways while the audio stays open, and `BASE_URL` deciding every URL |
+| `ha-restart` | the sensors after a restart, which is how they are lost: configured and pushed once by hand, then the app stopped and started again with nobody opening a page — within seconds all six are written once more, carrying the address the app was reached at before, and the page can say when. With the push set to "only when asked", a restart writes nothing by itself |
 | `ha-push` | the app driving Home Assistant, against a stand-in HA that checks the Bearer token and records every call: the address and token saved without the token ever coming back, the ping naming which HA answered, media players filtered and sorted, the six sensors previewed and then written one POST each, playing a book as play_media then media_seek with the right payloads, "carry on" with no book named, a light refused, a refused token explained and remembered, forgetting and re-pasting a token, and an address with a dashboard path or nothing behind it |
 | `settings-menu` | the header pulldown and the size of what it opens: the dialog 820px wide like the Home Assistant page and near the window's height; no bare Settings button, two items, hanging under the button and inside the window, closing on a click elsewhere and on Escape, the first opening the dialog and the second going to `/ha`, and at 390px opening as a sheet that fits the screen with thumb-sized rows |
 | `ha-ui` | the Settings block: the numbers it shows, the book it names with its track and percentage, and the YAML offered as selectable text when the clipboard is refused |
@@ -1538,6 +1546,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.1.0 | the sensors come back after a restart of either side, without anybody opening a page |
 | 2.0.80 | Settings is a full-screen sheet on a phone again |
 | 2.0.72 | a place in a book goes when the book goes; a download that is cancelled or breaks lets go of everything; a hold on a phone opens the cover menu without starting the book |
 | 2.0.64 | what the folders say about a walked-past book comes before what its tags say |

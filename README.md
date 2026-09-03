@@ -484,6 +484,25 @@ If you would rather have HA poll, it still can: `GET /api/ha` is the whole state
 dashboard and automation examples, is in
 [docs/home-assistant.md](docs/home-assistant.md).
 
+### If the sensors disappear from Home Assistant
+
+They are states written straight into Home Assistant, and **HA empties those when
+it restarts** — so the repeat on the *Send to Home Assistant* interval is what
+keeps them there. Two things follow:
+
+* With the interval set to **only when I press Send**, nothing comes back on its
+  own: after a restart of either side the sensors stay gone until you press
+  **Send now**. The page says so under the setting.
+* With an interval set, they come back by themselves — within fifteen seconds of
+  the app starting, and then every interval, whether or not anybody has the app
+  open. The app writes down the address it is reached at so a media player still
+  gets URLs that work after a restart; `BASE_URL` settles it outright behind a
+  reverse proxy.
+
+If they are still missing, the Home Assistant page names the reason under the
+interval: a refused token and an address with a dashboard path on the end are the
+two usual ones.
+
 ## Google Books API key
 
 Google Cloud Console → *APIs & Services* → enable **Books API** → *Credentials* →

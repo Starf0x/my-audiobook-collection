@@ -68,9 +68,15 @@ async function load() {
     .concat(c.listeners.map((n) => `<option value="${esc(n)}"${n === c.listener ? ' selected' : ''}>${esc(n)}</option>`))
     .join('');
   const p = c.lastPush || {};
-  $('#pushState').innerHTML = p.error
+  // "only when I press Send" is the one setting that lets the sensors stay gone:
+  // whichever side restarts, nothing puts them back until somebody is here
+  const onlyByHand = !c.every
+    ? ' <strong class="warn">Nothing is sent on its own, so after a restart of either side the '
+      + 'sensors stay gone until you press Send.</strong>'
+    : '';
+  $('#pushState').innerHTML = (p.error
     ? `<strong class="warn">The last send failed:</strong> ${esc(p.error)}`
-    : `Last sent: ${esc(when(p.at))}${p.entities ? ` · ${p.entities} sensors` : ''}`;
+    : `Last sent: ${esc(when(p.at))}${p.entities ? ` · ${p.entities} sensors` : ''}`) + onlyByHand;
   if (c.player) {
     $('#haPlayer').innerHTML = `<option value="${esc(c.player)}">${esc(c.player)}</option>`;
     $('#haPlayer').value = c.player;
