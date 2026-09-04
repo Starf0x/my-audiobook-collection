@@ -372,21 +372,27 @@ const KEPT = `p.track_idx, p.position, p.done,
   (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks,
   (SELECT t.duration FROM tracks t WHERE t.book_id = b.id AND t.idx = p.track_idx) AS trackSeconds`;
 
+// Every book a listener has a place kept in, newest first, each saying whether
+// they are done with it. Two views read this: the shelf of what you are in the
+// middle of, and the Listened section in the column.
+const keptBooks = (user) => db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${KEPT},
+                                               b.narrator, b.year, b.description, b.duration, b.tagged,
+                                               ${SERIES} AS series, b.series_no
+                                        FROM progress p JOIN books b ON b.id = p.book_id
+                                        WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
+                                        ORDER BY p.updated DESC`).all(user || '')
+  .map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+    started: b.position > 0, finished: isFinished({ ...b, trackSeconds }) }));
+
+// The books this listener is done with. Not a shelf: it is a section in the
+// column, so the whole list goes, however long it is.
+app.get('/api/listened', (req, res) =>
+  res.json(keptBooks(req.query.user).filter((b) => b.finished)));
+
 app.get('/api/home', (req, res) => {
-  // Every book this listener has a place in, split by whether they are done with
-  // it: what you are in the middle of is one shelf, what you have listened to is
-  // another. Read whole and split here rather than twelve at a time in SQL, or a
-  // dozen finished books would hide the one you are actually listening to.
-  const kept = db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${KEPT},
-                                  ${SERIES} AS series, b.series_no
-                           FROM progress p JOIN books b ON b.id = p.book_id
-                           WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
-                           ORDER BY p.updated DESC LIMIT 200`).all(req.query.user || '')
-    .map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
-      finished: isFinished({ ...b, trackSeconds }) }));
+  const kept = keptBooks(req.query.user);
   res.json({
     continue: kept.filter((b) => !b.finished).slice(0, 12),
-    listened: kept.filter((b) => b.finished).slice(0, 12),
     recent: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${SERIES} AS series, b.series_no
                         FROM books b ORDER BY b.id DESC LIMIT 12`).all()
       .map((b) => ({ ...b, coverV: coverV(b) })),
