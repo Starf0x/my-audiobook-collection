@@ -7,6 +7,10 @@ be read before making the same kind of change again.
 `docs/SPEC.md` §9 holds the invariants: the short rules that must stay true.
 This file is longer and blunter: it says what went wrong.
 
+The lessons that are not about this app in particular — paths, shells, how the
+suites are run — are at the foot, and live in my cross-project notes, which every
+project shares.
+
 ---
 
 ## In the app
@@ -137,123 +141,38 @@ remember it, not wait for the next visitor.
 
 ---
 
-## In the way it is built and tested
+## How it is built and tested
 
-### Fixtures were written to the root of C:
+None of these is particular to this app, so they live in my cross-project notes
+and hold for every project I work on. In short, each one having cost real time
+here:
 
-Every suite defaulted its library and data folder to `C:\<name>-demo`, and the
-batch runners added `C:\qa-*`. About 85 directories, 1.75 GB, in the owner's
-system drive.
-
-**Fixed** by moving all of them into the project's own `fixtures/` folder, listed
-in `.gitignore` and `.dockerignore`, and repointing all 41 scripts.
-
-**Rule:** everything a task creates goes inside the project folder. Two traps met
-on the way:
-
-* **No leading dot on that folder.** It was `.fixtures` first, and Express's
-  `res.sendFile` refuses any path with a dotfile segment, so the app could not
-  serve its own audio or covers from there — every playback suite failed at once.
-* **The project path has spaces**, so a browser started with `--user-data-dir=…`
-  needs the value quoted, or Chromium reads the rest as a second window and exits
-  with "Multiple targets are not supported in headless mode".
-
-### A shell heredoc eats what JavaScript needs
-
-Writing a script through `cat > file <<'EOF'` mangles `\d`, `\s`, `\r\n`, `\\` and
-backticks. It has cost an hour at a time, repeatedly: a `\d` that became `d`, a
-`'\\data'` that became a relative `data`, a `replaceAll('\r\n', …)` that became a
-real newline.
-
-**Rule:** anything containing an escape, a backtick or a template literal is
-written with the Write or Edit tool, never through a shell heredoc. Run
-`node --check` on it afterwards.
-
-### An exit code is not a test result
-
-The batch runner reported "ok" for suites that print failing checks and still exit
-0 — not every suite ends with `process.exit(failed ? 1 : 0)`. A whole round of
-"all green" was wrong because of it.
-
-**Rule:** judge a suite by its own output (`^ok` and `^FAIL` lines), not by its
-exit code.
-
-### The browser keeps the page of the last run
-
-The headless browser is reused between runs, and its tab still holds the page of
-the previous suite. When the next suite starts a server on the same port, that old
-page goes on saving its own playback position into the fresh database — which
-overwrote fixtures and produced failures that looked like app bugs.
-
-**Rule:** navigate the tab to `about:blank` before setting up state, and again
-between rounds inside a suite.
-
-### git hands files back with CRLF
-
-`git stash`/`checkout` converts the working copy to CRLF here, after which every
-multi-line search-and-replace against `\n` fails to match.
-
-**Rule:** a patch script reads the file, normalises `\r\n` to `\n`, patches, and
-writes back in whatever the file had.
-
-### A port can already belong to something else
-
-Port 8884 on this machine is Dell SupportAssist. A suite pointed there got JSON
-answers that were not the app's at all, and the failures made no sense.
-
-**Rule:** when a suite's answers are nonsense rather than wrong, check what is
-listening on its port before reading the code.
-
-### A fixture mismatch is not an app bug
-
-Five suites failed after their demo library had been rebuilt in another shape:
-they were written against a library with tagged files, a second series, an empty
-library, or a path of `\audiobooks`. Reading the app for the cause wasted the time.
-
-**Rule:** when a suite fails on data rather than behaviour — a count, a title, a
-path — rebuild the fixture it was written for first. `shaped-demo.mjs` holds the
-seven shapes.
-
-### A check that cannot fail is not a check
-
-`check('and the server was told', d.continue.length >= 0 && true, true)` passed
-whatever happened.
-
-**Rule:** every check must be able to fail. Write the assertion, then break the
-code on purpose and watch it go red — several fixes in this file were only proven
-that way.
-
-### An unquoted path with a space in it writes somewhere else entirely
-
-The batch runner built its arguments as one string:
-
-```bash
-args="http://localhost:$port"
-args="$args $root/audiobooks"
-node "$s.mjs" $args          # unquoted: three arguments, not two
-```
-
-The project folder is `My Audiobook Collection`, so the suite received
-`B:/_ClaudeCode/Projects/My` as its library path, built its fixture there, and
-found nothing to scan. Two suites failed for a reason that had nothing to do with
-them, and an empty `B:\_ClaudeCode\Projects\My` was left behind — outside the
-project, the very thing that had just been put right.
-
-**Fixed** by building the arguments as an array and passing `"${args[@]}"` in all
-four runners.
-
-**Rule:** every path handed to anything is quoted, and built as an array when
-there is more than one. This is the same trap as the browser's `--user-data-dir`
-above: on this machine the project path always has a space in it, so an unquoted
-path is never right.
-
-### A book on the Listened list stays there when something outside moves its place
-
-Ticking is what "listened" means, and it is only taken off by unticking or by
-playing the book again — not by a position reported from Home Assistant or another
-player. An older suite assumed a raw `POST /api/progress` in the middle of a book
-would take it off the list.
-
-**Rule:** when a rule changes, the suites that encoded the old one have to be read
-and updated deliberately, not "fixed" until they pass. Say in the check what the
-new rule is.
+* Nothing is written outside the project folder. Test libraries and data folders
+  go in `fixtures/`, which `.gitignore` and `.dockerignore` both list — they were
+  once being built in the root of the owner's system drive, 85 of them.
+* **Quote every path.** This project's folder has a space in its name, so an
+  unquoted path becomes several arguments: it cost a browser that would not start
+  ("Multiple targets are not supported in headless mode") and a test runner that
+  handed a suite half a path as its library.
+* **No leading dot** on a folder the app must serve from: `res.sendFile` refuses
+  any path with a dotfile segment, so `.fixtures` broke every playback test.
+* **Never write JavaScript through a shell heredoc.** `\d`, `\s`, `\r\n`, `\\`
+  and backticks are eaten. Write the file with an editor and `node --check` it.
+* **An exit code is not a test result.** Not every suite calls `process.exit`;
+  count the `ok` and `FAIL` lines it prints instead. One round of "all green" was
+  reported wrongly because of this.
+* **A check that cannot fail is not a check.** Run a new check against the old
+  code and watch it go red before believing a fix.
+* **A fixture mismatch is not an app bug.** When a suite fails on a count, a title
+  or a path, rebuild the shape it was written for — `shaped-demo.mjs` holds seven.
+* **Blank the browser tab between runs.** The headless browser is reused, and the
+  page of the last suite goes on saving its own playback position into the next
+  suite's database.
+* **Normalise CRLF before patching.** `git stash` and `git checkout` convert the
+  working copy here, and multi-line patches then match nothing.
+* **Nonsense answers mean the port is someone else's.** 8884 on that machine is a
+  Dell service, and a suite pointed there got its JSON.
+* **When a rule changes, update the suites that encoded the old one deliberately.**
+  Ticking is what "listened" means, and only unticking or playing a book again
+  takes it off — a position reported by Home Assistant does not. An older suite
+  assumed the opposite; the check now says the rule out loud.
