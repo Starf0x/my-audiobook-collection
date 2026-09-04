@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.1.56.** This document describes what the app is, how every
+**Version described: 2.1.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1454,6 +1454,8 @@ Server suites:
 | `admin-test` | every changing route refused while locked, listening routes still answering, right/wrong password, the cookie, lock again, no route to set a password, a stored hash cleared at startup |
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
+| `unreachable` | what a lookup says when the request never arrives: a name that does not resolve called DNS with where Unraid keeps that setting, a resolver that does not answer the same, a timeout saying the name resolved and nothing answered, a refused or dropped connection, an intercepted certificate, anything else still carrying its code and message, the address named being the one asked about — and nothing anywhere claiming to know there is no internet |
+| `dns-line` | the container's resolver: the Unraid template and the compose file both give it 1.1.1.1 and both say how to keep local names working, and the first line of the log names the port, the data folder and the resolvers it actually has — `dns: none` where there are none |
 | `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
 | `series-two-step` | how Google keeps series, and what it says when there is none: a series lent from the edition that has it to the ones that do not, the ebook catalogue and then all forty records asked when none has it, a sibling volume's number never borrowed, another book's series never borrowed, `country=` on every request; every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
@@ -1574,6 +1576,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.1.64 | the container is given 1.1.1.1 as its resolver, and its first log line says which resolvers it has |
 | 2.1.56 | a lookup that cannot reach Google says which failure it was — no DNS, nothing answering, a refusal, an intercepted certificate — and gives up after fifteen seconds |
 | 2.1.48 | the line under a tile measures time, not tracks: a book of one long file no longer stands full from its first minute |
 | 2.1.40 | a book that runs out ticks itself as listened, and the Listened section browses by author |
