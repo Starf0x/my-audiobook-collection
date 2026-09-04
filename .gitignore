@@ -1,2 +1,5 @@
 node_modules/
 data/
+
+# test fixtures: libraries and data folders the suites build, never shipped
+fixtures/
