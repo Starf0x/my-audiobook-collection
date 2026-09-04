@@ -158,6 +158,26 @@ book of one track now says the time — `2h 05m of 10h 12m` — instead of
 **Rule:** a bar must measure the thing it claims to measure. Counting tracks is
 not measuring a book; check any progress display against a single-file item.
 
+### A message asserted a cause it never checked (2.1.56)
+
+The metadata lookup caught a failed `fetch` with `catch {}` — no binding, the
+reason thrown away — and said "Could not reach Google Books. The server appears to
+have no internet connection." Frank sent a picture of it. His server has internet;
+what that container did not have was DNS. The message sent him looking in the
+wrong place, and the app had the right answer in its hands and dropped it.
+
+That one fetch also had **no timeout**, where `ask()` has eight seconds and every
+Home Assistant call has ten. A network that drops packets left the dialog waiting
+on the operating system.
+
+**Fixed** by `unreachable(e)`, which reads `e.cause.code` and says which of the
+four it is — no DNS (`ENOTFOUND`, `EAI_AGAIN`), nothing answering, refused, or an
+intercepted certificate — each with where to put it right, and by giving the
+request fifteen seconds.
+
+**Rule:** never write a cause into a message the code has not established. A bare
+`catch {}` throws the diagnosis away; catch the error and say what it was.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
