@@ -196,7 +196,13 @@ async function loadStats() {
 // tile in the row is a cover.
 const tile = (b, resumable) => {
   const at = Math.min(b.track_idx + 1, b.tracks || 1);
-  const pct = b.done ? 100 : b.tracks ? (at / b.tracks) * 100 : 0;
+  // how far in, in time: counting tracks would stand full from the first minute
+  // of a book that is one long file
+  const pct = b.percent ?? (b.done ? 100 : 0);
+  // and for such a book "Track 1 of 1" says nothing, so it says the time instead
+  const how = b.done ? 'Listened'
+    : b.tracks > 1 ? `Track ${at} of ${b.tracks}`
+      : `${hms(b.into || 0) || '0h 00m'} of ${hms(b.duration) || '—'}`;
   return `<div class="tile" data-id="${b.id}" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
        data-resume="${resumable ? 1 : 0}" title="${esc(b.title)}">
     <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="">
@@ -204,7 +210,7 @@ const tile = (b, resumable) => {
     <div class="a">${esc(b.author)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
-      <div class="a">${b.done ? 'Listened' : `Track ${at} of ${b.tracks}`}</div>
+      <div class="a">${how}</div>
       <button class="tplay" data-play="${b.id}" data-resume="1"${b.finished ? ' data-again="1"' : ''}>${b.finished ? '▶ Play again' : '▶ Resume'}</button>` : ''}
   </div>`;
 };

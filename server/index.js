@@ -367,8 +367,13 @@ app.get('/api/untagged', requireAdmin, (req, res) => {
 const isFinished = (b) => !!b.done
   || (b.track_idx >= b.tracks - 1 && b.trackSeconds > 0
       && b.position >= b.trackSeconds - Math.min(60, b.trackSeconds / 10));
-// what the listener is in the middle of, and the track they are on
+// what the listener is in the middle of, the track they are on, and the seconds
+// of the tracks already behind them — so how far into a book a place is can be
+// said in time rather than in tracks, which is the only honest way to say it for a
+// book that is one long file
 const KEPT = `p.track_idx, p.position, p.done,
+  (SELECT COALESCE(SUM(t.duration), 0) FROM tracks t
+     WHERE t.book_id = b.id AND t.idx < p.track_idx) AS behindSeconds,
   (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks,
   (SELECT t.duration FROM tracks t WHERE t.book_id = b.id AND t.idx = p.track_idx) AS trackSeconds`;
 
@@ -381,8 +386,21 @@ const keptBooks = (user) => db.prepare(`SELECT b.id, b.title, b.author, b.genre,
                                         FROM progress p JOIN books b ON b.id = p.book_id
                                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
                                         ORDER BY p.updated DESC`).all(user || '')
-  .map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
-    started: b.position > 0, finished: isFinished({ ...b, trackSeconds }) }));
+  .map(({ trackSeconds, behindSeconds, ...b }) => {
+    const finished = isFinished({ ...b, trackSeconds });
+    const into = (behindSeconds || 0) + (b.position || 0);
+    return {
+      ...b,
+      coverV: coverV(b),
+      started: b.position > 0,
+      finished,
+      // where the place is in the book, as a share of the whole: a tick or a
+      // finished book is all of it, whatever the numbers say
+      into: Math.round(into),
+      percent: finished ? 100
+        : Math.max(0, Math.min(100, b.duration ? Math.round((into / b.duration) * 100) : 0)),
+    };
+  });
 
 // The books this listener is done with. Not a shelf: it is a section in the
 // column, so the whole list goes, however long it is.
