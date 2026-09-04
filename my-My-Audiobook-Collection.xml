@@ -5,6 +5,11 @@
   <Registry>https://hub.docker.com/r/starf0x/my-audiobook-collection</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
+  <!-- Cloudflare's resolver, so a lookup works whatever the host's DNS is doing.
+       A container on a custom network otherwise inherits nothing and cannot look
+       up www.googleapis.com at all. Add a second --dns=<your router> if you need
+       local names inside the container. -->
+  <ExtraParams>--dns=1.1.1.1</ExtraParams>
   <Support>https://github.com/Starf0x/my-audiobook-collection/issues</Support>
   <Overview>Browse and play your audiobook collection, organised as Genre / Author / (Series) / Book. Reads MP3 metadata, fills gaps from the Google Books API and remembers the playback position per user.</Overview>
   <Category>MediaApp:Books MediaServer:Other</Category>

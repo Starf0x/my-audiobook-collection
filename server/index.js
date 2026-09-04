@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
+import dns from 'node:dns';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
 import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
 import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries } from './google.js';
@@ -730,4 +731,10 @@ for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position,
 scheduleHaPush(VERSION);
 
 const port = process.env.PORT || 8523;
-app.listen(port, () => console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR})`));
+// Which resolvers this container has, in the first line of the log: an empty list
+// is why a metadata lookup cannot reach Google, and it is worth knowing before
+// something fails rather than after. Node's fetch goes through getaddrinfo, so
+// this is the container's own list — set it with --dns on the container.
+const resolvers = dns.getServers();
+app.listen(port, () => console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR}, `
+  + `dns: ${resolvers.length ? resolvers.join(', ') : 'none — a metadata lookup cannot reach Google'})`));
