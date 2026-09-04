@@ -127,6 +127,37 @@ async function askWho(users, cancellable) {
 
 $('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
 $('#home').onclick = loadHome;
+// --- the books you are done with ---------------------------------------
+// A section of its own in the column beside the genres: the row is not there
+// while there is nothing on it, and pressing it puts those books in the pane —
+// the same cards as anywhere else, so a finished book can be played again from
+// here without going looking for it.
+async function loadListened() {
+  const books = await api('/api/listened?user=' + encodeURIComponent(state.user)).catch(() => []);
+  $('#listenedCount').textContent = books.length;
+  // the title goes with the row: a heading over nothing is not a section
+  $('#listenedTitle').hidden = !books.length;
+  $('#listenedRows').hidden = !books.length;
+  return books;
+}
+
+$('#listenedList').onclick = async () => {
+  // no author column in this view, the way the other column lists have none
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
+  $('#listenedList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  state.genre = null;
+  state.author = null;
+  state.series = null;
+  const books = await loadListened();
+  if (!books.length) {
+    $('#books .list').innerHTML = '<div class="empty">You have not finished a book yet.</div>';
+    return show('books');
+  }
+  await drawBooks(books, `${books.length} book${books.length === 1 ? '' : 's'}`, 'Listened');
+};
+
 // the name of the app is the way back to the shelves, wherever you are
 $('#brand').onclick = loadHome;
 
@@ -162,14 +193,13 @@ const shelf = (title, items, resumable) => !items.length ? '' :
      <div class="tiles">${items.map((b) => tile(b, resumable)).join('')}</div></div>`;
 
 async function loadHome() {
+  loadListened();
   document.body.classList.remove('maintenance');
   $('#q').value = '';
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   $('#authors ul').innerHTML = '';
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
-  const html = shelf('Continue listening', d.continue, true)
-    + shelf('Listened', d.listened || [], true)
-    + shelf('Recently added', d.recent, false);
+  const html = shelf('Continue listening', d.continue, true) + shelf('Recently added', d.recent, false);
   $('#books .list').innerHTML = html
     || '<div class="empty">Nothing here yet — add a library folder in Settings and scan.</div>';
   show('books');
@@ -1375,7 +1405,10 @@ $('#replacedList').onclick = async () => {
 
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
-const MAINTENANCE_ROWS = ['needsTags', 'brokenList', 'skippedList', 'importList', 'replacedList', 'trashList'];
+const MAINTENANCE_ROWS = ['needsTags', 'brokenList', 'skippedList', 'importList', 'replacedList', 'trashList',
+  // not maintenance, but a view of its own in the same column, and the same rule
+  // holds: what is drawn again after a change is what was on screen
+  'listenedList'];
 
 // The view that is on screen, drawn again after something changed. A maintenance
 // list is a view too: applying metadata to a book from Needs tags must put that
@@ -1390,7 +1423,7 @@ async function backToView() {
 
 async function refreshLibrary() {
   await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(),
-    loadReplaced(), loadBroken(), loadSkipped(), importCountOnly()]);
+    loadReplaced(), loadBroken(), loadSkipped(), loadListened(), importCountOnly()]);
   await backToView();
 }
 

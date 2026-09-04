@@ -19,7 +19,13 @@
 </header>
 
 <main>
-  <aside id="genres"><div class="col-title">Genres<button class="back linkish" id="toBooks">Books ›</button></div><ul></ul></aside>
+  <aside id="genres">
+    <div class="col-title">Genres<button class="back linkish" id="toBooks">Books ›</button></div><ul></ul>
+    <div class="col-title" id="listenedTitle" hidden>Listened</div>
+    <ul id="listenedRows" hidden>
+      <li id="listenedList"><span>Books you are done with</span><span class="count" id="listenedCount">0</span></li>
+    </ul>
+  </aside>
   <section id="authors"><div class="col-title"><button class="back linkish" id="backGenres">‹ Genres</button>Authors</div><ul></ul></section>
   <section id="books"><div class="col-title"><button class="back linkish" id="backCol">‹ Back</button>Books <button id="home" class="linkish">Home</button></div><div class="list"></div></section>
 </main>
