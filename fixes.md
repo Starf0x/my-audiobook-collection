@@ -141,6 +141,23 @@ remember it, not wait for the next visitor.
 
 ---
 
+### A progress bar counted the wrong thing (2.1.48)
+
+The line under a tile filled by track index: track 1 of 1 is 100%. A book that is
+one long file — which most bought audiobooks are — therefore showed a **full** bar
+from its first minute, and read as listened to. Frank sent a picture of exactly
+that: Agency, a fifth of the way in, a full yellow bar, and a Resume button under
+it. The Listened section beside it was working; the bar was the thing that lied.
+
+**Fixed** by sending how far into the book the place is, in seconds and as a
+percentage — the tracks behind the listener plus the position, over the book's
+length, which is the sum Home Assistant was already given — and drawing that. A
+book of one track now says the time — `2h 05m of 10h 12m` — instead of
+`Track 1 of 1`, which said nothing.
+
+**Rule:** a bar must measure the thing it claims to measure. Counting tracks is
+not measuring a book; check any progress display against a single-file item.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
