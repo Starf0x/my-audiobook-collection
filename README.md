@@ -272,6 +272,14 @@ hold the cover for half a second instead.
 
 A click elsewhere, Escape or scrolling closes it.
 
+**A book you have finished says Play again.** Reaching the end of the last track,
+or ticking *Listened*, turns that book's button from *Resume* into **▶ Play
+again**, and pressing it starts at the first track — resuming a finished book
+would have played its last seconds and stopped. It counts as finished within the
+last tenth of the closing track, so stopping a few seconds before the very end
+still counts. A book loaded in the player keeps *Pause* and *Resume*: that is what
+its button is for while it is playing.
+
 On a card the button says what pressing it will do: **▶ Play** for a book you have
 not started, **▶ Resume** for one with a place kept in it. Either way it opens the
 player at the bottom of the page, and that same button then reads **⏸ Pause**,
