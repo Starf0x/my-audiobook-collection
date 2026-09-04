@@ -167,7 +167,9 @@ async function loadHome() {
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   $('#authors ul').innerHTML = '';
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
-  const html = shelf('Continue listening', d.continue, true) + shelf('Recently added', d.recent, false);
+  const html = shelf('Continue listening', d.continue, true)
+    + shelf('Listened', d.listened || [], true)
+    + shelf('Recently added', d.recent, false);
   $('#books .list').innerHTML = html
     || '<div class="empty">Nothing here yet — add a library folder in Settings and scan.</div>';
   show('books');
