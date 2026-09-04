@@ -163,6 +163,26 @@ survive an emptied appdata folder. Leave the password empty for an install that
 nobody has to unlock; fill it in and every browser has to unlock before it can
 change anything.
 
+### DNS
+
+The template and the compose file both give the container **1.1.1.1** as its
+resolver. It is the one outbound thing this app does — looking a book up in Google
+Books — and a container that cannot resolve a name fails at it with nothing else
+to show for it. A container on a *custom* network (br0) inherits no resolver at
+all, which is the commonest way for the lookup to stop working on Unraid.
+
+On a container that is **already running**, Unraid keeps the field in the
+container's own settings: switch the page to *Advanced view* and put
+`--dns=1.1.1.1` in **Extra Parameters**, then apply. The first line of the
+container log says which resolvers it ended up with:
+
+    My Audiobook Collection on :8523 (data: /data, dns: 1.1.1.1)
+
+If it says `dns: none`, nothing outbound will resolve. If you run your own
+resolver — a Pi-hole, or your router — add it as a second entry
+(`--dns=1.1.1.1 --dns=192.168.2.1`); with 1.1.1.1 alone, names that only exist on
+your own network cannot be looked up inside the container.
+
 ### Or with docker compose
 
 ```bash
