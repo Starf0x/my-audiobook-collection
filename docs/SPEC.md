@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.1.40.** This document describes what the app is, how every
+**Version described: 2.1.48.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.40` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.48` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,7 +96,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 715 | Express app: every route, and nothing else |
+| `server/index.js` | 733 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 120 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -118,9 +118,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with | the Home Assistant page |
 | `public/ha.js` | 183 | its behaviour |
 | `public/index.html` | 280 | the admin page: columns, dialogs |
-| `public/app.js` | 2021 | the admin page's behaviour |
+| `public/app.js` | 2027 | the admin page's behaviour |
 | `public/listen.html` | 85 | the listening page |
-| `public/listen.js` | 711 | the listening page's behaviour |
+| `public/listen.js` | 717 | the listening page's behaviour |
 | `public/style.css` | 599 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -1118,6 +1118,8 @@ on the right, and one author's in series order when a name is picked — through
 same `drawBooks` the library uses, so the cards, the tick and the buttons are the
 library's own.
 
+Each kept book also carries `into` and `percent`: the seconds of the tracks behind the listener plus their position, and that over the book's length. The line under a tile draws *that* — counting tracks made a book of one long file stand full from its first minute — and a book of one track says the time rather than "Track 1 of 1".
+
 **The tick sets itself.** `POST /api/progress` asks `isFinished` of the row it
 just wrote and sets `done = 1` when the place has reached the end of the last
 track; the pages do it too when the last track's `ended` fires, so a book that
@@ -1572,6 +1574,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.1.48 | the line under a tile measures time, not tracks: a book of one long file no longer stands full from its first minute |
 | 2.1.40 | a book that runs out ticks itself as listened, and the Listened section browses by author |
 | 2.1.32 | Listened is a section in the column beside the genres, and the shelves keep only what is being listened to |
 | 2.1.24 | a shelf of its own for what has been listened to, so Continue listening is only what you are in the middle of |
