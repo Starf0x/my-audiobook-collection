@@ -553,6 +553,25 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
+### When the lookup cannot reach Google
+
+The dialog says which failure it was, because each is put right somewhere else:
+
+| What it says | Where to look |
+| --- | --- |
+| cannot look up www.googleapis.com (ENOTFOUND / EAI_AGAIN) — no working DNS | the container has no resolver. On Unraid a container on a **custom network** (br0) needs a DNS server of its own; on bridge it inherits the host's |
+| no answer within fifteen seconds | the name resolves and nothing answers: outbound HTTPS is being dropped between the container and the internet |
+| refused or dropped (ECONNREFUSED, ENETUNREACH…) | something is blocking outbound HTTPS |
+| the secure connection could not be made (CERT_…) | a proxy or filter is intercepting HTTPS and its certificate is not trusted in the container |
+| Google rejected the key, refused it, or has no Books API enabled | the key itself: see above |
+
+To see it from the server rather than the page:
+
+    docker exec my-audiobook-collection node -e "fetch('https://www.googleapis.com/books/v1/volumes?q=test').then(r=>console.log('HTTP',r.status)).catch(e=>console.log(e.cause?.code||e.message))"
+
+A code comes back for a network problem, and `HTTP 200` or `HTTP 400` when the
+connection itself is fine — a 400 there means the key, not the network.
+
 ### How the series is found
 
 Google keeps series in an awkward place, so this is worth knowing. A search answer

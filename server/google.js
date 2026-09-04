@@ -18,6 +18,33 @@ const explain = (status, detail) => ({
 
 export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTER.length + 1, retryUntil: 0 };
 
+// Why a request never got an answer at all. Node keeps the reason in `cause`, and
+// it is the whole diagnosis: a container with no DNS, one that cannot route out,
+// and one behind something that intercepts HTTPS all fail here, and each is put
+// right somewhere else. Saying "no internet" for all three sends the owner looking
+// in the wrong place — which it did.
+export const unreachable = (e, at = 'www.googleapis.com') => {
+  const code = String(e?.cause?.code || e?.code || '');
+  if (e?.name === 'TimeoutError' || code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') {
+    return `No answer from ${at} within fifteen seconds. The name resolves, so `
+      + 'something between this container and the internet is dropping outbound HTTPS.';
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return `This container cannot look up ${at} (${code}): it has no working DNS. `
+      + 'On Unraid a container on a custom network (br0, br0.x) needs a DNS server of '
+      + 'its own — set one on the container, or put it back on bridge.';
+  }
+  if (['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EACCES'].includes(code)) {
+    return `The connection to ${at} was refused or dropped (${code}). Something between `
+      + 'this container and the internet is blocking outbound HTTPS.';
+  }
+  if (code.startsWith('CERT_') || code.includes('SSL') || code.includes('TLS') || code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE') {
+    return `The secure connection to ${at} could not be made (${code}). Something is `
+      + 'intercepting HTTPS — a proxy or a filter — and its certificate is not trusted here.';
+  }
+  return `Could not reach ${at}${code ? ` (${code})` : ''}: ${e?.message || 'no reason given'}.`;
+};
+
 // One address for every request, so the country goes on all of them. Series data
 // belongs to a country's Play catalogue, and left to guess from the server's own
 // address Google can answer with a volume that has none at all.
@@ -44,9 +71,11 @@ async function search_(book, search, key, trace = null) {
     lookupProgress.attempt = attempt + 1;
     lookupProgress.retryUntil = 0;
     try {
-      res = await fetch(url);
-    } catch {
-      throw new Error('Could not reach Google Books. The server appears to have no internet connection.');
+      // every other outbound call in this app has a timeout; without one a network
+      // that drops packets leaves the dialog waiting on the operating system
+      res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    } catch (e) {
+      throw new Error(unreachable(e));
     }
     if (res.status !== 503 || attempt === RETRY_AFTER.length) break;
     lookupProgress.retryUntil = Date.now() + RETRY_AFTER[attempt];
