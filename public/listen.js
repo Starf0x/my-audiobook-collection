@@ -103,6 +103,7 @@ async function loadHome() {
   $('#authors ul').innerHTML = '';
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
   $('#books .list').innerHTML = shelf('Continue listening', d.continue, true)
+    + shelf('Listened', d.listened || [], true)
     + shelf('Recently added', d.recent, false)
     || '<div class="empty">Nothing here yet.</div>';
   $('#books .list').querySelectorAll('.tile').forEach((t) => {
