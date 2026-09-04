@@ -615,6 +615,14 @@ app.get('/api/stream/:trackId', (req, res) => {
   res.sendFile(track.path); // sendFile handles Range requests
 });
 
+// What a listener has done with one book, and the track they are on: the same
+// four numbers `isFinished` asks for.
+const keptOne = db.prepare(`SELECT p.done, p.track_idx, p.position,
+    (SELECT COUNT(*) FROM tracks t WHERE t.book_id = p.book_id) AS tracks,
+    (SELECT t.duration FROM tracks t WHERE t.book_id = p.book_id AND t.idx = p.track_idx) AS trackSeconds
+  FROM progress p WHERE p.user = ? AND p.book_id = ?`);
+const tickIt = db.prepare('UPDATE progress SET done = 1 WHERE user = ? AND book_id = ?');
+
 app.post('/api/progress', (req, res) => {
   const { user, bookId, trackIdx, position } = req.body;
   if (!user) return res.status(400).json({ error: 'No user' });
@@ -622,7 +630,13 @@ app.post('/api/progress', (req, res) => {
     ON CONFLICT(user, book_id) DO UPDATE SET track_idx = excluded.track_idx,
       position = excluded.position, updated = excluded.updated`)
     .run(user, bookId, trackIdx, position);
-  res.json({ ok: true });
+  // A place at the end of the last track means the book has been listened to, so
+  // the tick says so — whoever moved it there, the player or Home Assistant. It is
+  // only ever set here: taking it off again is unticking it, or starting the book
+  // over, both of which say so outright.
+  const kept = keptOne.get(user, Number(bookId));
+  if (kept && !kept.done && isFinished(kept)) tickIt.run(user, Number(bookId));
+  res.json({ ok: true, done: !!(kept && (kept.done || isFinished(kept))) });
 });
 
 // --- metadata lookup ---------------------------------------------------
@@ -685,7 +699,16 @@ settleTagAll();
 purgeExpired(Date.now());
 setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
 
-// a container that was already set up keeps pushing to Home Assistant on its own
+// a container that was already set up keeps pushing to Home Assistant on its own// Places that were already at the end of a last track before the tick was set
+// for them: those books have been listened to, and every count and list reads the
+// tick, so it has to say so.
+for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position, p.done,
+      (SELECT COUNT(*) FROM tracks t WHERE t.book_id = p.book_id) AS tracks,
+      (SELECT t.duration FROM tracks t WHERE t.book_id = p.book_id AND t.idx = p.track_idx) AS trackSeconds
+    FROM progress p WHERE p.done = 0`).all()) {
+  if (isFinished(row)) tickIt.run(row.user, row.book_id);
+}
+
 scheduleHaPush(VERSION);
 
 const port = process.env.PORT || 8523;
