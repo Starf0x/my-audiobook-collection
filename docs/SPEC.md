@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.1.32.** This document describes what the app is, how every
+**Version described: 2.1.40.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.32` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.40` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,7 +96,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 692 | Express app: every route, and nothing else |
+| `server/index.js` | 715 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 120 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -118,9 +118,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with | the Home Assistant page |
 | `public/ha.js` | 183 | its behaviour |
 | `public/index.html` | 280 | the admin page: columns, dialogs |
-| `public/app.js` | 1968 | the admin page's behaviour |
+| `public/app.js` | 2021 | the admin page's behaviour |
 | `public/listen.html` | 85 | the listening page |
-| `public/listen.js` | 658 | the listening page's behaviour |
+| `public/listen.js` | 711 | the listening page's behaviour |
 | `public/style.css` | 599 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -1112,8 +1112,18 @@ would hide the one being listened to.
 
 **The Listened section** sits in the genres column, under the genres and above
 Maintenance on the admin page: a `col-title` and one row with a count, both
-hidden while `/api/listened` is empty, and the row draws those books through the
-same `drawBooks` the library uses. The title and the row are siblings of the
+hidden while `/api/listened` is empty. Pressing the row browses by author — the
+authors of those books in the `#authors` column with a count each, all the books
+on the right, and one author's in series order when a name is picked — through the
+same `drawBooks` the library uses, so the cards, the tick and the buttons are the
+library's own.
+
+**The tick sets itself.** `POST /api/progress` asks `isFinished` of the row it
+just wrote and sets `done = 1` when the place has reached the end of the last
+track; the pages do it too when the last track's `ended` fires, so a book that
+runs out is ticked at once rather than at the next save. It is only ever *set*
+there: it comes off by unticking, or by `playBook` starting a finished book over.
+Rows that were already at the end before this existed are ticked once at startup. The title and the row are siblings of the
 genres list rather than a box of their own: the column is read elsewhere as "the
 first list in it is the genres", and a list inside a box would be the first list
 of that box.
@@ -1482,6 +1492,7 @@ Server suites:
 | `page-colours` | the page's own two glows, read back from what the browser paints rather than from the stylesheet: two glows on all three pages with today's turn already applied, the pair keeping its distance, seven days each a different colour and each 37° on from the last, the same day twice the same colour, a year to come round, a drawn cover kept no longer than today, the page turning on the same day number the covers do, and a page whose script never ran still in the colours the app was drawn in |
 | `cover-colours` | the drawn cover's two colours: a pair 42° apart, spun 37° a day, every day of a week different, the same picture twice on one day, two books still unalike, a year to come back round, and a cache that expires at midnight and never lasts a day |
 | `cover-click` | on both pages: clicking a cover plays that book and clicking it again pauses it, the picture shows ⏸ while it plays and ▶ otherwise, the player's own cover does the same, the other book's cover takes the pause with it, and the *Listened* tick inside the cover starts nothing |
+| `listened-authors` | the tick that sets itself and the browsing: a place in the middle leaves the tick alone, a place at the end sets it and the answer says so, the list is what has the tick and the counts agree; on both pages the row reads *Books you’ve listened to*, the authors of those books are in their own column with a count each, all the books to begin with, one author’s in series order with the series named and every one of them ticked; a book played to its end ticks itself without anybody pressing anything, and playing it again takes the tick off |
 | `listened-column` | the section in the column: `/api/listened` holding what is done with and nothing else, newest first, each book carrying what a card needs; on both pages a *Listened* title after *Genres* with the count on its row, the shelves down to two, the row drawing those books as cards under a *Listened · N books* heading with the author column out of the way and *Play again* on each, the light going off the row when a genre is picked; and the count following a book that is unticked or started again, the section leaving the column when it empties |
 | `play-again` | a book at its end: what the server calls finished — not a book nobody opened, not one halfway through, not one that has only reached the last track, but one within a tenth of the end of it, and one the tick says is listened — carried on the shelves, the cards and a search alike; and in both pages, the tile and the card of such a book reading *Play again* and playing from the first track, while a book loaded in the player keeps its Pause and its Resume |
 | `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
@@ -1561,6 +1572,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.1.40 | a book that runs out ticks itself as listened, and the Listened section browses by author |
 | 2.1.32 | Listened is a section in the column beside the genres, and the shelves keep only what is being listened to |
 | 2.1.24 | a shelf of its own for what has been listened to, so Continue listening is only what you are in the middle of |
 | 2.1.16 | a book you have finished offers Play again, and plays from the top |

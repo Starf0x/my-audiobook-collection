@@ -132,21 +132,42 @@ async function loadListened() {
 }
 
 $('#listenedList').onclick = async () => {
-  // no author column in this view, the way the other column lists have none
-  document.body.classList.add('maintenance');
+  // this view browses by author, so the authors column stays where it is
+  document.body.classList.remove('maintenance');
   document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
   $('#listenedList').classList.add('active');
-  $('#authors ul').innerHTML = '';
   state.genre = null;
   state.author = null;
   state.series = null;
   const books = await loadListened();
+  state.listenedBooks = books;
   if (!books.length) {
+    $('#authors ul').innerHTML = '';
     $('#books .list').innerHTML = '<div class="empty">You have not finished a book yet.</div>';
     return show('books');
   }
+  // the authors of those books in the middle column, with how many each
+  const authors = [...new Set(books.map((b) => b.author))].sort((a, b) => a.localeCompare(b));
+  $('#authors ul').innerHTML = authors.map((name) => `<li data-name="${esc(name)}">
+      <span class="who">${esc(name)}</span>
+      <span class="count">${books.filter((b) => b.author === name).length}</span></li>`).join('');
+  $('#authors ul').querySelectorAll('li').forEach((li) => {
+    li.onclick = () => listenedOf(li.dataset.name, li);
+  });
   await drawBooks(books, `${books.length} book${books.length === 1 ? '' : 's'}`, 'Listened');
 };
+
+// What one author has been listened to, in the order a series reads: the series
+// line above each group is drawBooks' own, so a series says which book it is.
+async function listenedOf(name, li) {
+  document.querySelectorAll('#authors li').forEach((e) => e.classList.remove('active'));
+  if (li) li.classList.add('active');
+  const books = (state.listenedBooks || []).filter((b) => b.author === name)
+    .sort((a, b) => (a.series || '').localeCompare(b.series || '')
+      || (a.series_no || 0) - (b.series_no || 0)
+      || a.title.localeCompare(b.title));
+  await drawBooks(books, '');
+}
 
 // the name of the app is the way back to the shelves, wherever you are
 $('#brand').onclick = loadHome;
@@ -325,16 +346,25 @@ $('#q').onkeydown = (e) => {
 const audio = $('#audio');
 
 window.playBook = async function (id) {
-  // the same book again: the button that started it is the one that stops it
-  if (state.book && state.book.id === id) {
+  // The same book again: the button that started it is the one that stops it —
+  // unless it has run out, where pressing it means playing it again, and that has
+  // to go through the loading below: it starts at the top and takes the tick off.
+  if (state.book && state.book.id === id && !audio.ended) {
     if (audio.paused) audio.play().catch(() => {}); else audio.pause();
     return;
   }
   if (!state.user) return toast('Pick a name first.');
   const book = await api(`/api/books/${id}?user=${encodeURIComponent(state.user)}`);
-  // a book that was finished is played again from the beginning: its kept place
-  // is the end of the last track, which would play a few seconds and stop
-  if (book.finished) book.progress = null;
+  // A book that was finished is played again from the beginning: its kept place
+  // is the end of the last track, which would play a few seconds and stop. And
+  // listening to it again means it is not a book you are done with, so the tick
+  // comes off — the same thing Start again from the beginning does.
+  if (book.finished) {
+    book.progress = null;
+    if (state.user) {
+      await post('/api/listened', { user: state.user, bookId: id, done: false }).catch(() => {});
+    }
+  }
   state.book = book;
   $('#player').hidden = false;
   $('#pCover').src = `/api/cover/${id}?v=${book.coverV || 0}`;
@@ -611,7 +641,30 @@ audio.addEventListener('pause', markPlaying);
 audio.addEventListener('ended', markPlaying);
 
 $('#trackSelect').onchange = (e) => playTrack(Number(e.target.value));
-audio.onended = () => playTrack(state.track + 1);
+// The last track running out is the end of the book: it has been listened to, and
+// the tick has to say so — the counts, the shelves and the Listened section all
+// read the tick. Any other track just leads into the next one.
+audio.onended = () => {
+  if (state.book && state.track >= state.book.tracks.length - 1) return finishedListening();
+  return playTrack(state.track + 1);
+};
+
+async function finishedListening() {
+  const id = state.book.id;
+  saveProgress();
+  if (!state.user) return;
+  try { await post('/api/listened', { user: state.user, bookId: id, done: true }); } catch { return; }
+  // the card of that book, if it happens to be on screen, without a redraw
+  const tick = document.querySelector(`.card .listened input[onchange*="setListened(${id},"]`);
+  if (tick) {
+    tick.checked = true;
+    const note = tick.closest('.card').querySelector('.note');
+    if (note) { note.className = 'note done'; note.title = 'Listened'; }
+  }
+  loadStats();
+  loadListened();
+  markPlaying();
+}
 audio.onpause = saveProgress;
 setInterval(() => { if (!audio.paused) saveProgress(); }, 10000);
 window.addEventListener('beforeunload', saveProgress);
