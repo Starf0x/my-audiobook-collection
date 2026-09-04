@@ -252,9 +252,21 @@ gone.
 
 **Continue listening** is only what you are in the middle of. A book you have
 finished leaves it for **Listened**, a section of its own in the left column under
-the genres, with the number on the row. Pressing that row lists those books as
-ordinary cards — so a book can be played again, or edited, from there — and the
-section is not in the column at all while there is nothing on it.
+the genres, with the number on the row *Books you've listened to*. The section is
+not in the column at all while there is nothing on it.
+
+Pressing that row browses what you have finished the way the library is browsed:
+the **authors** of those books fill the middle column, with how many each, and the
+books themselves are cards on the right — all of them to begin with, and one
+author's when you pick a name, in series order with the series named above each
+group. They are ordinary cards, so a book can be played again, ticked, or edited
+from there.
+
+**A book that runs out ticks itself as Listened.** Reaching the end of the last
+track sets the tick — the same tick as the one under the cover — so the counts,
+the shelves and this section all agree without anybody ticking anything. The tick
+comes off again only by unticking it or by playing the book again; a position
+reported by Home Assistant or another player never takes it off.
 
 Every book on the **Continue listening** shelf carries its own button under the
 track it is on, and since those are the books you are in the middle of it reads
