@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.1.8.** This document describes what the app is, how every
+**Version described: 2.1.16.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.8` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.1.16` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -96,7 +96,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 627 | Express app: every route, and nothing else |
+| `server/index.js` | 678 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 120 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -118,9 +118,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with | the Home Assistant page |
 | `public/ha.js` | 183 | its behaviour |
 | `public/index.html` | 276 | the admin page: columns, dialogs |
-| `public/app.js` | 1926 | the admin page's behaviour |
+| `public/app.js` | 1933 | the admin page's behaviour |
 | `public/listen.html` | 79 | the listening page |
-| `public/listen.js` | 619 | the listening page's behaviour |
+| `public/listen.js` | 626 | the listening page's behaviour |
 | `public/style.css` | 599 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -1471,6 +1471,7 @@ Server suites:
 | `page-colours` | the page's own two glows, read back from what the browser paints rather than from the stylesheet: two glows on all three pages with today's turn already applied, the pair keeping its distance, seven days each a different colour and each 37° on from the last, the same day twice the same colour, a year to come round, a drawn cover kept no longer than today, the page turning on the same day number the covers do, and a page whose script never ran still in the colours the app was drawn in |
 | `cover-colours` | the drawn cover's two colours: a pair 42° apart, spun 37° a day, every day of a week different, the same picture twice on one day, two books still unalike, a year to come back round, and a cache that expires at midnight and never lasts a day |
 | `cover-click` | on both pages: clicking a cover plays that book and clicking it again pauses it, the picture shows ⏸ while it plays and ▶ otherwise, the player's own cover does the same, the other book's cover takes the pause with it, and the *Listened* tick inside the cover starts nothing |
+| `play-again` | a book at its end: what the server calls finished — not a book nobody opened, not one halfway through, not one that has only reached the last track, but one within a tenth of the end of it, and one the tick says is listened — carried on the shelves, the cards and a search alike; and in both pages, the tile and the card of such a book reading *Play again* and playing from the first track, while a book loaded in the player keeps its Pause and its Resume |
 | `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
 | `two-writes-ui` | pressing one book's *Write into MP3s* greys that button and the file-moving ones, leaves the other books' write buttons alive, and gives each write its own named bar |
 | `tagall-test` | the resumable run: paused across a restart, resumed to completion, every file written once, a fresh run starting over, a `running` row settled to `paused` at startup |
@@ -1548,6 +1549,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.1.16 | a book you have finished offers Play again, and plays from the top |
 | 2.1.8 | the page itself turns with the day, in step with the drawn covers |
 | 2.1.0 | the sensors come back after a restart of either side, without anybody opening a page |
 | 2.0.80 | Settings is a full-screen sheet on a phone again |

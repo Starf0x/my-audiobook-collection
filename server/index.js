@@ -359,14 +359,27 @@ app.get('/api/untagged', requireAdmin, (req, res) => {
 });
 
 // the landing view: what this user was listening to, and what turned up last
+// A book is finished when the tick says so, or when the place kept in it sits at
+// the end of its last track: pressing Resume on one of those plays its last
+// seconds and stops, so it is offered again from the top instead. The grace is a
+// tenth of the track and never more than a minute — a player rarely stops on the
+// second, and a flat minute would call the whole of a short track the end of it.
+const isFinished = (b) => !!b.done
+  || (b.track_idx >= b.tracks - 1 && b.trackSeconds > 0
+      && b.position >= b.trackSeconds - Math.min(60, b.trackSeconds / 10));
+// what the listener is in the middle of, and the track they are on
+const KEPT = `p.track_idx, p.position, p.done,
+  (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks,
+  (SELECT t.duration FROM tracks t WHERE t.book_id = b.id AND t.idx = p.track_idx) AS trackSeconds`;
+
 app.get('/api/home', (req, res) => res.json({
-  continue: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, p.track_idx, p.done,
-                               ${SERIES} AS series, b.series_no,
-                               (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks
+  continue: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${KEPT},
+                               ${SERIES} AS series, b.series_no
                         FROM progress p JOIN books b ON b.id = p.book_id
                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
                         ORDER BY p.updated DESC LIMIT 12`).all(req.query.user || '')
-    .map((b) => ({ ...b, coverV: coverV(b) })),
+    .map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+      finished: isFinished({ ...b, trackSeconds }) })),
   recent: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${SERIES} AS series, b.series_no
                       FROM books b ORDER BY b.id DESC LIMIT 12`).all()
     .map((b) => ({ ...b, coverV: coverV(b) })),
@@ -389,12 +402,13 @@ app.get('/api/books', (req, res) => {
   const bySeries = !!req.query.series;
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
                                   b.description, b.cover, b.duration, b.tagged,
-                                  p.done, p.position > 0 AS started
+                                  p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
                            ORDER BY series IS NULL, series, b.series_no, b.title`)
     .all(req.query.user || '', req.query.genre, bySeries ? req.query.series : req.query.author);
-  res.json(rows.map((b) => ({ ...b, coverV: coverV(b) })));
+  res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+    finished: isFinished({ ...b, trackSeconds }) })));
 });
 
 // The box at the top of the page. Every word has to appear somewhere in the
@@ -408,7 +422,7 @@ app.get('/api/search', (req, res) => {
   if (!words.length || words.join('').length < 2) return res.json([]);
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
                                   b.genre, b.description, b.cover, b.duration, b.tagged,
-                                  p.done, p.position > 0 AS started
+                                  p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE ${words.map(() => `${HAYSTACK} LIKE ?`).join(' AND ')}
                            -- a title match is what you were most likely after
@@ -416,7 +430,8 @@ app.get('/api/search', (req, res) => {
                                     b.author, b.series_no, b.title
                            LIMIT 200`)
     .all(req.query.user || '', ...words.map((w) => `%${w}%`), `%${words[0]}%`, `%${words[0]}%`);
-  res.json(rows.map((b) => ({ ...b, coverV: coverV(b) })));
+  res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+    finished: isFinished({ ...b, trackSeconds }) })));
 });
 
 app.post('/api/listened', (req, res) => {
@@ -449,6 +464,13 @@ app.get('/api/books/:id', (req, res) => {
   const rel = gf ? path.relative(path.resolve(gf.path), here).split(path.sep) : [];
   book.folderSeries = rel.length >= 3 ? rel[1] : '';
   book.coverV = coverV(book);
+  // the same question for the player: a finished book starts at the top
+  const on = book.progress ? book.tracks[book.progress.track_idx] : null;
+  book.finished = !!book.progress && isFinished({
+    done: book.progress.done, track_idx: book.progress.track_idx,
+    position: book.progress.position, tracks: book.tracks.length,
+    trackSeconds: on ? on.duration : 0,
+  });
   res.json(book);
 });
 
