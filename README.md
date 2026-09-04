@@ -250,6 +250,12 @@ the book changes. Note that a place is not recoverable this way — if you only
 wanted to correct a mis-click on a book you were half way through, that place is
 gone.
 
+The books you have a place in are on two shelves, not one: **Continue listening**
+is what you are in the middle of, and **Listened** is what you are done with — a
+book leaves the first for the second the moment it is finished, so the shelf you
+land on is only the books that are actually waiting for you. *Listened* is not
+there at all until something is on it, and the books on it read **▶ Play again**.
+
 Every book on the **Continue listening** shelf carries its own button under the
 track it is on, and since those are the books you are in the middle of it reads
 **▶ Resume** — a place kept is a place to carry on from, whether or not anything
