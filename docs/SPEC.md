@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.2.24.** This document describes what the app is, how every
+**Version described: 2.2.32.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.24` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.32` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -438,8 +438,12 @@ const VOLUME = /^(.*?)[\s,._-]*(?:(?:book|vol|volume|part|deel|boek)[\s.]*)?(\d{
 
 Per book, `readMeta` reads every file with `parseFile` — **without** `{duration:
 true}`, which would scan every frame of every MP3 (about four seconds each); the
-header duration is enough for a badge. It collects title, narrator (`composer`,
-else `artist`), year, description, per-track titles and durations, and the
+header duration is enough for a badge. It collects title, narrator (`composer` **only**: the artist of an
+audiobook is its author, and falling back to it gave every file without a composer
+frame the author's name as its narrator, which then went into the files on the next
+tag write — a startup sweep clears the ones that can be known to have come from
+there, being those where the narrator equals the author and the files carry no
+narrator tag), year, description, per-track titles and durations, and the
 embedded cover. `descriptionOf` drops iTunes normalisation hex. `taggedFields`
 records which of album, title, artist, album artist, narrator, genre, year,
 description, cover, track no the **files** carry.
@@ -639,6 +643,9 @@ that is *Edit metadata*, which is folders. Two rules follow:
 * the tag write puts it in `TIT1` as `<series> <no>` (`Mistborn 2`), one of the
   places `seriesFromTags`/`splitVolume` read a series from, so the next scan
   agrees rather than dropping it. `node-id3` has no `MVNM`/`MVIN`, hence `TIT1`.
+* the number is also *Edit metadata*'s to set: `#eSeriesNo` sends `seriesNo` with the
+  series field beside it, which is the only way to correct a number Google had wrong,
+  and the only way to give one to a series that came from the folders.
 * `series_no` is one column shared by both kinds, so it is only written when the
   series being applied is the one the book is shown under (no folder series, or a
   folder series of the same name). Otherwise a number from another series would
@@ -1203,9 +1210,9 @@ series, title, and a line showing exactly where it will land); the **conflict**
 dialog comparing two copies row by row with the better value marked; *Find
 metadata* (five results, a search box, the author choice when two are credited,
 the series it read out of the title or subtitle as a tick beside its name and
-volume number, and category-as-genre buttons); *Edit metadata* (title, author, series, narrator,
-year, description — with the book's folder and file count at the foot, above the
-buttons); *Move…*.
+volume number, and category-as-genre buttons); *Edit metadata* (title, author, series, the book's number in that
+series, narrator, year, description — with the book's folder and file count at the
+foot, above the buttons); *Move…*.
 
 **On a phone** (`@media (max-width: 720px)`): the three columns become one, and
 `document.body.dataset.col` — `genres` / `authors` / `books` — says which is on
@@ -1464,6 +1471,8 @@ Server suites:
 | `admin-test` | every changing route refused while locked, listening routes still answering, right/wrong password, the cookie, lock again, no route to set a password, a stored hash cleared at startup |
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
+| `series-number-edit` | the number field in Edit metadata: it is there and opens empty for an unnumbered book, a typed number is saved and orders the series shelf, a wrong one can be corrected and emptied again, a book in no series keeps none, and a lookup's own volume number arrives in the field where a correction beats it |
+| `narrator-not-author` | where a narrator comes from: the author in the artist tag is not one, nor is a file with no tags at all, a composer frame is one even when it names the author, one naming somebody else stands, a narrator typed in Edit metadata survives a scan, and the startup sweep clears an author-as-narrator only where the files name none |
 | `use-metadata-ui` | Use metadata against a stubbed result: which button calls what, the dialog opening filled from the choice with the lookup closed, nothing saved until Save, the author and series pickers deciding what arrives, a corrected title winning over Google's, the series number and the rest saved with it, the book moved into the series folder, a result without a series leaving a filed book where it is, and Edit metadata opened on its own being untouched |
 | `unreachable-tailscale` | the DNS message sends the reader to the host's `/etc/resolv.conf`, names `100.100.100.100` and `tailscale set --accept-dns=false`, does not send them to the container's own Tailscale fields (which do not set this), asserts no mechanism it cannot know (no TUN, no userspace, no sidecar), still names the custom-network case, and leaves Tailscale out of every other failure |
 | `unreachable` | what a lookup says when the request never arrives: a name that does not resolve called DNS with where Unraid keeps that setting, a resolver that does not answer the same, a timeout saying the name resolved and nothing answered, a refused or dropped connection, an intercepted certificate, anything else still carrying its code and message, the address named being the one asked about — and nothing anywhere claiming to know there is no internet |
@@ -1587,6 +1596,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.2.32 | the narrator is what the composer frame says and nothing else — it used to fall back to the artist, which is the author — and Edit metadata has a field for the book's number in its series |
 | 2.2.24 | Use metadata opens Edit metadata on the result that was chosen, so what Google offered is read and corrected before it is saved |
 | 2.2.16 | and sends the reader to the host, which is where a container gets its resolver: `tailscale set --accept-dns=false` there, once, for every container |
 | 2.2.8 | and names the setting the Unraid template actually has, `--accept-dns=false` in Tailscale Extra Parameters, claiming no mechanism nobody has looked at |
