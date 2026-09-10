@@ -559,12 +559,14 @@ tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
 **Use metadata** saves nothing by itself: it opens *Edit metadata* with the result
-you chose already in the fields — title, author, series, narrator, year,
-description — so you read what Google offered, correct what is wrong and save it
-yourself. What the dialog has no field for, the cover and the volume number, comes
-along and is saved with it. Because that dialog's **Series** field is a folder,
-saving a series taken from Google files the book under it; a result with no series,
-or one whose series you unticked, leaves the book where it is. *Use + write into
+you chose already in the fields — title, author, series, the number in that series,
+narrator, year, description — so you read what Google offered, correct what is wrong
+and save it yourself. The cover comes along behind them and is saved with it.
+Because that dialog's **Series** field is a folder, saving a series taken from
+Google files the book under it. Where a result is silent, the book keeps what it
+has: no series, or a series you unticked, leaves the book filed where it is, and no
+volume number — which is most of them, Google names one for very few books — leaves
+the number the book already had. *Use + write into
 MP3s* beside it is the short way: it applies the result and writes the tags in one
 go, without the dialog.
 
