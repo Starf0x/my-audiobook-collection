@@ -455,6 +455,13 @@ table.cmp td.mono { font-family: ui-monospace, monospace; font-size: 11.5px; wor
 table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
 #permsOut { margin-top: 10px; }
 
+/* Every field in Edit metadata has a copy button beside it, so a title or an
+   author can be pasted into a search somewhere else. The button keeps its width;
+   the field takes the rest. A textarea's button sits at its top. */
+.field { display: flex; gap: 6px; align-items: flex-start; }
+.field input, .field textarea { flex: 1; min-width: 0; }
+.field button.copy { flex: none; padding: 7px 10px; line-height: 1.2; }
+
 /* the series a lookup suggests: a tick beside it, not a field to fill in */
 .cand label.pick { display: block; margin: 10px 0 2px; font-size: 13px; color: var(--text);
   text-transform: none; letter-spacing: 0; text-align: left; }

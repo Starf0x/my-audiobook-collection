@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.2.32.** This document describes what the app is, how every
+**Version described: 2.2.40.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.32` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.40` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1211,8 +1211,8 @@ dialog comparing two copies row by row with the better value marked; *Find
 metadata* (five results, a search box, the author choice when two are credited,
 the series it read out of the title or subtitle as a tick beside its name and
 volume number, and category-as-genre buttons); *Edit metadata* (title, author, series, the book's number in that
-series, narrator, year, description — with the book's folder and file count at the
-foot, above the buttons); *Move…*.
+series, narrator, year, description — each in a `.field` row with a **⧉** button that
+copies it, and the book's folder and file count at the foot, above the buttons); *Move…*.
 
 **On a phone** (`@media (max-width: 720px)`): the three columns become one, and
 `document.body.dataset.col` — `genres` / `authors` / `books` — says which is on
@@ -1471,6 +1471,7 @@ Server suites:
 | `admin-test` | every changing route refused while locked, listening routes still answering, right/wrong password, the cookie, lock again, no route to set a password, a stored hash cleared at startup |
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
+| `copy-fields-ui` | the copy button beside every field: one per field naming its own, on the same row with the field still full width and still so on a 380px screen, each button reaching the real clipboard through both paths — the browser API and, with `navigator.clipboard` taken away as it is over http, the textarea inside the dialog — an empty field saying so and leaving the clipboard alone, no textarea left behind, and nothing saved on the book |
 | `series-number-edit` | the number field in Edit metadata: it is there and opens empty for an unnumbered book, a typed number is saved and orders the series shelf, a wrong one can be corrected and emptied again, a book in no series keeps none, and a lookup's own volume number arrives in the field where a correction beats it |
 | `narrator-not-author` | where a narrator comes from: the author in the artist tag is not one, nor is a file with no tags at all, a composer frame is one even when it names the author, one naming somebody else stands, a narrator typed in Edit metadata survives a scan, and the startup sweep clears an author-as-narrator only where the files name none |
 | `use-metadata-ui` | Use metadata against a stubbed result: which button calls what, the dialog opening filled from the choice with the lookup closed, nothing saved until Save, the author and series pickers deciding what arrives, a corrected title winning over Google's, the series number and the rest saved with it, the book moved into the series folder, a result without a series leaving a filed book where it is, and Edit metadata opened on its own being untouched |
@@ -1596,6 +1597,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.2.40 | every field in Edit metadata has a button that copies it to the clipboard, over plain http as well |
 | 2.2.32 | the narrator is what the composer frame says and nothing else — it used to fall back to the artist, which is the author — and Edit metadata has a field for the book's number in its series |
 | 2.2.24 | Use metadata opens Edit metadata on the result that was chosen, so what Google offered is read and corrected before it is saved |
 | 2.2.16 | and sends the reader to the host, which is where a container gets its resolver: `tailscale set --accept-dns=false` there, once, for every container |
