@@ -268,6 +268,20 @@ folders could not be ordered at all. Frank pointed at both, one arrow each.
 **Rule:** anything the interface shows about a book has to be editable somewhere.
 Check every field a card displays against the dialog that is supposed to own it.
 
+And immediately, the field took the number away again (2.2.48). Opening the dialog
+from a lookup, the series *name* fell back to what the book was filed under —
+`(over && over.series) || b.folderSeries || b.series` — and the number, written two
+lines below it, did not: `over ? over.seriesNo : b.series_no`. Google names a volume
+number for very few books, so nearly every *Use metadata* opened with an empty
+number field, and Save then wrote 0 over the number the book had. Frank's picture
+said it in one frame: the card reading `Arthurian Saga · book 3` beside an empty
+**Book number in the series**.
+
+**Rule:** when a value can come from two places and one of them is usually silent,
+every field of that group needs the same fallback. Write them as one expression, or
+check them against each other — a fallback that covers the name and not the number
+is worse than none, because it looks handled.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

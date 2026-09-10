@@ -1649,7 +1649,9 @@ window.editMeta = async function (id, over, genre) {
   // a result with no series, or one whose series was unticked, leaves the book
   // where it is filed: an empty field here would move it out of its series folder
   $('#eSeries').value = (over && over.series) || b.folderSeries || b.series || '';
-  $('#eSeriesNo').value = (over ? over.seriesNo : b.series_no) || '';
+  // and a result that names no number leaves the one the book already has: an
+  // empty field here would take it off on the next save
+  $('#eSeriesNo').value = (over && over.seriesNo) || b.series_no || '';
   $('#eNarrator').value = v.narrator || '';
   $('#eYear').value = v.year || '';
   $('#eDescription').value = v.description || '';
