@@ -1634,23 +1634,32 @@ $('#needsTags').onclick = async () => {
   };
 };
 
-window.editMeta = async function (id) {
+// `over` is a chosen lookup result: the fields open filled with it, so what
+// Google offered is read and corrected before anything is saved. It also carries
+// what this dialog has no field for — the cover and the series number — so those
+// are not lost on the way through. `genre` is the one picked in the lookup.
+window.editMeta = async function (id, over, genre) {
   const b = await api(`/api/books/${id}`);
+  const v = { ...b, ...(over || {}) };
   // where it sits on disk and how many files it is made of, at the foot of the dialog
   const files = (b.tracks || []).length;
   $('#ePath').textContent = `${b.path || ''} · ${files} file${files === 1 ? '' : 's'}`;
-  $('#eTitle').value = b.title || '';
-  $('#eAuthor').value = b.author || '';
-  $('#eSeries').value = b.folderSeries || b.series || '';
-  $('#eNarrator').value = b.narrator || '';
-  $('#eYear').value = b.year || '';
-  $('#eDescription').value = b.description || '';
-  const wasSeries = $('#eSeries').value;
+  $('#eTitle').value = v.title || '';
+  $('#eAuthor').value = v.author || '';
+  // a result with no series, or one whose series was unticked, leaves the book
+  // where it is filed: an empty field here would move it out of its series folder
+  $('#eSeries').value = (over && over.series) || b.folderSeries || b.series || '';
+  $('#eNarrator').value = v.narrator || '';
+  $('#eYear').value = v.year || '';
+  $('#eDescription').value = v.description || '';
+  const wasSeries = b.folderSeries || b.series || '';
   const save = async (writeTags) => {
     const pick = {
+      ...(over || {}),
       title: $('#eTitle').value.trim(), author: $('#eAuthor').value.trim(),
       narrator: $('#eNarrator').value.trim(), year: $('#eYear').value.trim(),
       description: $('#eDescription').value.trim(),
+      ...(over ? { series: $('#eSeries').value.trim() } : {}),
     };
     $('#edit').close();
     // The series is a folder level, so a change to it has to move the book, or
@@ -1664,11 +1673,13 @@ window.editMeta = async function (id) {
       if (!ok) return;
     }
     if (writeTags) {
-      await writeWithProgress(id, pick);
+      await writeWithProgress(id, pick, genre);
     } else {
-      try { await post(`/api/apply/${id}`, { pick, writeTags: false }); toast('Saved.'); }
+      try { await post(`/api/apply/${id}`, { pick, genre, writeTags: false }); toast('Saved.'); }
       catch (e) { return toast(e.message); }
     }
+    // a genre change moves the book, and can add a genre folder to the left column
+    if (genre) await loadGenres();
     await refreshLibrary();
   };
   $('#saveEdit').onclick = () => save(false);
@@ -1741,7 +1752,8 @@ function seriesChoice(i, book, c) {
     <div class="hint">${borrowed}${filed.toLowerCase() === c.series.toLowerCase()
       ? 'The series this book is already filed under.'
       : (filed ? `Filed under <em>${esc(filed)}</em> now. ` : '')
-        + 'Goes into the book and into the tags. It does not move the book: a series folder is <em>Edit metadata</em>.'}</div>`;
+        + 'Goes into the book and into the tags. <em>Use metadata</em> puts it in the Series field of '
+        + 'Edit metadata, which is a folder: saving there moves the book into it.'}</div>`;
 }
 
 window.findMeta = async function (id, query) {
@@ -1769,7 +1781,7 @@ window.findMeta = async function (id, query) {
         ${seriesChoice(i, book, c)}
         ${genreChoice(i, book.genre, c.genres || [], known)}
         <div class="row">
-          <button onclick="applyMeta(${id},${i},false)">Use metadata</button>
+          <button onclick="useMeta(${id},${i})">Use metadata</button>
           <button class="ghost" onclick="applyMeta(${id},${i},true)">Use + write into MP3s</button>
         </div>
       </div></div>`).join('')
@@ -1782,14 +1794,29 @@ window.findMeta = async function (id, query) {
   }
 };
 
-window.applyMeta = async function (id, i, writeTags) {
+// the result as the pickers beside it leave it: the author chosen from the ones
+// credited, and the series only if it was left ticked
+function pickOf(i) {
   const chosen = $(`#ca${i}`) ? $(`#ca${i}`).value : '';
   const keepSeries = $(`#cs${i}`) ? $(`#cs${i}`).checked : true;
-  const pick = {
+  return {
     ...window._cands[i],
     ...(chosen ? { author: chosen } : {}),
     ...(keepSeries ? {} : { series: '', seriesNo: 0 }),
   };
+}
+
+// Use metadata saves nothing itself: it opens Edit metadata on the result that
+// was chosen, which is where the owner reads it, changes what is wrong and saves.
+window.useMeta = function (id, i) {
+  const pick = pickOf(i);
+  const genre = $(`#cg${i}`) ? $(`#cg${i}`).value : '';
+  $('#lookup').close();
+  editMeta(id, pick, genre);
+};
+
+window.applyMeta = async function (id, i, writeTags) {
+  const pick = pickOf(i);
   const genre = $(`#cg${i}`) ? $(`#cg${i}`).value : '';
   $('#lookup').close();
   if (writeTags) {
