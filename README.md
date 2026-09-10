@@ -374,9 +374,11 @@ stripped of characters a path cannot hold.
 
 The **Series** field in *Edit metadata* moves the book too, since a series is a
 folder: filling it in files the book under `genre / author / series / book`, and
-emptying it moves the book back up. The folder keeps its own name. The line at the
-foot of that dialog is the folder the book sits in and how many files it holds,
-for when two books share a title.
+emptying it moves the book back up. The folder keeps its own name. **Book number in
+the series**, under it, is what orders the shelf — the number a card shows as
+*book 3* — and it goes into the tags with the series name; leave it empty when
+there is none. The line at the foot of that dialog is the folder the book sits in
+and how many files it holds, for when two books share a title.
 
 *Move…* on a book card shifts its folder to where a new genre, author, series and
 title say it belongs. The book keeps its row, so the listened state and playback

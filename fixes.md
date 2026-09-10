@@ -237,6 +237,37 @@ says where its content came from; ask for the file before naming a cause, and re
 all of it. And when something used to work, the first question is what changed on the
 machine — not what is wrong with the code.
 
+### A narrator that was really the author (2.2.32)
+
+The scan read the narrator as `composer || artist`. In an audiobook the artist *is*
+the author, so every file without a composer frame arrived with the author's name
+as its narrator: on the card, in *Edit metadata*, and — because a tag write puts the
+narrator in the composer frame — written into the files, where the next scan read it
+back as fact. Frank sent a picture of *Dragon Wing*: `Narrator: Margaret Weis`.
+
+**Fixed** by reading the composer frame and nothing else, plus a startup sweep for
+the ones that can be *known* to have come from the fallback: narrator equal to the
+author, and no narrator tag in the files. Where the file itself names the author as
+narrator it stands, because some authors do read their own books.
+
+**Rule:** a fallback between two tags is a claim that they mean the same thing. Ask
+what the second tag holds in this kind of file before falling back to it — and
+remember that a wrong value the app then writes into the files stops being a
+guess and becomes data.
+
+### The number the card showed and the dialog could not set (2.2.32)
+
+A card says `Series · The Death Gate Cycle · book 1`. *Edit metadata* had a Series
+field and no number, so `series_no` could only ever be set by a Google lookup: a
+number Google had wrong could not be corrected, and a series that came from the
+folders could not be ordered at all. Frank pointed at both, one arrow each.
+
+**Fixed** with a number field, sent as `seriesNo` alongside the series so
+`applyMetadata`'s guard has a series to match it against.
+
+**Rule:** anything the interface shows about a book has to be editable somewhere.
+Check every field a card displays against the dialog that is supposed to own it.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
