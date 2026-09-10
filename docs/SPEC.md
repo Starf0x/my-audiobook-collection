@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.2.16.** This document describes what the app is, how every
+**Version described: 2.2.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -513,6 +513,16 @@ results, `https://www.googleapis.com/books/v1/volumes`. A 503 is retried after 1
 20 and 30 seconds, with `lookupProgress` exposing the attempt and the wait so the
 dialog can show it. Every other status gets a plain-English explanation naming the
 likely cause (bad key, Books API not enabled, quota).
+
+A result has two buttons. **Use metadata** saves nothing: it closes the lookup and opens
+*Edit metadata* on that result — `useMeta` builds the pick the pickers describe and hands it
+to `editMeta(id, over, genre)`, which fills the fields from it and keeps what the dialog has
+no field for (the cover, the series number) in `over` so the save carries them. The genre
+picked in the lookup travels with it and is applied by the same save. Because that dialog's
+Series field is a folder level, a series taken from Google moves the book on save; a result
+with no series, or one whose series was unticked, opens with the series the book is filed
+under, so saving leaves it where it is. **Use + write into MP3s** applies the result and
+writes the tags straight away, without the dialog.
 
 Applying a result updates title, narrator, year, description and cover in the
 database. **Author and genre are navigation keys derived from folders**, so they
@@ -1454,6 +1464,7 @@ Server suites:
 | `admin-test` | every changing route refused while locked, listening routes still answering, right/wrong password, the cookie, lock again, no route to set a password, a stored hash cleared at startup |
 | `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
 | `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
+| `use-metadata-ui` | Use metadata against a stubbed result: which button calls what, the dialog opening filled from the choice with the lookup closed, nothing saved until Save, the author and series pickers deciding what arrives, a corrected title winning over Google's, the series number and the rest saved with it, the book moved into the series folder, a result without a series leaving a filed book where it is, and Edit metadata opened on its own being untouched |
 | `unreachable-tailscale` | the DNS message sends the reader to the host's `/etc/resolv.conf`, names `100.100.100.100` and `tailscale set --accept-dns=false`, does not send them to the container's own Tailscale fields (which do not set this), asserts no mechanism it cannot know (no TUN, no userspace, no sidecar), still names the custom-network case, and leaves Tailscale out of every other failure |
 | `unreachable` | what a lookup says when the request never arrives: a name that does not resolve called DNS with where Unraid keeps that setting, a resolver that does not answer the same, a timeout saying the name resolved and nothing answered, a refused or dropped connection, an intercepted certificate, anything else still carrying its code and message, the address named being the one asked about — and nothing anywhere claiming to know there is no internet |
 | `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
@@ -1576,6 +1587,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.2.24 | Use metadata opens Edit metadata on the result that was chosen, so what Google offered is read and corrected before it is saved |
 | 2.2.16 | and sends the reader to the host, which is where a container gets its resolver: `tailscale set --accept-dns=false` there, once, for every container |
 | 2.2.8 | and names the setting the Unraid template actually has, `--accept-dns=false` in Tailscale Extra Parameters, claiming no mechanism nobody has looked at |
 | 2.2.0 | a lookup with no DNS names the cause that was actually behind it — Tailscale built into the container — and the README and the wiki say what to set |
