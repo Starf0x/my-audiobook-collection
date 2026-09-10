@@ -559,7 +559,7 @@ The dialog says which failure it was, because each is put right somewhere else:
 
 | What it says | Where to look |
 | --- | --- |
-| cannot look up www.googleapis.com (ENOTFOUND / EAI_AGAIN) — no working DNS | the container has no resolver. On Unraid a container on a **custom network** (br0) needs a DNS server of its own; on bridge it inherits the host's |
+| cannot look up www.googleapis.com (ENOTFOUND / EAI_AGAIN) — no working DNS | the container has no resolver it can reach. If Tailscale is built into the container, see below — that is the commonest cause. Otherwise, on Unraid a container on a **custom network** (br0) needs a DNS server of its own; on bridge it inherits the host's |
 | no answer within fifteen seconds | the name resolves and nothing answers: outbound HTTPS is being dropped between the container and the internet |
 | refused or dropped (ECONNREFUSED, ENETUNREACH…) | something is blocking outbound HTTPS |
 | the secure connection could not be made (CERT_…) | a proxy or filter is intercepting HTTPS and its certificate is not trusted in the container |
@@ -571,6 +571,31 @@ To see it from the server rather than the page:
 
 A code comes back for a network problem, and `HTTP 200` or `HTTP 400` when the
 connection itself is fine — a 400 there means the key, not the network.
+
+### When Tailscale is built into the container
+
+Unraid can put Tailscale inside a container itself (Docker → the container → Edit →
+the Tailscale section). That sidecar runs **userspace networking** — there is no TUN
+device — and if the container is told to accept Tailscale's DNS it is handed
+`nameserver 100.100.100.100` in its own `/etc/resolv.conf`. That address only
+answers through a real Tailscale interface, so nothing in the container can reach
+it: every name fails with `ENOTFOUND`, the lookup reports no working DNS, and the
+server it runs on is meanwhile perfectly online.
+
+Put it right with **Use Tailscale DNS: No** (`TS_ACCEPT_DNS=false`) in that same
+Tailscale section. The container goes back to the resolver Docker gives it and
+keeps its Tailscale address.
+
+The tailnet's own **Override DNS servers** setting, in the Tailscale admin console,
+has nothing to do with this. It decides what your Tailscale clients resolve with;
+it does not make `100.100.100.100` reachable from inside a container that has no
+TUN device.
+
+What the container actually has:
+
+    docker exec my-audiobook-collection cat /etc/resolv.conf
+
+`100.100.100.100` there is this problem. Anything else, and the resolver is not it.
 
 ### How the series is found
 
