@@ -1692,6 +1692,34 @@ window.editMeta = async function (id, over, genre) {
 };
 $('#closeEdit').onclick = () => $('#edit').close();
 
+// The copy button beside every field. `navigator.clipboard` only exists in a
+// secure context, and this app is normally reached over plain http on a LAN, so
+// the old way is the one that actually runs: a textarea inside the dialog,
+// because a modal dialog makes the rest of the document inert.
+async function toClipboard(text) {
+  try {
+    if (window.isSecureContext && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through */ }
+  const box = document.createElement('textarea');
+  box.value = text;
+  box.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  $('#edit').append(box);
+  box.select();
+  const ok = document.execCommand('copy');
+  box.remove();
+  return ok;
+}
+$('#edit').addEventListener('click', async (e) => {
+  const button = e.target.closest('button.copy');
+  if (!button) return;
+  const value = $('#' + button.dataset.copy).value;
+  if (!value) return toast('That field is empty.');
+  toast((await toClipboard(value)) ? 'Copied.' : 'The browser would not copy that.');
+});
+
 // Follows the lookup through its retry ladder while the request is in flight.
 async function pollLookup(state_) {
   $('#lookupProgress').hidden = false;

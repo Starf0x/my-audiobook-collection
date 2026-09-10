@@ -248,17 +248,24 @@
 
 <dialog id="edit">
   <h2>Edit metadata</h2>
-  <label>Title</label><input id="eTitle">
-  <label>Author</label><input id="eAuthor">
-  <label>Series</label><input id="eSeries">
+  <label>Title</label>
+  <div class="field"><input id="eTitle"><button class="ghost copy" data-copy="eTitle" title="Copy to the clipboard">⧉</button></div>
+  <label>Author</label>
+  <div class="field"><input id="eAuthor"><button class="ghost copy" data-copy="eAuthor" title="Copy to the clipboard">⧉</button></div>
+  <label>Series</label>
+  <div class="field"><input id="eSeries"><button class="ghost copy" data-copy="eSeries" title="Copy to the clipboard">⧉</button></div>
   <p class="hint">A series is a folder, so changing this moves the book into
     <code>genre / author / series / book</code>. Emptying it moves the book back up.</p>
-  <label>Book number in the series</label><input id="eSeriesNo" type="number" min="0" step="1">
+  <label>Book number in the series</label>
+  <div class="field"><input id="eSeriesNo" type="number" min="0" step="1"><button class="ghost copy" data-copy="eSeriesNo" title="Copy to the clipboard">⧉</button></div>
   <p class="hint">Where the book comes in that series: it orders the shelf and goes
     into the tags. Leave it empty when there is no number.</p>
-  <label>Narrator</label><input id="eNarrator">
-  <label>Year</label><input id="eYear">
-  <label>Description</label><textarea id="eDescription" rows="4"></textarea>
+  <label>Narrator</label>
+  <div class="field"><input id="eNarrator"><button class="ghost copy" data-copy="eNarrator" title="Copy to the clipboard">⧉</button></div>
+  <label>Year</label>
+  <div class="field"><input id="eYear"><button class="ghost copy" data-copy="eYear" title="Copy to the clipboard">⧉</button></div>
+  <label>Description</label>
+  <div class="field"><textarea id="eDescription" rows="4"></textarea><button class="ghost copy" data-copy="eDescription" title="Copy to the clipboard">⧉</button></div>
   <p class="hint path" id="ePath"></p>
   <div class="row end">
     <button id="closeEdit" class="ghost">Cancel</button>
