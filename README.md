@@ -575,27 +575,26 @@ connection itself is fine — a 400 there means the key, not the network.
 ### When Tailscale is built into the container
 
 Unraid can put Tailscale inside a container itself (Docker → the container → Edit →
-the Tailscale section). That sidecar runs **userspace networking** — there is no TUN
-device — and if the container is told to accept Tailscale's DNS it is handed
-`nameserver 100.100.100.100` in its own `/etc/resolv.conf`. That address only
-answers through a real Tailscale interface, so nothing in the container can reach
-it: every name fails with `ENOTFOUND`, the lookup reports no working DNS, and the
-server it runs on is meanwhile perfectly online.
+the Tailscale section). Tailscale then takes the container's resolver over: it
+writes `nameserver 100.100.100.100` — its own MagicDNS — into that container's
+`/etc/resolv.conf`. When a query through it gets no answer, and inside a container
+there are several reasons it may not, the container has no DNS at all: every name
+fails with `ENOTFOUND` or `EAI_AGAIN`, while the server it runs on is online and
+everything else on the network resolves perfectly.
 
-Put it right with **Use Tailscale DNS: No** (`TS_ACCEPT_DNS=false`) in that same
-Tailscale section. The container goes back to the resolver Docker gives it and
-keeps its Tailscale address.
-
-The tailnet's own **Override DNS servers** setting, in the Tailscale admin console,
-has nothing to do with this. It decides what your Tailscale clients resolve with;
-it does not make `100.100.100.100` reachable from inside a container that has no
-TUN device.
-
-What the container actually has:
+Start by looking at what the container has:
 
     docker exec my-audiobook-collection cat /etc/resolv.conf
 
-`100.100.100.100` there is this problem. Anything else, and the resolver is not it.
+`100.100.100.100` there is this case. Then tell Tailscale not to touch it: put
+`--accept-dns=false` in **Tailscale Extra Parameters** (older templates have a
+**Use Tailscale DNS: No** pulldown, and the plain Tailscale image reads
+`TS_ACCEPT_DNS=false`). Apply. The container goes back to the resolver Docker gives
+it and keeps its Tailscale address and its Serve URL.
+
+The tailnet's own **Override DNS servers** setting, in the Tailscale admin console,
+is a different thing and does not fix this: it decides which nameservers MagicDNS
+hands your Tailscale clients, not whether this container gets an answer out of it.
 
 ### How the series is found
 
