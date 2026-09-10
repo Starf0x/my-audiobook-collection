@@ -178,6 +178,28 @@ request fifteen seconds.
 **Rule:** never write a cause into a message the code has not established. A bare
 `catch {}` throws the diagnosis away; catch the error and say what it was.
 
+### The honest message still named the wrong fix (2.2.0)
+
+`EAI_AGAIN` was right, and so was "it has no working DNS" — but the sentence after
+it offered only one remedy: a container on a custom network needs a resolver of its
+own. Frank's container is on bridge. What it had was **Tailscale built into it by
+Unraid**, and that sidecar runs userspace networking with no TUN device, so the
+`nameserver 100.100.100.100` it writes into the container's `resolv.conf` answers
+nothing from inside. The message was true and still sent him to the wrong screen.
+
+While looking for it I also misread the Tailscale console: `checkbox "on"` in the
+accessibility tree is the input's *value*, not its state, and I reported a setting
+as on that was off — and then changed it. That one is in the cross-project notes.
+
+**Fixed** by naming the Tailscale case first in the DNS branch (Unraid's own words,
+**Use Tailscale DNS: No** / `TS_ACCEPT_DNS=false`) and keeping the custom-network
+case after it, with both written up in the README and the wiki.
+
+**Rule:** a message that names a fix is making a second claim, and it can be wrong
+where the diagnosis is right. Name every cause that produces that code, most likely
+first, and give the reader a command that tells them which one they are in —
+`cat /etc/resolv.conf`.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
