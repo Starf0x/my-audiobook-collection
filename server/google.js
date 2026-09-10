@@ -31,11 +31,11 @@ export const unreachable = (e, at = 'www.googleapis.com') => {
   }
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
     return `This container cannot look up ${at} (${code}): it has no working DNS. `
-      + 'If Tailscale is built into this container in Unraid, it has taken over the '
-      + 'resolver: check with cat /etc/resolv.conf, and if it says 100.100.100.100, put '
-      + '--accept-dns=false in Tailscale Extra Parameters (older templates call it Use '
-      + 'Tailscale DNS: No). Otherwise, a container on a custom network (br0, br0.x) needs a '
-      + 'DNS server of its own — set one on the container, or put it back on bridge.';
+      + 'A container inherits its resolver from the host, so read /etc/resolv.conf on the '
+      + 'server: 100.100.100.100 there means Tailscale has taken DNS over on the host, and '
+      + 'a container cannot reach that address — tailscale set --accept-dns=false on the '
+      + 'host gives every container a working resolver again. If the host resolves names '
+      + 'fine, a container on a custom network (br0, br0.x) needs a DNS server of its own.';
   }
   if (['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EACCES'].includes(code)) {
     return `The connection to ${at} was refused or dropped (${code}). Something between `
