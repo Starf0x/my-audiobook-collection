@@ -553,6 +553,16 @@ creating and registering the folder if it is new — and writes that genre into 
 tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
 shown in the dialog.
 
+**Use metadata** saves nothing by itself: it opens *Edit metadata* with the result
+you chose already in the fields — title, author, series, narrator, year,
+description — so you read what Google offered, correct what is wrong and save it
+yourself. What the dialog has no field for, the cover and the volume number, comes
+along and is saved with it. Because that dialog's **Series** field is a folder,
+saving a series taken from Google files the book under it; a result with no series,
+or one whose series you unticked, leaves the book where it is. *Use + write into
+MP3s* beside it is the short way: it applies the result and writes the tags in one
+go, without the dialog.
+
 ### When the lookup cannot reach Google
 
 The dialog says which failure it was, because each is put right somewhere else:
@@ -695,8 +705,9 @@ none, and how many requests it took.
 
 ![A lookup result offering the series it read out of the title](https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/docs/series-lookup.png)
 
-Applying it names the series in the book and **does not move the book** — a
-series folder is a folder, and moving between folders is *Edit metadata*. Writing
+*Use metadata* puts it in the **Series** field of *Edit metadata*, so saving there
+files the book under that series; *Use + write into MP3s* names the series in the
+book and in the tags and **does not move the book**. Writing
 the tags puts the series in the grouping frame with its number on the end
 (`Mistborn 2`), which is one of the places a scan reads a series from, so the
 next scan agrees instead of dropping it. A series filled in without writing the
