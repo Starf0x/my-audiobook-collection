@@ -183,22 +183,35 @@ request fifteen seconds.
 `EAI_AGAIN` was right, and so was "it has no working DNS" — but the sentence after
 it offered only one remedy: a container on a custom network needs a resolver of its
 own. Frank's container is on bridge. What it had was **Tailscale built into it by
-Unraid**, and that sidecar runs userspace networking with no TUN device, so the
-`nameserver 100.100.100.100` it writes into the container's `resolv.conf` answers
-nothing from inside. The message was true and still sent him to the wrong screen.
+Unraid**, which takes the resolver over: `nameserver 100.100.100.100` in the
+container's `resolv.conf`, and nothing answering there. The message was true and
+still sent him to the wrong screen.
 
-While looking for it I also misread the Tailscale console: `checkbox "on"` in the
-accessibility tree is the input's *value*, not its state, and I reported a setting
-as on that was off — and then changed it. That one is in the cross-project notes.
-
-**Fixed** by naming the Tailscale case first in the DNS branch (Unraid's own words,
-**Use Tailscale DNS: No** / `TS_ACCEPT_DNS=false`) and keeping the custom-network
-case after it, with both written up in the README and the wiki.
+**Fixed** by naming that case first in the DNS branch, with the command that tells
+the reader which case they are in (`cat /etc/resolv.conf`) and the setting that
+undoes it, and by writing the same up in the README and the wiki.
 
 **Rule:** a message that names a fix is making a second claim, and it can be wrong
 where the diagnosis is right. Name every cause that produces that code, most likely
-first, and give the reader a command that tells them which one they are in —
-`cat /etc/resolv.conf`.
+first, and give the reader a way to tell them apart.
+
+### And then I explained it with a mechanism I had not checked (2.2.8)
+
+The first version of all that said the sidecar "runs userspace networking, with no
+TUN device, so 100.100.100.100 cannot be reached". It read well and it was
+invented: I had never seen his container's settings. His screenshot of them showed
+**Userspace Networking: Disabled**, and no *Use Tailscale DNS* pulldown at all —
+this template does it with `--accept-dns=false` in **Tailscale Extra Parameters**.
+Both went into the app's own error message, a README and a wiki page, published.
+
+**Fixed** by saying only what is established — Tailscale takes the resolver over,
+and the container then gets no answer — and naming the setting the screenshot
+actually shows, with the older names beside it.
+
+**Rule:** the same rule as the entry above, one level up: do not explain *why*
+someone's machine behaves as it does from a mechanism nobody has looked at. Ask for
+the screen, or say "check this" instead of "this is because". A tidy causal story is
+the shape a guess takes when it is written down.
 
 ## How it is built and tested
 
