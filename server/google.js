@@ -31,8 +31,10 @@ export const unreachable = (e, at = 'www.googleapis.com') => {
   }
   if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
     return `This container cannot look up ${at} (${code}): it has no working DNS. `
-      + 'On Unraid a container on a custom network (br0, br0.x) needs a DNS server of '
-      + 'its own — set one on the container, or put it back on bridge.';
+      + 'If Tailscale is built into this container in Unraid, set Use Tailscale DNS to '
+      + 'No: that sidecar has no TUN device, so the 100.100.100.100 it hands out answers '
+      + 'nothing here. Otherwise, a container on a custom network (br0, br0.x) needs a '
+      + 'DNS server of its own — set one on the container, or put it back on bridge.';
   }
   if (['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'EACCES'].includes(code)) {
     return `The connection to ${at} was refused or dropped (${code}). Something between `
