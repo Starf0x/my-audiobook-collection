@@ -83,6 +83,13 @@ for (const b of db.prepare("SELECT id, description FROM books WHERE description 
 // places kept in books that no longer exist, from before the trigger above
 db.exec('DELETE FROM progress WHERE book_id NOT IN (SELECT id FROM books)');
 
+// Narrators that are really the author: a scan used to take the artist tag when
+// there was no composer one, and an audiobook's artist is its author. Only the
+// ones the files do not carry a narrator tag for can be known to have come from
+// there, so those are the ones cleared; where the file itself says it, it stands.
+db.exec(`UPDATE books SET narrator = '' WHERE narrator <> '' AND narrator = author
+         AND (tagged IS NULL OR tagged NOT LIKE '%narrator%')`);
+
 // The admin password used to be settable in the app; it comes from the
 // container now, so a hash left in here means nothing and is dropped.
 for (const key of ['adminHash', 'adminSalt']) {

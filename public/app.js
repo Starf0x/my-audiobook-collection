@@ -1649,6 +1649,7 @@ window.editMeta = async function (id, over, genre) {
   // a result with no series, or one whose series was unticked, leaves the book
   // where it is filed: an empty field here would move it out of its series folder
   $('#eSeries').value = (over && over.series) || b.folderSeries || b.series || '';
+  $('#eSeriesNo').value = (over ? over.seriesNo : b.series_no) || '';
   $('#eNarrator').value = v.narrator || '';
   $('#eYear').value = v.year || '';
   $('#eDescription').value = v.description || '';
@@ -1659,7 +1660,10 @@ window.editMeta = async function (id, over, genre) {
       title: $('#eTitle').value.trim(), author: $('#eAuthor').value.trim(),
       narrator: $('#eNarrator').value.trim(), year: $('#eYear').value.trim(),
       description: $('#eDescription').value.trim(),
-      ...(over ? { series: $('#eSeries').value.trim() } : {}),
+      // the series goes in as well, so the tag says what the folder says and the
+      // number below it has a series to belong to
+      series: $('#eSeries').value.trim(),
+      seriesNo: Number($('#eSeriesNo').value) || 0,
     };
     $('#edit').close();
     // The series is a folder level, so a change to it has to move the book, or

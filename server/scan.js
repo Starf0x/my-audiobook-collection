@@ -84,7 +84,10 @@ function firstFileMeta(tags) {
   const s = seriesFromTags(tags);
   const meta = {
     title: c.album || c.title || '',
-    narrator: c.composer?.[0] || c.artist || '',
+    // the composer frame is where a narrator is kept, and nowhere else: the
+    // artist of an audiobook is its author, so falling back to it filled the
+    // narrator with the author's name for every file without a composer tag
+    narrator: c.composer?.[0] || '',
     year: c.year ? String(c.year) : '',
     description: descriptionOf(c),
     tagged: taggedFields(c),
