@@ -48,6 +48,12 @@ db.exec(`
     genre TEXT, author TEXT, series TEXT, title TEXT,
     files INTEGER, bytes INTEGER, quality TEXT, replaced_at TEXT
   );
+  CREATE TABLE IF NOT EXISTS converted (
+    id INTEGER PRIMARY KEY,
+    path TEXT UNIQUE, was_path TEXT,
+    genre TEXT, author TEXT, series TEXT, title TEXT,
+    files INTEGER, bytes INTEGER, converted_at TEXT
+  );
   CREATE TABLE IF NOT EXISTS trash (
     id INTEGER PRIMARY KEY,
     was_path TEXT, trash_path TEXT,

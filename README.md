@@ -67,7 +67,39 @@ themselves and tick *Is a Genre* behind each, instead of adding their parent.
 A scan warns when a folder looks like a genre but is not marked as one, since its
 authors would otherwise be filed as genres.
 
-Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only).
+Supported files: `.mp3 .m4a .m4b .ogg .flac .opus` (tag writing is MP3-only, so
+everything else can be **converted** — see below).
+
+## Converting .m4b and .ogg to MP3
+
+Those books play, but their tags cannot be written, so they never leave *Needs
+tags*. **Needs converting** in the left column lists every book whose files are not
+MP3, and *⤳ Convert to MP3…* on a cover does one on the spot.
+
+A **chapter becomes a track**, which is what this app calls a chapter: an `.m4b` of
+30 chapters becomes 30 MP3s named `01 - <chapter>.mp3`, in order, each carrying its
+chapter name as its title, so the player lists them and you can jump between them.
+A file with no chapters becomes one MP3. The cover art the source carried is
+written beside the audio as `cover.jpg`, where a scan and the tag writer both read
+one from.
+
+The files it came from are not deleted: they are moved to a `.converted` folder
+inside the same library folder and listed under **Converted** in the left column,
+with what they were, how big they were and when. Delete them there once you are
+happy — one book at a time or all of them.
+
+### ffmpeg and ffprobe
+
+Converting needs both, and they are **not in the container**: the image stays small
+and nothing is downloaded on its own. Upload them once in **Settings → Conversion
+tools** — static Linux builds for the architecture your server runs on. They are
+kept beside the database in `/data/bin`, so they survive an update of the
+container; each says its version back on the page, which is also the proof that it
+runs there. Until both are there, converting is switched off and says so.
+
+If the tools upload but will not run, the line under the name says that too: the
+usual reason is a build for another architecture, and the second is an appdata
+share mounted `noexec`.
 
 ## Series
 
