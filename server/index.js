@@ -20,7 +20,7 @@ import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, haS
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
-import { TOOLS, BIN_DIR, toolStatus, saveTool, haveTools, convertible, convertBook, convertProgress,
+import { toolsWhy, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
 
 const app = express();
@@ -286,37 +286,8 @@ app.post('/api/replaced/all', requireAdmin, wrap(async (req, res) => res.json(de
 app.post('/api/replaced/:id', requireAdmin, wrap(async (req, res) => res.json(deleteReplaced(req.params.id))));
 
 // --- ogg and m4b to mp3 ------------------------------------------------
-app.get('/api/tools', requireAdmin, (req, res) => res.json(toolStatus()));
-
-// The upload is the file itself as the body: a binary of 80 MB does not belong in
-// a JSON field, and this app takes no dependency to parse a multipart form. It
-// lands beside the database and is made executable there.
-app.post('/api/tools/:name', requireAdmin, wrap(async (req, res) => {
-  if (!TOOLS.includes(req.params.name)) throw new Error(`Not a tool this app runs: ${req.params.name}`);
-  fs.mkdirSync(BIN_DIR, { recursive: true });
-  const tmp = path.join(BIN_DIR, `.upload-${Date.now()}`);
-  await new Promise((ok, no) => {
-    const out = fs.createWriteStream(tmp);
-    req.pipe(out);
-    out.on('finish', ok);
-    out.on('error', no);
-    req.on('error', no);
-  });
-  if (!fs.statSync(tmp).size) {
-    fs.rmSync(tmp, { force: true });
-    throw new Error('That upload was empty.');
-  }
-  let t = saveTool(req.params.name, tmp);
-  // a file this big is sometimes still held when it is asked for its version the
-  // first time; one more go tells "held for a moment" from "will not run here"
-  if (!t.version) {
-    await new Promise((r) => setTimeout(r, 800));
-    t = toolStatus().find((s) => s.name === req.params.name);
-  }
-  res.json(t);
-}));
-
-app.get('/api/convertible', requireAdmin, (req, res) => res.json({ tools: haveTools(), books: convertible() }));
+app.get('/api/convertible', requireAdmin, (req, res) =>
+  res.json({ tools: !toolsWhy(), why: toolsWhy(), books: convertible() }));
 app.get('/api/convert/status', (req, res) => res.json(convertProgress));
 app.post('/api/convert/:id', requireAdmin, wrap(async (req, res) => {
   if (convertProgress.running) throw new Error('A book is being converted already. Wait for it to finish.');

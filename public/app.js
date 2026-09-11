@@ -647,9 +647,7 @@ onMenu('download', () => {
 onMenu('convert', () => {
   const id = Number(coverMenu.dataset.id);
   hideCoverMenu();
-  if (!state.convertTools) {
-    return toast('ffmpeg and ffprobe have not been uploaded yet — Settings › Conversion tools.');
-  }
+  if (!state.convertTools) return toast(state.convertWhy || 'Converting is not available.');
   if (!confirm('Convert this book to MP3? Each chapter becomes a track, and the files it came from '
     + 'are kept under Converted.')) return;
   runConvert(id);
@@ -1482,9 +1480,11 @@ $('#replacedList').onclick = async () => {
 // Needs tags. Converting it makes every chapter a track — which is what this app
 // calls a chapter — and keeps the file it came from under Converted.
 async function loadConvertible() {
-  const d = await api('/api/convertible').catch(() => ({ tools: false, books: [] }));
+  const d = await api('/api/convertible').catch(() => ({ tools: false, books: [], why: '' }));
   state.convertible = d.books;
   state.convertTools = d.tools;
+  // missing is one answer and uploaded-but-will-not-run is another
+  state.convertWhy = d.why || '';
   $('#convertCount').textContent = d.books.length;
   return d;
 }
@@ -1513,7 +1513,7 @@ $('#convertList').onclick = async () => {
   document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
   $('#convertList').classList.add('active');
   $('#authors ul').innerHTML = '';
-  const { tools, books } = await loadConvertible();
+  const { tools, books, why } = await loadConvertible();
   if (!books.length) {
     $('#books .list').innerHTML = '<div class="empty">Every book is MP3 already.</div>';
     return show('books');
@@ -1522,8 +1522,7 @@ $('#convertList').onclick = async () => {
       <span class="hint">${books.length} book(s) whose files are not MP3, so their tags cannot be written.
         Each chapter becomes a track; the file it came from is kept under <em>Converted</em>.</span>
     </div>
-    ${tools ? '' : `<div class="empty">ffmpeg and ffprobe have not been uploaded yet —
-      Settings › Conversion tools. Converting is off until they are there.</div>`}
+    ${tools ? '' : `<div class="empty">${esc(why)} Converting is off until that is put right.</div>`}
     ${books.map((b) => `<div class="fix">
       <div>
         <strong>${esc(b.title)}</strong>
@@ -2100,35 +2099,10 @@ $('#openSettings').onclick = async () => {
   await showTagAll();
   renderLibs();
   await loadGenreFolders();
-  await loadTools();
   $('#browser').hidden = true;
   $('#settings').showModal();
 };
 
-// ffmpeg and ffprobe, uploaded here rather than shipped in the image. What each
-// says about itself is shown: a build for the wrong architecture is only found out
-// by running it, and that is what the line under its name is.
-async function loadTools() {
-  const tools = await api('/api/tools').catch(() => []);
-  $('#toolList').innerHTML = tools.map((t) => `<li>
-      <span>${esc(t.name)}</span>
-      <span class="hint">${t.present
-        ? `${kb(t.size)} · ${t.version ? esc(t.version) : `<em>${esc(t.error)}</em>`}`
-        : 'not uploaded yet'}</span>
-    </li>`).join('');
-}
-
-$('#toolUpload').onclick = () => work($('#toolUpload'), 'The upload', async () => {
-  const file = $('#toolFile').files[0];
-  if (!file) return toast('Pick the file first.');
-  const name = $('#toolWhich').value;
-  // the file itself as the body: no form, no dependency, and 80 MB streams
-  const t = await api(`/api/tools/${name}`, { method: 'POST', body: file });
-  $('#toolFile').value = '';
-  await loadTools();
-  await loadConvertible();
-  toast(t.version ? `${name} is ready: ${t.version}` : `${name} was uploaded, but ${t.error}`);
-}, false);
 $('#addLib').onclick = () => {
   const p = $('#libPath').value.trim();
   if (p) { addLib(p); $('#libPath').value = ''; }

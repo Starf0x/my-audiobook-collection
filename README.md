@@ -90,16 +90,9 @@ happy — one book at a time or all of them.
 
 ### ffmpeg and ffprobe
 
-Converting needs both, and they are **not in the container**: the image stays small
-and nothing is downloaded on its own. Upload them once in **Settings → Conversion
-tools** — static Linux builds for the architecture your server runs on. They are
-kept beside the database in `/data/bin`, so they survive an update of the
-container; each says its version back on the page, which is also the proof that it
-runs there. Until both are there, converting is switched off and says so.
-
-If the tools upload but will not run, the line under the name says that too: the
-usual reason is a build for another architecture, and the second is an appdata
-share mounted `noexec`.
+Converting uses both, and they are **part of the image** from 2.3.0 on — nothing to
+install, upload or configure, and always the build that image is for. A container
+from before that says so when you try: update it to the newest build.
 
 ## Series
 
