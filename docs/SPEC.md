@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.2.64.** This document describes what the app is, how every
+**Version described: 2.2.72.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.72` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -821,6 +821,39 @@ files it says so and asks: decline the delete and they are zipped (a
 hand-written, dependency-free store-only ZIP with a CRC-32 table, reading one
 file at a time) and the loose files removed.
 
+### 7.8a Converting to MP3 (`convert.js`)
+
+Books whose files are not MP3 play but cannot be tagged, so they never leave
+*Needs tags*. `convertible()` is every book with a track that is not `.mp3`, with
+how many and of what kind; `convertBook(id)` turns them.
+
+**The tools are uploaded, not shipped.** `ffmpeg` and `ffprobe` live in
+`DATA_DIR/bin`, put there by `POST /api/tools/:name` — the file itself as the
+request body, streamed to disk, `chmod 755`, no multipart parser and no
+dependency. An older copy is removed before the rename, because renaming over a
+program that has just been run is refused. `toolStatus()` runs each with
+`-version`: that line is what Settings shows, and it is the only way to find out
+that a build is for another architecture. The upload asks a second time after
+800 ms when the first answer is silent, since a file of that size is sometimes
+still held.
+
+**A chapter becomes a track**, which is what this app calls a chapter.
+`ffprobe -show_chapters` gives the boundaries; one `ffmpeg` pass with
+`-f segment -segment_times` writes the pieces, which are then named
+`NN - <chapter>.mp3` and given that chapter as their title tag. No chapters means
+one MP3, named after the file it was. The cover the source carried is written
+beside the audio as `cover.jpg` if there is none, since `-vn` drops it out of the
+MP3s and both the scan and the tag writer read a cover from there.
+
+Progress is **minutes of audio**, not files: `-progress pipe:1` is parsed for
+`out_time=` (not `out_time_ms`, which is microseconds in some builds and
+milliseconds in others), so a single twenty-hour file still has a bar that moves.
+
+The originals are moved to `.converted/<stamp>-<book folder>` **inside the same
+library folder** — a move, not a copy across volumes, and a dot folder, which
+every walk skips — and recorded in `converted`. The book is then re-read with
+`addOne(force)`, so its tracks are the new files.
+
 ### 7.9 A cover for books that have none (`placeholder.js`)
 
 `GET /api/cover/:id` answers with a drawn SVG when the book has no art **or when
@@ -1308,8 +1341,9 @@ both `refreshLibrary()` and the tail of `applyMeta` use it. Without it, applying
 metadata to a book from *Needs tags* threw the page into the library, or onto the
 shelves when a genre came with the metadata.
 
-**Maintenance lists** (admin page, `body.maintenance`): *Broken on disk*, *Import*
-(ten per page), *Replaced*, *Trash* — each with its count in the left column.
+**Maintenance lists** (admin page, `body.maintenance`): *Needs converting*,
+*Converted*, *Broken on disk*, *Import* (ten per page), *Replaced*, *Trash* — each
+with its count in the left column.
 
 *Needs tags* is the exception: it keeps the authors column, like *Listened*, so it
 does **not** set `body.maintenance`. `#needsTags` puts the authors of the books
@@ -1516,6 +1550,8 @@ Server suites:
 | `same-book` | while a long write runs, every further request for that book is refused with the same reason — singly, three at once, with a different `pick`, and from the whole-collection run; another book writes meanwhile; metadata without a file write is still allowed; the book is free again afterwards |
 | `same-book-ui` | in the page: the pressed button dead, that book's metadata buttons held back, one bar only, a second call answered in words, a request that skips the page refused by the server, the batch counting it as one it could not do, and everything free again afterwards |
 | `folder-cover` | a book whose art is a `cover.jpg` beside the audio: a write puts that picture into the files, so the book leaves Needs tags and a rescan reads it back; art dropped in later is found by a scan |
+| `convert-mp3` | converting end to end with the real ffmpeg: the books that are not MP3 and what they are, the refusal and its wording while the tools are missing, the upload route (empty body, a name that is not a tool, a file that will not run, replacing one that is there), an m4b of three chapters becoming three named and numbered MP3s of the right length, the original kept under `.converted` and listed, a chapterless .ogg becoming one MP3, a scan afterwards leaving the kept originals alone, and deleting them one by one and all at once |
+| `convert-ui` | the two rows and their counts, the list naming what a book is, the button off and the way to Settings while the tools are missing, the cover menu offering it only for a book that is not MP3 and saying so when pressed without the tools, what Settings shows before and after the upload, converting from the list, and the counts and the list that was on screen following it |
 | `needs-tags-authors` | Needs tags as a browse: the authors column visible and not a maintenance list, one row per author with its count, the pane opening on all of them, an author narrowing the rows and the write-all button, both buttons still on every row, the chosen author surviving a redraw, an author leaving the column when their last book is fixed, and the empty state saying every book carries its tags |
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
@@ -1616,6 +1652,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.2.72 | .m4b and .ogg books can be converted to MP3, a chapter to a track, with ffmpeg and ffprobe uploaded in Settings and the files they came from kept under Converted |
 | 2.2.64 | Needs tags browses by author, the way the genres do: the authors in the column beside it, one author's books in the pane |
 | 2.2.56 | Find metadata opens with the search in the box and waits for Search, instead of asking Google the moment it is clicked |
 | 2.2.48 | a lookup result with no volume number leaves the number the book already has, instead of emptying the field and taking it off on save |
