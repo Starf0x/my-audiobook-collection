@@ -14,7 +14,10 @@ export const toolAt = (name) => name;
 // Nothing, or why converting is not on offer. It should say nothing at all: an
 // answer here means a container built before they were part of the image.
 export function toolsWhy() {
-  return toolStatus().find((t) => !t.version)?.error || '';
+  const bad = toolStatus().find((t) => !t.version);
+  if (!bad) return '';
+  // a reason is the whole point of this function: never an empty one
+  return bad.error || `${bad.name} is in this container but said nothing when asked for its version.`;
 }
 
 // What the operating system says when a file that was uploaded is not a program
