@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.3.16.** This document describes what the app is, how every
+**Version described: 2.3.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1654,6 +1654,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.3.24 | the cover menu asks again when it is pressed, so an answer from page load cannot stand after the container has restarted |
 | 2.3.16 | and the address that answers it cannot fail silently: it runs inside the error wrapper, so a throw is a reason and not an HTML page |
 | 2.3.8 | every refusal to convert names a reason: an older container, a server that would not answer, or what the tool said |
 | 2.3.0 | ffmpeg and ffprobe are part of the image: the upload in Settings, and everything that could go wrong with it, is gone |
