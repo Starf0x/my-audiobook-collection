@@ -19,8 +19,10 @@ const state = { user: localStorage.user || '', genre: null, author: null, book: 
 // the stylesheet does the rest. A wide screen shows all three and ignores it.
 // One step out of the book column: back to the authors of the genre being
 // browsed, or to the genres themselves when there is no author on screen.
+// Listened and Needs tags browse by author without a genre being chosen, so the
+// column having rows is what says there is an author step to go back to.
 const outOfBooks = () => (!document.body.classList.contains('maintenance')
-  && (state.author || state.series) ? 'authors' : 'genres');
+  && (state.author || state.series || document.querySelector('#authors li')) ? 'authors' : 'genres');
 
 const show = (col) => {
   document.body.dataset.col = col;
@@ -1597,22 +1599,14 @@ async function loadUntagged() {
   return list;
 }
 
-$('#needsTags').onclick = async () => {
-  document.body.classList.add('maintenance');
-  document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
-  $('#needsTags').classList.add('active');
-  $('#authors ul').innerHTML = '';
-  $('#books .list').innerHTML = '<div class="empty">Checking the files…</div>';
-  const list = await loadUntagged();
-  if (!list.length) {
-    $('#books .list').innerHTML = '<div class="empty">Every book carries all required tags.</div>';
-    return;
-  }
+// The rows themselves, for the whole list or for one author's share of it, with
+// the write-them-all button above whatever is being shown.
+function drawFix(list) {
   const fixable = list.filter((b) => b.fixable.length);
   const lookup = list.filter((b) => b.needsLookup.length);
   $('#books .list').innerHTML = `
     <div class="row" style="margin-bottom:4px">
-      <button id="tagFixable">Write into ${fixable.length} book(s)</button>
+      ${fixable.length ? `<button id="tagFixable">Write into ${fixable.length} book(s)</button>` : ''}
       <span class="hint">${lookup.length} book(s) also miss data this app does not have yet —
         use Find metadata on those.</span>
     </div>
@@ -1628,10 +1622,57 @@ $('#needsTags').onclick = async () => {
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
       </div>
     </div>`).join('')}`;
-  $('#tagFixable').onclick = () => {
-    if (!confirm(`Write tags into ${fixable.length} book(s)?`)) return;
-    work($('#tagFixable'), 'The tag write', () => writeMany(fixable), false).then(() => $('#needsTags').click());
-  };
+  if ($('#tagFixable')) {
+    $('#tagFixable').onclick = () => {
+      if (!confirm(`Write tags into ${fixable.length} book(s)?`)) return;
+      work($('#tagFixable'), 'The tag write', () => writeMany(fixable), false).then(() => $('#needsTags').click());
+    };
+  }
+  show('books');
+}
+
+// One author's books that need tags, the way the genres column opens an author
+function untaggedOf(name, li) {
+  document.querySelectorAll('#authors li').forEach((e) => e.classList.remove('active'));
+  if (li) li.classList.add('active');
+  state.untaggedAuthor = name;
+  drawFix((state.untagged || []).filter((b) => b.author === name)
+    .sort((a, b) => a.title.localeCompare(b.title)));
+}
+
+$('#needsTags').onclick = async () => {
+  // this list browses by author, like the genres do, so the authors column stays
+  document.body.classList.remove('maintenance');
+  document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
+  $('#needsTags').classList.add('active');
+  state.genre = null;
+  state.author = null;
+  state.series = null;
+  $('#books .list').innerHTML = '<div class="empty">Checking the files…</div>';
+  const list = await loadUntagged();
+  state.untagged = list;
+  if (!list.length) {
+    $('#authors ul').innerHTML = '';
+    state.untaggedAuthor = null;
+    $('#books .list').innerHTML = '<div class="empty">Every book carries all required tags.</div>';
+    return show('books');
+  }
+  const authors = [...new Set(list.map((b) => b.author))].sort((a, b) => a.localeCompare(b));
+  $('#authors ul').innerHTML = authors.map((name) => `<li data-name="${esc(name)}">
+      <span class="who">${esc(name)}</span>
+      <span class="count">${list.filter((b) => b.author === name).length}</span></li>`).join('');
+  $('#authors ul').querySelectorAll('li').forEach((li) => {
+    li.onclick = () => untaggedOf(li.dataset.name, li);
+  });
+  // writing tags for a book redraws this list: the author being worked through
+  // is where the owner was, so that is what comes back
+  const was = authors.includes(state.untaggedAuthor) ? state.untaggedAuthor : null;
+  if (was) {
+    return untaggedOf(was, [...$('#authors ul').querySelectorAll('li')]
+      .find((e) => e.dataset.name === was));
+  }
+  state.untaggedAuthor = null;
+  drawFix(list);
 };
 
 // `over` is a chosen lookup result: the fields open filled with it, so what
