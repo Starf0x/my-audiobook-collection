@@ -164,18 +164,6 @@
     <button id="tagAll" class="ghost">Write tags into all MP3s</button>
     <button id="tagAllStop" class="ghost danger" hidden>Stop</button>
   </div>
-  <label>Conversion tools</label>
-  <p class="hint">Converting <code>.m4b</code> or <code>.ogg</code> books to MP3 needs <strong>ffmpeg</strong>
-    and <strong>ffprobe</strong>. They are not in the container: upload them here and they are kept beside
-    the database, so the image stays small and nothing is downloaded on its own. Use <em>static Linux
-    builds</em> for the architecture this server runs on — each says its version below once it is here,
-    which is also the proof that it runs.</p>
-  <ul id="toolList"></ul>
-  <div class="row">
-    <input type="file" id="toolFile">
-    <select id="toolWhich"><option value="ffmpeg">ffmpeg</option><option value="ffprobe">ffprobe</option></select>
-    <button id="toolUpload" class="ghost">Upload</button>
-  </div>
   <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
 </dialog>
 

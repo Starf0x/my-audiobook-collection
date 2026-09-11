@@ -1,62 +1,64 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { db, DATA_DIR, getLibraries } from './db.js';
+import { db, getLibraries } from './db.js';
 import { addOne } from './scan.js';
 import { writeTag } from './tagpool.js';
 
-// ffmpeg and ffprobe are not in the image: they are uploaded in Settings and kept
-// here, so the container stays small and nothing is fetched behind the owner's
-// back. They have to be static Linux builds for the architecture the container
-// runs on — `-version` is asked of them once, which is the proof that they run.
-export const BIN_DIR = path.join(DATA_DIR, 'bin');
+// ffmpeg and ffprobe come with the image, so they are always the build that image
+// is for and there is nothing to install. `-version` is still asked of them,
+// because "it is in the container" is a claim the code can check.
 export const TOOLS = ['ffmpeg', 'ffprobe'];
-// the container is Linux; the suites run this server on Windows, where a program
-// is only a program with its extension
-export const toolAt = (name) =>
-  path.join(BIN_DIR, process.platform === 'win32' ? `${name}.exe` : name);
-export const haveTools = () => TOOLS.every((t) => fs.existsSync(toolAt(t)));
+export const toolAt = (name) => name;
+
+// Nothing, or why converting is not on offer. It should say nothing at all: an
+// answer here means a container built before they were part of the image.
+export function toolsWhy() {
+  return toolStatus().find((t) => !t.version)?.error || '';
+}
+
+// What the operating system says when a file that was uploaded is not a program
+// it can run. "spawn ENOEXEC" on its own sends nobody anywhere.
+const wontRun = (file, e) => {
+  const name = path.basename(file);
+  const code = e?.code || (/ENOEXEC|EACCES|ENOENT/.exec(e?.message || '') || [])[0] || '';
+  if (code === 'ENOENT') {
+    return new Error(`${name} is not in this container. It is part of the image from 2.3.0 on: `
+      + 'update the container to the newest build.');
+  }
+  return new Error(`${name} would not run (${code || 'no code'}): ${e?.message || 'no reason given'}`);
+};
 
 export function toolStatus() {
   return TOOLS.map((name) => {
     const file = toolAt(name);
-    if (!fs.existsSync(file)) return { name, present: false, version: '', error: '' };
-    const size = fs.statSync(file).size;
     const r = spawnSync(file, ['-version'], { encoding: 'utf8', timeout: 15000 });
-    // what it says about itself, or why it will not run: a file that was uploaded
-    // for the wrong architecture fails here and nowhere else
+    // what it says about itself, which is also the proof that it is there and runs
     const line = String(r.stdout || '').split('\n')[0].trim();
     return {
-      name, present: true, size,
+      name,
       version: r.status === 0 ? line : '',
-      error: r.status === 0 ? '' : (r.error?.code === 'ENOEXEC'
-        ? 'This file will not run here: it is not a build for this container’s architecture.'
-        : (r.error?.message || String(r.stderr || '').split('\n')[0] || `exited ${r.status}`)),
+      error: r.status === 0 ? ''
+        : (r.error ? wontRun(file, r.error).message
+          : (String(r.stderr || '').split('\n')[0] || `${name} exited ${r.status}`)),
     };
   });
 }
 
-export function saveTool(name, tmpFile) {
-  if (!TOOLS.includes(name)) throw new Error(`Not a tool this app runs: ${name}`);
-  fs.mkdirSync(BIN_DIR, { recursive: true });
-  const dest = toolAt(name);
-  // the copy that is there has to go first, or a newer build cannot replace it:
-  // renaming over a program that has just been run is refused
-  fs.rmSync(dest, { force: true });
-  fs.renameSync(tmpFile, dest);
-  fs.chmodSync(dest, 0o755);
-  return toolStatus().find((t) => t.name === name);
-}
-
 // --- running them ------------------------------------------------------
 const run = (file, args, onOut) => new Promise((resolve, reject) => {
-  const p = spawn(file, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let p;
+  // spawn throws for some of these rather than raising an error event, and a
+  // throw in here would reject with the bare libuv message
+  try {
+    p = spawn(file, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) { return reject(wontRun(file, e)); }
   let out = '';
   let err = '';
   p.stdout.on('data', (d) => { if (onOut) onOut(String(d)); else out += d; });
   // the last of it is what a failure is explained with; the rest is banner
   p.stderr.on('data', (d) => { err = (err + d).slice(-4000); });
-  p.on('error', (e) => reject(new Error(`${path.basename(file)} would not run: ${e.message}`)));
+  p.on('error', (e) => reject(wontRun(file, e)));
   p.on('close', (code) => (code === 0 ? resolve(out)
     : reject(new Error(err.trim().split('\n').filter(Boolean).pop() || `${path.basename(file)} exited ${code}`))));
 });
@@ -180,9 +182,10 @@ async function coverFrom(src) {
 }
 
 export async function convertBook(id) {
-  if (!haveTools()) {
-    throw new Error('ffmpeg and ffprobe have not been uploaded yet — Settings → Conversion tools.');
-  }
+  // asked before a single file is touched: a tool that will not run must not be
+  // found out halfway through a book
+  const why = toolsWhy();
+  if (why) throw new Error(why);
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(id));
   if (!book) throw new Error('Book not found');
   const sources = db.prepare(`SELECT path FROM tracks WHERE book_id = ? AND LOWER(path) NOT LIKE '%.mp3'

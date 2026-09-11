@@ -282,20 +282,23 @@ every field of that group needs the same fallback. Write them as one expression,
 check them against each other — a fallback that covers the name and not the number
 is worse than none, because it looks handled.
 
-### A program cannot be replaced by renaming over it (2.2.72)
+### The tools were the owner's to supply, and that was the whole problem (2.2.72 → 2.3.0)
 
-The uploaded ffmpeg and ffprobe are written to `/data/bin`. Uploading a newer one
-failed with `EPERM ... rename`, because the copy already there had just been run
-for its version. The suite found it on the second upload of the same tool.
+Converting was built with ffmpeg and ffprobe **uploaded** in Settings, to keep the
+image small. Frank's first conversion failed with `spawn ENOEXEC`: the files he had
+uploaded were not programs this container could run. Everything about that feature
+then had to explain itself — which build, which architecture, what a `.tar.xz` is
+not, whether the share is mounted `noexec` — and two bugs of its own turned up in
+an afternoon (a rename that could not replace a program that had just been run, and
+a version check that came back silent on a freshly written 100 MB file).
 
-**Fixed** by removing the old file before the rename. And the version check, which
-sometimes came back silent the first time on a freshly written 100 MB file, is
-asked a second time after 800 ms — so "held for a moment" is told apart from "will
-not run here", which is the answer that matters.
+**Fixed** by putting `ffmpeg` in the image — one `apk add` in the Dockerfile, which
+brings ffprobe with it and is by definition the build that image is for — and
+taking the upload, its route and its Settings section back out.
 
-**Rule:** replacing a file you have just executed is not a plain rename. Delete
-first, then move — and when a check on a large file is the thing that decides what
-the interface says, give it one retry before reporting failure.
+**Rule:** a feature that only works if the owner supplies the right binary has
+shifted the hard part onto them, and it will come back as a support question. When
+a dependency can ship with the thing that needs it, ship it.
 
 ## How it is built and tested
 
