@@ -644,9 +644,13 @@ onMenu('download', () => {
 });
 
 // only on the books it means something for, which the Needs converting list knows
-onMenu('convert', () => {
+onMenu('convert', async () => {
   const id = Number(coverMenu.dataset.id);
   hideCoverMenu();
+  // asked again here rather than trusted from page load: the answer to that one
+  // is kept for the life of the page, and a container that restarted in the
+  // meantime would go on being reported as one that cannot convert
+  await loadConvertible();
   if (!state.convertTools) return toast(state.convertWhy);
   if (!confirm('Convert this book to MP3? Each chapter becomes a track, and the files it came from '
     + 'are kept under Converted.')) return;
