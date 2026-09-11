@@ -767,6 +767,12 @@ A book counts as done when its **files** carry all of album, title, artist, albu
 artist, genre, year, description, cover art and track number. Open **Needs tags**
 and read a row: it says what a write can add now, and what is *not known yet*.
 
+The list browses the way the genres do. The authors of the books that need tags
+are in the middle column with a count each, and picking one leaves that author's
+books in the pane — with *Write into N book(s)* counting what is on screen, so a
+collection can be worked through one author at a time. The list is drawn again
+after every write, and comes back to the author you were on.
+
 Writing tags cannot invent what the app does not have. A book with no year, no
 description or no cover art anywhere keeps asking for those until a lookup or
 *Edit metadata* fills them in — that is the *not known yet* half of the row, and no

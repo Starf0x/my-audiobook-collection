@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.2.56.** This document describes what the app is, how every
+**Version described: 2.2.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.2.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1230,7 +1230,8 @@ attribute entirely. `show(col)` sets it, called where the interface already knew
 it had moved: `selectGenre` → authors, `drawBooks` and `loadHome` → books, and a
 click on any maintenance row → books. Each column heading carries the step
 out — `#backGenres` ("‹ Genres"), `#backCol` (named after where it goes, authors
-or genres, by `outOfBooks()`) — and the genre column has `#toBooks` ("Books ›")
+or genres, by `outOfBooks()`, which counts a filled authors column as a step of its
+own: *Listened* and *Needs tags* browse by author with no genre chosen) — and the genre column has `#toBooks` ("Books ›")
 forward. The page ships with `data-col="books"`, so it opens on the shelves before
 any script runs.
 
@@ -1307,9 +1308,16 @@ both `refreshLibrary()` and the tail of `applyMeta` use it. Without it, applying
 metadata to a book from *Needs tags* threw the page into the library, or onto the
 shelves when a genre came with the metadata.
 
-**Maintenance lists** (admin page, `body.maintenance`): *Needs tags* (what a write
-can fix now versus what needs a lookup), *Broken on disk*, *Import* (ten per
-page), *Replaced*, *Trash* — each with its count in the left column.
+**Maintenance lists** (admin page, `body.maintenance`): *Broken on disk*, *Import*
+(ten per page), *Replaced*, *Trash* — each with its count in the left column.
+
+*Needs tags* is the exception: it keeps the authors column, like *Listened*, so it
+does **not** set `body.maintenance`. `#needsTags` puts the authors of the books
+that need tags in that column with a count each and `drawFix(list)` in the pane;
+`untaggedOf(name)` narrows both the rows and the *Write into N book(s)* button to
+one author. `state.untaggedAuthor` is what `backToView()` returns to, so writing
+tags into a book — which redraws the list — does not throw the owner back to the
+top of a collection they are working through author by author.
 
 The listening page mirrors browsing, series, folding, search and the player, and
 carries an **Admin** button that unlocks and opens the other page. A visitor who
@@ -1508,6 +1516,7 @@ Server suites:
 | `same-book` | while a long write runs, every further request for that book is refused with the same reason — singly, three at once, with a different `pick`, and from the whole-collection run; another book writes meanwhile; metadata without a file write is still allowed; the book is free again afterwards |
 | `same-book-ui` | in the page: the pressed button dead, that book's metadata buttons held back, one bar only, a second call answered in words, a request that skips the page refused by the server, the batch counting it as one it could not do, and everything free again afterwards |
 | `folder-cover` | a book whose art is a `cover.jpg` beside the audio: a write puts that picture into the files, so the book leaves Needs tags and a rescan reads it back; art dropped in later is found by a scan |
+| `needs-tags-authors` | Needs tags as a browse: the authors column visible and not a maintenance list, one row per author with its count, the pane opening on all of them, an author narrowing the rows and the write-all button, both buttons still on every row, the chosen author surviving a redraw, an author leaving the column when their last book is fixed, and the empty state saying every book carries its tags |
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
@@ -1607,6 +1616,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.2.64 | Needs tags browses by author, the way the genres do: the authors in the column beside it, one author's books in the pane |
 | 2.2.56 | Find metadata opens with the search in the box and waits for Search, instead of asking Google the moment it is clicked |
 | 2.2.48 | a lookup result with no volume number leaves the number the book already has, instead of emptying the field and taking it off on save |
 | 2.2.40 | every field in Edit metadata has a button that copies it to the clipboard, over plain http as well |
