@@ -1,4 +1,7 @@
 FROM node:26-alpine
+# ffmpeg brings ffprobe with it: converting .m4b and .ogg books to MP3 needs both,
+# and the alpine package is the build for whatever architecture this image is.
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
