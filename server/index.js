@@ -286,8 +286,12 @@ app.post('/api/replaced/all', requireAdmin, wrap(async (req, res) => res.json(de
 app.post('/api/replaced/:id', requireAdmin, wrap(async (req, res) => res.json(deleteReplaced(req.params.id))));
 
 // --- ogg and m4b to mp3 ------------------------------------------------
-app.get('/api/convertible', requireAdmin, (req, res) =>
-  res.json({ tools: !toolsWhy(), why: toolsWhy(), books: convertible() }));
+// wrapped, because this one runs two programs and a query: a throw here would
+// otherwise be an HTML error page, which the page reads as "no reason given"
+app.get('/api/convertible', requireAdmin, wrap(async (req, res) => {
+  const why = toolsWhy();
+  res.json({ tools: !why, why, books: convertible() });
+}));
 app.get('/api/convert/status', (req, res) => res.json(convertProgress));
 app.post('/api/convert/:id', requireAdmin, wrap(async (req, res) => {
   if (convertProgress.running) throw new Error('A book is being converted already. Wait for it to finish.');
