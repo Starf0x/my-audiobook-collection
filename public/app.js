@@ -529,6 +529,8 @@ const showCoverMenu = (book, x, y) => {
   $('#cmTitle').textContent = book.title || 'This book';
   const done = coverMenu.querySelector('[data-act="listened"]');
   if (done) done.textContent = doneNow(book.id) ? '☐ Mark as not listened' : '☑ Mark as listened';
+  // converting says nothing about a book that is already MP3
+  $('#cmConvert').hidden = !(state.convertible || []).some((b) => b.id === book.id);
   coverMenu.dataset.id = String(book.id);
   coverMenu.hidden = false;
   // opened at the pointer, then pulled back inside the window
@@ -641,6 +643,17 @@ onMenu('download', () => {
   a.remove();
 });
 
+// only on the books it means something for, which the Needs converting list knows
+onMenu('convert', () => {
+  const id = Number(coverMenu.dataset.id);
+  hideCoverMenu();
+  if (!state.convertTools) {
+    return toast('ffmpeg and ffprobe have not been uploaded yet — Settings › Conversion tools.');
+  }
+  if (!confirm('Convert this book to MP3? Each chapter becomes a track, and the files it came from '
+    + 'are kept under Converted.')) return;
+  runConvert(id);
+});
 onMenu('edit', () => { const id = Number(coverMenu.dataset.id); hideCoverMenu(); editMeta(id); });
 onMenu('find', () => { const id = Number(coverMenu.dataset.id); hideCoverMenu(); findMeta(id); });
 
@@ -1464,9 +1477,114 @@ $('#replacedList').onclick = async () => {
   });
 };
 
+// --- maintenance: books that are not MP3 --------------------------------
+// An .m4b or .ogg book plays, but its tags cannot be written, so it never leaves
+// Needs tags. Converting it makes every chapter a track — which is what this app
+// calls a chapter — and keeps the file it came from under Converted.
+async function loadConvertible() {
+  const d = await api('/api/convertible').catch(() => ({ tools: false, books: [] }));
+  state.convertible = d.books;
+  state.convertTools = d.tools;
+  $('#convertCount').textContent = d.books.length;
+  return d;
+}
+
+async function loadConverted() {
+  const items = await api('/api/converted').catch(() => []);
+  $('#convertedCount').textContent = items.length || '0';
+  return items;
+}
+
+// One book, with the bar at the bottom following the minutes of audio through it
+async function runConvert(id) {
+  const until = { finished: false };
+  const request = post(`/api/convert/${id}`, {}).catch((e) => ({ error: e.message }))
+    .then((r) => { until.finished = true; return r; });
+  const p = await trackProgress('/api/convert/status', 'Converting', until);
+  const r = await request;
+  const failure = r.error || p.error;
+  p.bar.say(failure ? `Converting failed: ${failure}` : `Converted: ${r.files} file(s) kept under Converted.`, !!failure);
+  p.bar.done(failure ? 15000 : 4000);
+  await refreshLibrary();
+}
+
+$('#convertList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
+  $('#convertList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  const { tools, books } = await loadConvertible();
+  if (!books.length) {
+    $('#books .list').innerHTML = '<div class="empty">Every book is MP3 already.</div>';
+    return show('books');
+  }
+  $('#books .list').innerHTML = `<div class="row pager">
+      <span class="hint">${books.length} book(s) whose files are not MP3, so their tags cannot be written.
+        Each chapter becomes a track; the file it came from is kept under <em>Converted</em>.</span>
+    </div>
+    ${tools ? '' : `<div class="empty">ffmpeg and ffprobe have not been uploaded yet —
+      Settings › Conversion tools. Converting is off until they are there.</div>`}
+    ${books.map((b) => `<div class="fix">
+      <div>
+        <strong>${esc(b.title)}</strong>
+        <div class="sub">${esc(b.genre)} · ${esc(b.author)}${b.series ? ' · ' + esc(b.series) : ''}</div>
+        <div class="sub">${b.others} of ${b.files} file(s) are ${esc(b.kinds)}${b.duration ? ' · ' + hms(b.duration) : ''}</div>
+      </div>
+      <div class="actions">
+        <button data-convert="${b.id}"${tools ? '' : ' disabled'}>Convert to MP3</button>
+      </div>
+    </div>`).join('')}`;
+  $('#books .list').querySelectorAll('button[data-convert]').forEach((b) => {
+    b.onclick = () => work(b, 'The conversion', () => runConvert(Number(b.dataset.convert)), false);
+  });
+  show('books');
+};
+
+$('#convertedList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
+  $('#convertedList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  const items = await loadConverted();
+  if (!items.length) {
+    $('#books .list').innerHTML = '<div class="empty">Nothing converted yet. The .m4b and .ogg files of a '
+      + 'book that has been converted are kept here until you delete them.</div>';
+    return show('books');
+  }
+  $('#books .list').innerHTML = `<div class="row pager">
+      <span class="hint">${items.length} book(s) converted, their original files kept beside the library</span>
+      <div class="spacer"></div><button id="cAll" class="danger">Delete them all</button>
+    </div>` + items.map((r) => `<div class="fix">
+    <div>
+      <strong>${esc(r.title)}</strong>
+      <div class="sub">${esc(r.genre)} · ${esc(r.author)}${r.series ? ' · ' + esc(r.series) : ''}</div>
+      <div class="sub">${r.files} file(s) · ${kb(r.bytes)} · converted ${new Date(r.converted_at).toLocaleString()}</div>
+      <div class="sub">${esc(r.path)}${r.onDisk ? '' : ' — the folder is gone'}</div>
+    </div>
+    <div class="actions"><button class="danger" data-del="${r.id}">Delete now</button></div>
+  </div>`).join('');
+  $('#books .list').querySelectorAll('button[data-del]').forEach((b) => {
+    b.onclick = () => work(b, 'The delete', async () => {
+      if (!confirm('Delete the original files of this book for good?')) return;
+      try { await post(`/api/converted/${b.dataset.del}`, {}); } catch (e) { return toast(e.message); }
+      toast('Deleted.');
+      $('#convertedList').click();
+    });
+  });
+  const all = $('#books #cAll');
+  if (all) all.onclick = () => work(all, 'The delete', async () => {
+    if (!confirm(`Delete the originals of all ${items.length} converted books for good?`)) return;
+    try { await post('/api/converted/all', {}); } catch (e) { return toast(e.message); }
+    toast('Deleted.');
+    $('#convertedList').click();
+  });
+  show('books');
+};
+
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
-const MAINTENANCE_ROWS = ['needsTags', 'brokenList', 'skippedList', 'importList', 'replacedList', 'trashList',
+const MAINTENANCE_ROWS = ['needsTags', 'convertList', 'convertedList', 'brokenList', 'skippedList',
+  'importList', 'replacedList', 'trashList',
   // not maintenance, but a view of its own in the same column, and the same rule
   // holds: what is drawn again after a change is what was on screen
   'listenedList'];
@@ -1484,7 +1602,8 @@ async function backToView() {
 
 async function refreshLibrary() {
   await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(),
-    loadReplaced(), loadBroken(), loadSkipped(), loadListened(), importCountOnly()]);
+    loadReplaced(), loadBroken(), loadSkipped(), loadListened(), loadConvertible(),
+    loadConverted(), importCountOnly()]);
   await backToView();
 }
 
@@ -1981,9 +2100,35 @@ $('#openSettings').onclick = async () => {
   await showTagAll();
   renderLibs();
   await loadGenreFolders();
+  await loadTools();
   $('#browser').hidden = true;
   $('#settings').showModal();
 };
+
+// ffmpeg and ffprobe, uploaded here rather than shipped in the image. What each
+// says about itself is shown: a build for the wrong architecture is only found out
+// by running it, and that is what the line under its name is.
+async function loadTools() {
+  const tools = await api('/api/tools').catch(() => []);
+  $('#toolList').innerHTML = tools.map((t) => `<li>
+      <span>${esc(t.name)}</span>
+      <span class="hint">${t.present
+        ? `${kb(t.size)} · ${t.version ? esc(t.version) : `<em>${esc(t.error)}</em>`}`
+        : 'not uploaded yet'}</span>
+    </li>`).join('');
+}
+
+$('#toolUpload').onclick = () => work($('#toolUpload'), 'The upload', async () => {
+  const file = $('#toolFile').files[0];
+  if (!file) return toast('Pick the file first.');
+  const name = $('#toolWhich').value;
+  // the file itself as the body: no form, no dependency, and 80 MB streams
+  const t = await api(`/api/tools/${name}`, { method: 'POST', body: file });
+  $('#toolFile').value = '';
+  await loadTools();
+  await loadConvertible();
+  toast(t.version ? `${name} is ready: ${t.version}` : `${name} was uploaded, but ${t.error}`);
+}, false);
 $('#addLib').onclick = () => {
   const p = $('#libPath').value.trim();
   if (p) { addLib(p); $('#libPath').value = ''; }
@@ -2107,6 +2252,7 @@ function finishScan(error, p) {
   loadUntagged().then(() => { if ($('#needsTags').classList.contains('active')) $('#needsTags').click(); });
   loadBroken().then(() => { if ($('#brokenList').classList.contains('active')) $('#brokenList').click(); });
   loadSkipped().then(() => { if ($('#skippedList').classList.contains('active')) $('#skippedList').click(); });
+  loadConvertible().then(() => { if ($('#convertList').classList.contains('active')) $('#convertList').click(); });
 }
 
 for (const id of MAINTENANCE_ROWS) {
@@ -2127,7 +2273,7 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
   const users = await loadUsers();
   await loadGenres();
   await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
-    loadReplaced(), loadBroken(), loadSkipped()]);
+    loadReplaced(), loadBroken(), loadSkipped(), loadConvertible(), loadConverted()]);
   await loadHome();
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
   // a scan another browser started is still running: follow it instead of

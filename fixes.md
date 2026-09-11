@@ -282,6 +282,21 @@ every field of that group needs the same fallback. Write them as one expression,
 check them against each other — a fallback that covers the name and not the number
 is worse than none, because it looks handled.
 
+### A program cannot be replaced by renaming over it (2.2.72)
+
+The uploaded ffmpeg and ffprobe are written to `/data/bin`. Uploading a newer one
+failed with `EPERM ... rename`, because the copy already there had just been run
+for its version. The suite found it on the second upload of the same tool.
+
+**Fixed** by removing the old file before the rename. And the version check, which
+sometimes came back silent the first time on a freshly written 100 MB file, is
+asked a second time after 800 ms — so "held for a moment" is told apart from "will
+not run here", which is the answer that matters.
+
+**Rule:** replacing a file you have just executed is not a plain rename. Delete
+first, then move — and when a check on a large file is the thing that decides what
+the interface says, give it one retry before reporting failure.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
