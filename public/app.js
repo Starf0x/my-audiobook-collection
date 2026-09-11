@@ -1790,16 +1790,28 @@ function seriesChoice(i, book, c) {
         + 'Edit metadata, which is a folder: saving there moves the book into it.'}</div>`;
 }
 
-window.findMeta = async function (id, query) {
+// Find metadata opens the dialog with the search it would have made, and waits.
+// A folder name is often nearly right and rarely exactly right, so asking Google
+// before the owner has read the words spends a request on the wrong book.
+window.findMeta = async function (id) {
+  const book = await api(`/api/books/${id}`);
+  $('#lookupQuery').value = [book.title, book.author].filter(Boolean).join(' ');
+  $('#lookupBody').innerHTML = '<div class="empty">Change the search if you like, '
+    + 'then press Search.</div>';
+  $('#lookupProgress').hidden = true;
+  const search = () => lookMeta(id, $('#lookupQuery').value.trim());
+  $('#lookupSearch').onclick = search;
+  $('#lookupQuery').onkeydown = (e) => { if (e.key === 'Enter') search(); };
+  if (!$('#lookup').open) $('#lookup').showModal();
+  $('#lookupQuery').focus();
+  $('#lookupQuery').select();
+};
+
+window.lookMeta = async function (id, query) {
   $('#lookupBody').innerHTML = '';
   const book = await api(`/api/books/${id}`);
-  if (!$('#lookup').open) {
-    $('#lookupQuery').value = [book.title, book.author].filter(Boolean).join(' ');
-    $('#lookup').showModal();
-  }
   const known = new Set((await api('/api/genrefolders').catch(() => ({ folders: [] })))
     .folders.map((g) => g.genre.toLowerCase()));
-  $('#lookupSearch').onclick = () => findMeta(id, $('#lookupQuery').value.trim());
   const state_ = { finished: false };
   const poll = pollLookup(state_);
   try {

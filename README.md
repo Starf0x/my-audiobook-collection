@@ -548,8 +548,10 @@ Google Cloud Console → *APIs & Services* → enable **Books API** → *Credent
 *Create credentials* → *API key*. It goes on the container, as `GOOGLE_API_KEY`
 (the Unraid template has a masked field for it), and nowhere else.
 
-**Find metadata** on a book and pick a result, or type your own search when the
-folder name finds nothing. A result that credits more than one author offers the
+**Find metadata** on a book opens the dialog with the search it would make — the
+title and author as your folders name them — and **waits**. Read it, correct it,
+and press Search (or Enter). A folder name is often nearly right and rarely exactly
+right, so the search you would have thrown away is the one you edit instead. A result that credits more than one author offers the
 pair as a choice: both names, or either one — what you pick goes into the artist
 and album artist tags, and the author folder keeps its name. A result that comes
 with categories offers them as genres next to the one the book is filed under
