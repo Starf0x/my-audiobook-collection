@@ -647,7 +647,7 @@ onMenu('download', () => {
 onMenu('convert', () => {
   const id = Number(coverMenu.dataset.id);
   hideCoverMenu();
-  if (!state.convertTools) return toast(state.convertWhy || 'Converting is not available.');
+  if (!state.convertTools) return toast(state.convertWhy);
   if (!confirm('Convert this book to MP3? Each chapter becomes a track, and the files it came from '
     + 'are kept under Converted.')) return;
   runConvert(id);
@@ -1480,11 +1480,14 @@ $('#replacedList').onclick = async () => {
 // Needs tags. Converting it makes every chapter a track — which is what this app
 // calls a chapter — and keeps the file it came from under Converted.
 async function loadConvertible() {
-  const d = await api('/api/convertible').catch(() => ({ tools: false, books: [], why: '' }));
+  const d = await api('/api/convertible')
+    .catch((e) => ({ tools: false, books: [], why: `The server would not say: ${e.message}` }));
   state.convertible = d.books;
   state.convertTools = d.tools;
   // missing is one answer and uploaded-but-will-not-run is another
-  state.convertWhy = d.why || '';
+  state.convertWhy = d.why
+    || (d.tools ? '' : 'This container is older than 2.3.0, which is where converting came in. '
+      + 'Update it to the newest build.');
   $('#convertCount').textContent = d.books.length;
   return d;
 }
