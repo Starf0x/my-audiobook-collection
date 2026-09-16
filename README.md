@@ -438,6 +438,13 @@ reason and how many files are involved:
 | no audio files left | the folder is there and empty of audio |
 | files that cannot be read | truncated, zero-byte or unreadable files |
 | files have changed | the files the library listed are gone, others are there — a scan will pick those up |
+| files a scan could not read | put there by a **scan**, not by this check: the file it tripped over is named, with what the reader said about it |
+
+A book whose files the scan cannot read used to arrive quietly, with a length of
+nothing and no tags — the commonest cause being an ID3 tag written onto an `.ogg`
+by a tagger meant for MP3, which also stops it converting until 2.3.40. Such a
+book now lands on this list by itself, and the scan says how many files there were
+in the line it leaves behind.
 
 Each entry offers **Check again**, which re-reads that one book and drops it off
 the list when it is well, and a delete: *Delete…* moves the book to the trash

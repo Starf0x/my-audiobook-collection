@@ -320,6 +320,32 @@ cost an afternoon — `catch {}` on a lookup, `-v quiet` here, and `catch {}` in
 scan, which still has one. A flag that quietens a tool is the same mistake as a
 `catch` with no binding. Quiet the *noise* (`-hide_banner`), never the diagnosis.
 
+### The scan's own silence, and why a catch was never going to catch it (2.3.48)
+
+`try { tags = await parseFile(file); } catch { /* unreadable file */ }`. Four `.ogg`
+books sat in the library with a length of 0 and no tags for weeks, and nothing
+anywhere said why — the same ID3-in-front-of-Ogg files that later failed to
+convert. The fix looked like one line: bind the error and report it.
+
+It was not, and the first test said so: **`parseFile` does not throw** on a file it
+makes nothing of. It answers with an empty result. The catch had never fired; the
+silence came from somewhere else entirely. A file counts as unread when the reader
+reports no **container** — which is the test the disk check had been using all
+along, two modules away.
+
+**Fixed** by testing for that container, keeping whatever the reader did say, and
+writing a `broken` row so the book turns up on *Broken on disk* with the file named
+and the reason in words. The scan's line says how many there were — after the books
+have been read, since the first version of it counted before a single one had.
+
+**Rule:** "the reason was swallowed by a catch" is a hypothesis, not a diagnosis.
+Check that the failure path is even the one being taken — a library that returns
+empty instead of throwing needs a test on what came back, not a better `catch`.
+
+And two rules for a cheap check that shares a list with an expensive one: only
+clear the verdicts you wrote yourself (`WHERE reason = 'unreadable'`), and when you
+have read one file of forty, you may add what that file showed and clear nothing.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
