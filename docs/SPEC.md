@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.4.0.** This document describes what the app is, how every
+**Version described: 2.4.8.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.8` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -550,6 +550,21 @@ This was found the long way round. Three changes were made on hypotheses that
 sounded right — the burst of requests, the country, the message — and none of them
 helped, because the container had been answering a straight `curl` with 503 all
 along. The one measurement that settled it took six requests.
+
+**How much it asks for, which is what finally mattered.** Measured on a key
+Google refuses at random — one request in four or five comes through, whatever the
+spacing, which twelve requests 400 ms apart and five 20 s apart both showed — the
+count is the whole story: eight requests at a quarter each is no answer at all. So
+a lookup is **one request**. The series is read from what the search answer
+carries; where it carries none, the reason line says so and a button, *Look harder
+for the series*, runs what used to run by itself: a `volumes/<id>` per result, the
+ebook catalogue, the widening to forty records. `lookup(book, search, trace, deep)`
+and `GET /api/lookup/:id?deep=1` are that switch.
+
+And a refusal is worth trying again at once rather than waiting it out: the ladder
+is 0.7, 1, 1.5, 2, 3, 4, 6 and 8 seconds — eight goes in under half a minute, which
+on a one-in-four key answers nine times out of ten, where three waits of 10, 20 and
+30 seconds answered less than half the time and felt broken while doing it.
 
 **How it asks, which is why it used to be told Google was busy.** One lookup can
 make a dozen requests — the search, a `volumes/<id>` probe per result, a
@@ -1741,6 +1756,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.4.8 | a lookup is one request: the series hunt that cost eight is a button, and a refusal is tried eight short times instead of three long ones |
 | 2.4.0 | a 503 is asked about once more without the key, so "Google is busy" and "Google will not serve this key" stop looking the same |
 | 2.3.80 | and the lookup says which one it is about to ask, in the dialog, before a word is sent |
 | 2.3.72 | which Google catalogue answers is chosen in Settings, "let Google decide" included — asking for a catalogue that does not match the server is what "busy" often is |

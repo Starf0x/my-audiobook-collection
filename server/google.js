@@ -4,8 +4,12 @@ import crypto from 'node:crypto';
 import { writeTag } from './tagpool.js';
 import { db, googleKey, googleCountry, DATA_DIR } from './db.js';
 
-// Google Books answers 503 when it is briefly busy: wait and ask again.
-const RETRY_AFTER = [10000, 20000, 30000];
+// Google Books answers 503 when it will not serve a request, and on some keys it
+// does that to three requests out of four, at random, whatever the spacing. Short
+// tries, many of them, beat three long waits: measured on such a key, one request
+// in four or five comes through, so eight goes get an answer nine times in ten —
+// and the whole ladder is under half a minute, which a dialog can sit through.
+const RETRY_AFTER = [700, 1000, 1500, 2000, 3000, 4000, 6000, 8000];
 
 const explain = (status, detail) => ({
   400: 'Google rejected the request. The API key looks invalid — check it in the container template or in Settings.',
@@ -13,7 +17,7 @@ const explain = (status, detail) => ({
   403: 'Google refused the key. Open Google Cloud Console and make sure the "Books API" is enabled for this key, and that no IP/website restriction blocks your server.',
   404: 'The Google Books service could not be found. Check the server\'s internet connection.',
   429: 'Too many requests: the Google Books daily quota or rate limit has been reached. Try again later.',
-  503: 'Google Books is busy. It was asked again, waiting as long as Google itself said to, and it stayed busy — try again in a few minutes.',
+  503: 'Google Books refused this request eight times over half a minute, waiting as long as Google itself asked for. Some keys are refused three times out of four at random; pressing Search again often works.',
 }[status] || `Google Books replied with an unexpected error (HTTP ${status}).`) + (detail ? ` Google says: "${detail}"` : '');
 
 export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTER.length + 1, retryUntil: 0 };
@@ -78,12 +82,12 @@ const books = (tail, key) => {
     + `${tail.includes('?') ? '&' : '?'}${country ? `country=${country}&` : ''}key=${key}`;
 };
 
-export async function lookup(book, search, trace = null) {
+export async function lookup(book, search, trace = null, deep = false) {
   const key = googleKey();
   if (!key) throw new Error('No Google Books API key. Set GOOGLE_API_KEY on the container (the Unraid template has a field for it) and restart.');
   Object.assign(lookupProgress, { running: true, attempt: 0, retryUntil: 0 });
   try {
-    return await search_(book, search, key, trace);
+    return await search_(book, search, key, trace, deep);
   } finally {
     lookupProgress.running = false;
   }
@@ -110,7 +114,7 @@ export async function whoseFault(status, url) {
     + 'that the key is not restricted to other APIs, and that its daily quota is not zero — or make a new key.';
 }
 
-async function search_(book, search, key, trace = null) {
+async function search_(book, search, key, trace = null, deep = false) {
   const q = search || `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
   const url = books(`volumes?q=${encodeURIComponent(q)}&maxResults=5`, key);
 
@@ -140,7 +144,7 @@ async function search_(book, search, key, trace = null) {
     // every result is traced, so each can say why it offers no series; the probe
     // reports on the match, which is the first
     const own = {};
-    const series = await seriesFor(it, key, own);
+    const series = await seriesFor(it, key, own, deep);
     if (i === 0 && trace) Object.assign(trace, own);
     return { it, series, own };
   }));
@@ -169,7 +173,7 @@ async function search_(book, search, key, trace = null) {
   // ebook of the same book does, so the ebooks are asked once — the last place
   // there is to look.
   const primary = items[0];
-  if (primary && !primary.series.series) {
+  if (deep && primary && !primary.series.series) {
     const expect = primary.series.title;
     if (trace) trace.asked.push('ebook search');
     let found = await ebookSeries(q, expect, key);
@@ -245,7 +249,7 @@ export function waitBefore(status, headers, attempt, ladder = PROBE_AGAIN) {
   return ladder[attempt];
 }
 
-const PROBE_AGAIN = [1000, 3000];
+const PROBE_AGAIN = [700, 1200, 2000, 3000];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // One request at a time, a breath apart. A lookup used to fire the search and
@@ -415,7 +419,7 @@ function whyNone(t) {
 
 // `trace` is filled in with what Google actually sent and what was made of it: the
 // dialog shows one line of it, and the report in Settings shows all of it.
-async function seriesFor(it, key, trace = {}) {
+async function seriesFor(it, key, trace = {}, deep = false) {
   const text = seriesOf(it.volumeInfo);
   const here = it.volumeInfo?.seriesInfo || null;
   Object.assign(trace, {
@@ -430,6 +434,14 @@ async function seriesFor(it, key, trace = {}) {
     return { ...text, seriesNo: no, why: '' };
   }
   let info = here;
+  if (!info && !deep) {
+    // the search answer had no series line for this edition, and asking about the
+    // volume is another request: that is what "Look harder" is for
+    Object.assign(trace, { from: 'nothing', series: '', seriesNo: 0 });
+    trace.why = 'No series in the search answer. Look harder for the series to ask Google about '
+      + 'this edition, its ebook and its other records — a few more requests.';
+    return { ...text, why: trace.why };
+  }
   if (!info) {
     trace.asked.push('volume');
     const got = await ask(books(`volumes/${encodeURIComponent(it.id || '')}`, key));
