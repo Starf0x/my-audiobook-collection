@@ -32,7 +32,20 @@ const wontRun = (file, e) => {
   return new Error(`${name} would not run (${code || 'no code'}): ${e?.message || 'no reason given'}`);
 };
 
+// Once both have answered, that stands: they are in the image and cannot change
+// under a running container. Asking again every time cost four processes per page
+// load — and the first ask after a start can fail on its own, which then switched
+// converting off for as long as that page was open.
+let answered = null;
+
 export function toolStatus() {
+  if (answered) return answered;
+  const now = statusNow();
+  if (now.every((t) => t.version)) answered = now;
+  return now;
+}
+
+function statusNow() {
   return TOOLS.map((name) => {
     const file = toolAt(name);
     const r = spawnSync(file, ['-version'], { encoding: 'utf8', timeout: 15000 });
@@ -66,9 +79,44 @@ const run = (file, args, onOut) => new Promise((resolve, reject) => {
     : reject(new Error(err.trim().split('\n').filter(Boolean).pop() || `${path.basename(file)} exited ${code}`))));
 });
 
+// An .ogg (or .flac, or .m4b) with an ID3 tag bolted on the front. Taggers meant
+// for MP3 write one anyway, and the Ogg demuxer will not look past it: the whole
+// file comes back as "Invalid data found when processing input", and so it does
+// from the scan, which is why such a book shows no length either. The tag says
+// how long it is, and ffmpeg can be told to skip exactly that much. On an MP3 the
+// tag belongs where it is and is never skipped.
+function id3Skip(file) {
+  if (/\.mp3$/i.test(file)) return 0;
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(10);
+    if (fs.readSync(fd, head, 0, 10, 0) < 10) return 0;
+    if (head.toString('latin1', 0, 3) !== 'ID3') return 0;
+    // four seven-bit bytes, big endian, and the ten of the header itself
+    return ((head[6] & 0x7f) << 21 | (head[7] & 0x7f) << 14
+      | (head[8] & 0x7f) << 7 | (head[9] & 0x7f)) + 10;
+  } catch {
+    // whatever is wrong with this file, ffprobe is about to say it in words
+    return 0;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+// before -i, because it is how the input is opened
+const skipArgs = (file) => {
+  const n = id3Skip(file);
+  return n ? ['-skip_initial_bytes', String(n)] : [];
+};
+
 async function probe(file) {
+  // -v error, never -v quiet: quiet throws away the one line that says what is
+  // wrong with the file, and "ffprobe exited 1" sends nobody anywhere
   const out = await run(toolAt('ffprobe'),
-    ['-v', 'quiet', '-print_format', 'json', '-show_chapters', '-show_format', file]);
+    ['-v', 'error', ...skipArgs(file), '-print_format', 'json', '-show_chapters', '-show_format', file])
+    // which file, out of the forty a book can be made of
+    .catch((e) => { throw new Error(`${path.basename(file)}: ${e.message}`); });
   const j = JSON.parse(out || '{}');
   const chapters = (j.chapters || [])
     .map((c) => ({ start: Number(c.start_time) || 0, end: Number(c.end_time) || 0, title: String(c.tags?.title || '').trim() }))
@@ -142,7 +190,7 @@ async function convertOne(src, startNo, onSeconds) {
   const cuts = chapters.slice(1).map((c) => c.start.toFixed(3));
   const part = path.join(dir, `.converting-${process.pid}-`);
   const args = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats',
-    '-i', src, '-vn', '-map_metadata', '0', '-c:a', 'libmp3lame', '-q:a', '4'];
+    ...skipArgs(src), '-i', src, '-vn', '-map_metadata', '0', '-c:a', 'libmp3lame', '-q:a', '4'];
   if (cuts.length) {
     args.push('-f', 'segment', '-segment_times', cuts.join(','), '-reset_timestamps', '1', `${part}%03d.mp3`);
   } else {
@@ -180,7 +228,8 @@ async function coverFrom(src) {
   const dir = path.dirname(src);
   if (['cover.jpg', 'folder.jpg', 'front.jpg'].some((n) => fs.existsSync(path.join(dir, n)))) return;
   const dest = path.join(dir, 'cover.jpg');
-  await run(toolAt('ffmpeg'), ['-hide_banner', '-nostdin', '-y', '-i', src, '-an', '-vframes', '1', dest])
+  await run(toolAt('ffmpeg'), ['-hide_banner', '-nostdin', '-y', ...skipArgs(src), '-i', src,
+    '-an', '-vframes', '1', dest])
     .catch(() => { fs.rmSync(dest, { force: true }); });
 }
 

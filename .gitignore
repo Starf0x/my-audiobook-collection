@@ -3,3 +3,15 @@ data/
 
 # test fixtures: libraries and data folders the suites build, never shipped
 fixtures/
+
+# audio never belongs in the source tree: a book dropped in here to test with
+# was once staged by `git add -A`, all 177 MB of it, for a public repository
+*.ogg
+*.m4b
+*.m4a
+*.mp3
+*.flac
+*.opus
+
+# the book put here to test the ID3-in-front-of-Ogg case with
+/Conclave of Shadows Book 2 - King of Foxes/
