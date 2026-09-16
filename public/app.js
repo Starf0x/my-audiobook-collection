@@ -1988,7 +1988,7 @@ window.findMeta = async function (id) {
   $('#lookupQuery').select();
 };
 
-window.lookMeta = async function (id, query) {
+window.lookMeta = async function (id, query, deep = false) {
   $('#lookupBody').innerHTML = '';
   const book = await api(`/api/books/${id}`);
   const known = new Set((await api('/api/genrefolders').catch(() => ({ folders: [] })))
@@ -1996,7 +1996,8 @@ window.lookMeta = async function (id, query) {
   const state_ = { finished: false };
   const poll = pollLookup(state_);
   try {
-    const cands = await api(`/api/lookup/${id}` + (query ? '?q=' + encodeURIComponent(query) : ''));
+    const cands = await api(`/api/lookup/${id}?deep=${deep ? 1 : 0}`
+      + (query ? '&q=' + encodeURIComponent(query) : ''));
     window._cands = cands;
     $('#lookupBody').innerHTML = cands.length ? cands.map((c, i) => `<div class="cand">
       ${c.thumbnail ? `<img src="${esc(c.thumbnail)}" alt="">` : ''}
@@ -2013,6 +2014,17 @@ window.lookMeta = async function (id, query) {
         </div>
       </div></div>`).join('')
       : '<div class="empty">No match on Google Books. Adjust the search above and try again, or use <em>Edit metadata</em> to fill it in yourself.</div>';
+    // One question is what a lookup costs now. The series hunt is a request per
+    // result and two more besides, which is a great deal to spend on every book —
+    // and on a key Google refuses at random it is what made lookups fail at all.
+    if (cands.length && !deep && cands.some((c) => !c.series)) {
+      $('#lookupBody').insertAdjacentHTML('beforeend',
+        '<div class="row"><button id="digSeries" class="ghost">Look harder for the series</button>'
+        + '<span class="hint">Asks Google about each result, its ebook edition and its other '
+        + 'records — a few more requests.</span></div>');
+      $('#digSeries').onclick = () => work($('#digSeries'), 'The series hunt',
+        () => lookMeta(id, query, true), false);
+    }
   } catch (e) {
     $('#lookupBody').innerHTML = `<div class="empty">${e.message}</div>`;
   } finally {

@@ -718,7 +718,8 @@ app.get('/api/lookup', requireAdmin, wrap(async (req, res) => {
 app.get('/api/lookup/:id', requireAdmin, wrap(async (req, res) => {
   const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Book not found' });
-  res.json(await lookup(book, req.query.q));
+  // deep: the series hunt, which costs a request per result and two more besides
+  res.json(await lookup(book, req.query.q, null, req.query.deep === '1'));
 }));
 
 // one write per book, so the bar that follows one asks for that book by name
