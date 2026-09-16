@@ -592,6 +592,14 @@ now; since a genre is a folder, picking another one moves the book there —
 creating and registering the folder if it is new — and writes that genre into the
 tags.
 
+**A lookup is one request.** The search itself, and that is all: the series is
+read from what the answer already carries. Where a result names none, the line
+under it says so and *Look harder for the series* asks Google about that edition,
+its ebook and its other records — a handful of requests, spent only when you ask
+for them. That matters twice over: a free key allows a thousand requests a day,
+and some keys are refused most of the time, where asking eight times for one book
+means never getting an answer at all.
+
 **"Google Books is busy" that never passes.** Those are Google's own words for
 two different things: it is busy, or it will not serve your key. The app tells them
 apart by asking the same question once more without the key — if that is answered,
