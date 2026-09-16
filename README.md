@@ -16,6 +16,7 @@ The full manual, with screenshots of every part of it, is in the
 * Shows per book which tags the **files themselves** carry, so database-only metadata is visible as such
 * Fills in missing metadata via the **Google Books API**, or by hand, and writes it back into the MP3s
 * A *Needs tags* list of every book whose files miss a required tag, with writing and lookup on the spot
+* Converts `.m4b` and `.ogg` books to MP3 — **a chapter becomes a track** — and keeps the files they came from
 * Files new audiobooks from an **import folder** into the right genre, author and series
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Streams books in the browser, remembers the playback position **per user**, and marks books listened
