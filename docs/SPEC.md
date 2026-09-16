@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.3.48.** This document describes what the app is, how every
+**Version described: 2.3.56.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.48` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.56` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1540,6 +1540,24 @@ cannot flatter the parallel run.
 | 480 files of 5 MB, whole-collection write, end to end | ~8.9 s | 3.0 s |
 | scan of a 60-book library, local SSD, end to end | 1.2 s | 0.8 s |
 
+**Serving a library of 1200 books** (36 000 tracks, one genre holding 420 of them),
+measured against the real page in a browser rather than guessed at:
+
+| What a click costs | Server | In the page |
+| --- | --- | --- |
+| the genres column | 3–16 ms | — |
+| a genre → its authors | 2–16 ms | 7–9 ms, 60 authors drawn |
+| an author → their books | 15–16 ms | 6–45 ms |
+| a series of 35 books | 14–16 ms | 48 ms, **16** covers asked for, not 35 |
+| the shelves | 2–16 ms | 12 ms |
+| every count at once (`refreshLibrary`) | — | 99 ms over eleven addresses |
+
+Nothing here is the database: a genre is one `GROUP BY` over a table of a thousand
+rows. What a big view costs is **pictures**, one request per card, so every `<img>`
+on a card and a tile carries `loading="lazy"`: a browser asks for what is on
+screen and the rest as it is scrolled to. On a server whose books live on spinning
+disks that is the difference between waking the array for 35 files and for 16.
+
 The lesson worth keeping: the read side is **latency**, so overlap it (lanes); the
 write side is **synchronous CPU work in a native module**, so move it off the main
 thread (workers). Do not use threads for the reads or lanes for the writes.
@@ -1692,6 +1710,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.3.56 | a cover is fetched when it comes into view, so a shelf of 35 books asks the disk for 16 pictures instead of 35 |
 | 2.3.48 | a scan says which files it could not read, on Broken on disk and in its own line, instead of a book quietly arriving with no length |
 | 2.3.40 | an .ogg with an ID3 tag in front of it converts: the tag is skipped by its own length, ffprobe’s reason is no longer silenced, and a tool that answers once is not asked again |
 | 2.3.32 | the file inventory counts what is there, convert.js included, and "does not transcode" is no longer among the non-goals |
