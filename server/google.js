@@ -13,7 +13,7 @@ const explain = (status, detail) => ({
   403: 'Google refused the key. Open Google Cloud Console and make sure the "Books API" is enabled for this key, and that no IP/website restriction blocks your server.',
   404: 'The Google Books service could not be found. Check the server\'s internet connection.',
   429: 'Too many requests: the Google Books daily quota or rate limit has been reached. Try again later.',
-  503: 'Google Books is temporarily unavailable. Retried after 10, 20 and 30 seconds without success — try again later.',
+  503: 'Google Books is busy. It was asked again, waiting as long as Google itself said to, and it stayed busy — try again in a few minutes.',
 }[status] || `Google Books replied with an unexpected error (HTTP ${status}).`) + (detail ? ` Google says: "${detail}"` : '');
 
 export const lookupProgress = { running: false, attempt: 0, attempts: RETRY_AFTER.length + 1, retryUntil: 0 };
@@ -76,13 +76,15 @@ async function search_(book, search, key, trace = null) {
     try {
       // every other outbound call in this app has a timeout; without one a network
       // that drops packets leaves the dialog waiting on the operating system
-      res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      res = await paced(() => fetch(url, { signal: AbortSignal.timeout(15000) }));
     } catch (e) {
       throw new Error(unreachable(e));
     }
-    if (res.status !== 503 || attempt === RETRY_AFTER.length) break;
-    lookupProgress.retryUntil = Date.now() + RETRY_AFTER[attempt];
-    await new Promise((r) => setTimeout(r, RETRY_AFTER[attempt]));
+    // busy, or too fast — and Google's own figure beats this ladder when it sends one
+    const again = waitBefore(res.status, res.headers, attempt, RETRY_AFTER);
+    if (again === null) break;
+    lookupProgress.retryUntil = Date.now() + again;
+    await sleep(again);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -184,12 +186,70 @@ async function search_(book, search, key, trace = null) {
 // saying why. The status comes back as well as the body, because "Google refused
 // this" and "Google answered, and had nothing" are different answers, and the
 // difference is the whole diagnosis.
+// How long to wait before asking again, or null when asking again is pointless.
+// 503 is "busy" and 429 is "you asked too fast"; both mean wait, and Google often
+// says for how long. Its own figure wins over any ladder of ours.
+export function waitBefore(status, headers, attempt, ladder = PROBE_AGAIN) {
+  if (status !== 503 && status !== 429) return null;
+  if (attempt >= ladder.length) return null;
+  const said = Number(headers?.get?.('retry-after'));
+  // seconds, and only believed within reason: a header saying an hour is not a
+  // wait to sit through, it is a refusal, and the dialog says so sooner
+  if (said > 60) return null;
+  if (said > 0) return said * 1000;
+  return ladder[attempt];
+}
+
+const PROBE_AGAIN = [1000, 3000];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// One request at a time, a breath apart. A lookup used to fire the search and
+// then five volume probes at once, and a burst is what makes Google answer 503 —
+// the app was asking for the busy signal it then complained about. Spacing costs
+// a fraction of a second per book and takes the bursts out altogether.
+const GAP = 150;
+let nextSlot = 0;
+const paced = async (run) => {
+  const now = Date.now();
+  const at = Math.max(now, nextSlot);
+  nextSlot = at + GAP;
+  if (at > now) await sleep(at - now);
+  return run();
+};
+
+// Answers are worth keeping for a few minutes: the same book gets looked up twice
+// while its metadata is being sorted out, and a series page is asked for by every
+// book in that series.
+const KEEP_FOR = 5 * 60 * 1000;
+const answered = new Map();
+// a container runs for months: what is past its time goes, rather than growing
+const forget = () => {
+  if (answered.size < 500) return;
+  const now = Date.now();
+  for (const [url, kept] of answered) if (kept.until <= now) answered.delete(url);
+};
+
 const ask = async (url) => {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    return { status: res.status, body: res.ok ? await res.json() : null };
-  } catch (e) {
-    return { status: 0, body: null, failed: e.name === 'TimeoutError' ? 'timed out' : 'could not be reached' };
+  const fresh = answered.get(url);
+  if (fresh && fresh.until > Date.now()) return fresh.answer;
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await paced(() => fetch(url, { signal: AbortSignal.timeout(8000) }));
+    } catch (e) {
+      return { status: 0, body: null, failed: e.name === 'TimeoutError' ? 'timed out' : 'could not be reached' };
+    }
+    const again = waitBefore(res.status, res.headers, attempt);
+    if (again === null) {
+      const answer = { status: res.status, body: res.ok ? await res.json() : null };
+      // only an answer worth keeping: a refusal may be over in a moment
+      if (res.ok) {
+        forget();
+        answered.set(url, { answer, until: Date.now() + KEEP_FOR });
+      }
+      return answer;
+    }
+    await sleep(again);
   }
 };
 

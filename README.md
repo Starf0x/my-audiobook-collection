@@ -590,8 +590,17 @@ and album artist tags, and the author folder keeps its name. A result that comes
 with categories offers them as genres next to the one the book is filed under
 now; since a genre is a folder, picking another one moves the book there —
 creating and registering the folder if it is new — and writes that genre into the
-tags. A 503 from Google is retried after 10, 20 and 30 seconds, with the wait
-shown in the dialog.
+tags.
+
+**When Google says it is busy.** A lookup is not one request: the search, a probe
+per result, the series name, sometimes the ebook catalogue and a wider search —
+and sending those in a burst is what earns a *503 busy* in the first place. They
+go out one at a time, 150 ms apart. A 503 or a 429 is waited out for as long as
+Google's own `Retry-After` header says, or 1 and 3 seconds for a probe and 10, 20
+and 30 for the search when it says nothing; a header asking for more than a minute
+is treated as a refusal, so the dialog tells you instead of hanging. Answers are
+kept for five minutes, so looking the same book up again costs one search, and
+every book of a series shares one lookup of that series' name.
 
 **Use metadata** saves nothing by itself: it opens *Edit metadata* with the result
 you chose already in the fields — title, author, series, the number in that series,
