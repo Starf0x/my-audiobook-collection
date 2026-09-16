@@ -592,6 +592,14 @@ now; since a genre is a folder, picking another one moves the book there —
 creating and registering the folder if it is new — and writes that genre into the
 tags.
 
+**"Google Books is busy" that never passes.** Those are Google's own words for
+two different things: it is busy, or it will not serve your key. The app tells them
+apart by asking the same question once more without the key — if that is answered,
+the refusal follows the key and the message says so. What to check then, in the
+Cloud Console for the project the key belongs to: **Books API** enabled, the key not
+restricted to other APIs, and its daily quota not zero. A key from a project with
+no verified billing is answered this way.
+
 **When Google says it is busy.** A lookup is not one request: the search, a probe
 per result, the series name, sometimes the ebook catalogue and a wider search —
 and sending those in a burst is what earns a *503 busy* in the first place. They
