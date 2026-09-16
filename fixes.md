@@ -300,6 +300,26 @@ taking the upload, its route and its Settings section back out.
 shifted the hard part onto them, and it will come back as a support question. When
 a dependency can ship with the thing that needs it, ship it.
 
+### -v quiet threw away the one line that mattered (2.3.40)
+
+Converting one of Frank's `.ogg` books failed with **"ffprobe exited 1"**. Nothing
+else — because the app ran `ffprobe -v quiet`, which silences the very line that
+says what is wrong with a file. With `-v error` it read: *Invalid data found when
+processing input*, and the cause turned out to be worth knowing: those files carry
+a **100 kB ID3 tag in front of the Ogg stream**, written by a tagger meant for MP3.
+The Ogg demuxer will not look past it, and neither will `music-metadata` — which is
+why those four books had always shown a length of 0 as well.
+
+**Fixed** by reading the tag's own length out of its header and passing
+`-skip_initial_bytes` before `-i` on every ffprobe and ffmpeg call (never for an
+`.mp3`, where the tag belongs), and by running ffprobe with `-v error` and putting
+the file's name in front of whatever it says.
+
+**Rule:** this is the third time in this app that a silenced or swallowed reason
+cost an afternoon — `catch {}` on a lookup, `-v quiet` here, and `catch {}` in the
+scan, which still has one. A flag that quietens a tool is the same mistake as a
+`catch` with no binding. Quiet the *noise* (`-hide_banner`), never the diagnosis.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

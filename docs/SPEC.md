@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.3.32.** This document describes what the app is, how every
+**Version described: 2.3.40.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.32` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.40` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -834,13 +834,29 @@ how many and of what kind; `convertBook(id)` turns them.
 which brings ffprobe with it and is by definition the build that image is for, so
 they are found on the `PATH` and there is nothing to install, upload or explain.
 `toolStatus()` still runs each with `-version`, because "it is in the container"
-is a claim the code can check: `toolsWhy()` is what `/api/convertible` and
+is a claim the code can check — once: a good answer is remembered, because the
+first start of a program after a container boots can fail on its own, and that
+answer used to switch converting off for as long as the page stayed open. `toolsWhy()` is what `/api/convertible` and
 `convertBook` refuse with, and it should only ever answer for a container built
 before 2.3.0.
 
 They were uploaded in Settings in 2.2.72 — the owner's own static builds, kept in
 `DATA_DIR/bin`. The first thing that happened was `spawn ENOEXEC`, so that whole
 path is gone: see `fixes.md`.
+
+**A tag in front of the audio.** A tagger meant for MP3 will write an ID3 block
+onto an `.ogg` — Frank's were 100 kB of it, cover included — and the Ogg demuxer
+does not look past it: `ffprobe` calls the whole file *Invalid data found when
+processing input*, and `music-metadata` fails the same way, which is why such a
+book also shows no length. `id3Skip(file)` reads the length out of the ID3 header
+(four seven-bit bytes plus ten) and every ffprobe and ffmpeg call gets
+`-skip_initial_bytes` **before `-i`**. An `.mp3` is never skipped: there the tag
+belongs where it is.
+
+And `ffprobe` runs with `-v error`, never `-v quiet`: quiet throws away the one
+line that says what is wrong, leaving "ffprobe exited 1", which sends nobody
+anywhere. The file's own name is put in front of it, since a book can be forty of
+them.
 
 **A chapter becomes a track**, which is what this app calls a chapter.
 `ffprobe -show_chapters` gives the boundaries; one `ffmpeg` pass with
@@ -1555,6 +1571,7 @@ Server suites:
 | `same-book` | while a long write runs, every further request for that book is refused with the same reason — singly, three at once, with a different `pick`, and from the whole-collection run; another book writes meanwhile; metadata without a file write is still allowed; the book is free again afterwards |
 | `same-book-ui` | in the page: the pressed button dead, that book's metadata buttons held back, one bar only, a second call answered in words, a request that skips the page refused by the server, the batch counting it as one it could not do, and everything free again afterwards |
 | `folder-cover` | a book whose art is a `cover.jpg` beside the audio: a write puts that picture into the files, so the book leaves Needs tags and a rescan reads it back; art dropped in later is found by a scan |
+| `convert-id3-ogg` | one of the owner's own files, copied into a fixture: an .ogg carrying a 100 kB ID3 tag, which the scan cannot read at all (no length), converts without a word about invalid data, comes out as one MP3 with a real length, and leaves the file it came from under Converted |
 | `convert-mp3` | converting end to end with a real ffmpeg: the books that are not MP3 and what they are, the tools being found with nothing set up, an m4b of three chapters becoming three named and numbered MP3s of the right length, the original kept under `.converted` and listed, a chapterless .ogg becoming one MP3, a scan afterwards leaving the kept originals alone, and deleting them one by one and all at once |
 | `convert-ui` | the two rows and their counts, the list naming what a book is, the button on because the tools are in the container, the cover menu offering it only for a book that is not MP3, converting from the list, and the counts and the list that was on screen following it |
 | `needs-tags-authors` | Needs tags as a browse: the authors column visible and not a maintenance list, one row per author with its count, the pane opening on all of them, an author narrowing the rows and the write-all button, both buttons still on every row, the chosen author surviving a redraw, an author leaving the column when their last book is fixed, and the empty state saying every book carries its tags |
@@ -1657,6 +1674,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.3.40 | an .ogg with an ID3 tag in front of it converts: the tag is skipped by its own length, ffprobe’s reason is no longer silenced, and a tool that answers once is not asked again |
 | 2.3.32 | the file inventory counts what is there, convert.js included, and "does not transcode" is no longer among the non-goals |
 | 2.3.24 | the cover menu asks again when it is pressed, so an answer from page load cannot stand after the container has restarted |
 | 2.3.16 | and the address that answers it cannot fail silently: it runs inside the error wrapper, so a throw is a reason and not an HTML page |
