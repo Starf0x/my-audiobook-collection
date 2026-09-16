@@ -1959,8 +1959,23 @@ function seriesChoice(i, book, c) {
 // Find metadata opens the dialog with the search it would have made, and waits.
 // A folder name is often nearly right and rarely exactly right, so asking Google
 // before the owner has read the words spends a request on the wrong book.
+// Which of Google's catalogues this lookup will ask, said in the dialog itself:
+// it decides how much series data comes back, and a catalogue that does not match
+// the server is what "Google Books is busy" usually is.
+async function sayWhere() {
+  const s = await api('/api/settings').catch(() => null);
+  if (!s) return;
+  const where = s.googleCountries?.find((c) => c.code === (s.googleCountry || ''));
+  $('#lookupWhere').textContent = 'Asking www.googleapis.com'
+    + (s.googleCountry
+      ? ` for the ${where ? where.name.replace(/ —.*/, '') : s.googleCountry} catalogue (${s.googleCountry})`
+      : ', letting it choose the catalogue')
+    + ' — Settings changes that.';
+}
+
 window.findMeta = async function (id) {
   const book = await api(`/api/books/${id}`);
+  sayWhere();
   $('#lookupQuery').value = [book.title, book.author].filter(Boolean).join(' ');
   $('#lookupBody').innerHTML = '<div class="empty">Change the search if you like, '
     + 'then press Search.</div>';
