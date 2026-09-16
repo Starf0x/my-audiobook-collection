@@ -122,11 +122,16 @@ const localCover = (bookPath) => {
   }
 };
 
+const NOT_AUDIO = 'nothing in it that a reader recognises as audio';
+
 async function firstFileTells(file) {
   try {
-    return firstFileMeta(await lane(() => parseFile(file)));
-  } catch {
-    return { ...NOTHING };
+    const tags = await lane(() => parseFile(file));
+    // a rescan takes this path for every book whose files have not changed, so
+    // swallowing it here is what kept an unreadable book quiet for ever
+    return { ...firstFileMeta(tags), unreadable: tags.format?.container ? '' : NOT_AUDIO };
+  } catch (e) {
+    return { ...NOTHING, unreadable: e.message || String(e) };
   }
 }
 
@@ -165,12 +170,21 @@ const seriesFromTags = (tags) => {
 };
 
 async function readMeta(files, bookPath) {
-  const meta = { ...NOTHING, duration: 0, tracks: [] };
+  const meta = { ...NOTHING, duration: 0, tracks: [], unreadable: [] };
   for (const [i, file] of files.entries()) {
     let tags = {};
     // No { duration: true }: that scans every frame of every file (~4s per MP3).
     // Duration is only used for a badge, so take it when the header offers it for free.
-    try { tags = await lane(() => parseFile(file)); } catch { /* unreadable file */ }
+    try {
+      tags = await lane(() => parseFile(file));
+      // The reader does not throw on a file it makes nothing of — it answers with
+      // an empty result — so "did it throw" was never the question. A container is
+      // what says it read audio, which is the same test the disk check uses.
+      if (!tags.format?.container) meta.unreadable.push({ file, why: NOT_AUDIO });
+    } catch (e) {
+      // and when it does throw, its own words are worth more than any of mine
+      meta.unreadable.push({ file, why: e.message || String(e) });
+    }
     const c = tags.common || {}, f = tags.format || {};
     meta.duration += f.duration || 0;
     meta.tracks.push({ title: c.title || path.basename(file, path.extname(file)), duration: f.duration || 0 });
@@ -202,6 +216,16 @@ const q = {
   addTrack: db.prepare('INSERT INTO tracks (book_id, idx, path, title, duration) VALUES (?, ?, ?, ?, ?)'),
   allBookPaths: db.prepare('SELECT id, path FROM books'),
   dropBook: db.prepare('DELETE FROM books WHERE id = ?'),
+  // Files a scan could not read go on the same list a disk check writes, since
+  // that is where the owner looks for "what is wrong with this book". Only the
+  // scan's own verdict is cleared again here: a `gone` or `damaged` from the disk
+  // check says more than "its tags read fine now", and must not be wiped by a scan.
+  markUnreadable: db.prepare(`INSERT INTO broken (book_id, reason, detail, checked_at)
+    VALUES (?, 'unreadable', ?, ?)
+    ON CONFLICT(book_id) DO UPDATE SET reason = excluded.reason,
+      detail = excluded.detail, checked_at = excluded.checked_at
+      WHERE broken.reason = 'unreadable'`),
+  clearUnreadable: db.prepare("DELETE FROM broken WHERE book_id = ? AND reason = 'unreadable'"),
 };
 
 async function addBook(genre, author, series, bookPath, files = null, force = false, guess = null) {
@@ -238,6 +262,8 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
       // the audio since the last scan
       told.cover || existing.cover || localCover(bookPath),
       existing.id);
+    noteUnreadable(existing.id, files.length,
+      told.unreadable ? [{ file: files[0], why: told.unreadable }] : [], true);
     return 1;
   }
 
@@ -253,7 +279,25 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
   const id = q.idByPath.get(bookPath).id;
   q.dropTracks.run(id);
   files.forEach((f, i) => q.addTrack.run(id, i, f, m.tracks[i].title, m.tracks[i].duration));
+  noteUnreadable(id, files.length, m.unreadable);
   return 1;
+}
+
+// What a scan found it could not read, in words, on the list that exists for it.
+function noteUnreadable(id, total, bad, onlyFirst = false) {
+  // Nothing wrong with what was read — but the shortcut read one file of a book
+  // that may be forty, so it clears nothing: only a full read knows enough to
+  // take a book off the list.
+  if (!bad.length) return onlyFirst ? undefined : q.clearUnreadable.run(id);
+  progress.unreadable += bad.length;
+  const first = bad[0];
+  // a rescan of an unchanged book reads one file, so it may only say that much
+  const how = onlyFirst
+    ? `The first of ${total} file(s) could not be read`
+    : `${bad.length} of ${total} file(s) could not be read`;
+  q.markUnreadable.run(id, `${how}. ${path.basename(first.file)}: ${first.why}`,
+    new Date().toISOString());
+  return undefined;
 }
 
 // A folder whose sub-folders are all disc markers is one book split over discs,
@@ -284,7 +328,8 @@ function looksTooDeep(root) {
   return false;
 }
 
-export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '', warning: '', skipped: 0 };
+export const progress = { running: false, done: 0, total: 0, current: '', books: 0, error: '',
+  warning: '', skipped: 0, unreadable: 0 };
 
 // What the last scan walked past, and why. In memory: it is a diagnostic for the
 // scan that just ran, not a record to keep.
@@ -301,7 +346,8 @@ export const forgetSkipped = (dir) => {
 export async function scan(only = '') {
   // running must be true before walking the tree: on a large library that walk
   // takes tens of seconds, and the UI would otherwise read the scan as finished.
-  Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '', warning: '', skipped: 0 });
+  Object.assign(progress, { running: true, done: 0, total: 0, current: '', books: 0, error: '',
+    warning: '', skipped: 0, unreadable: 0 });
   skippedLast = [];
   try {
     await walkAndScan(only);
@@ -462,5 +508,11 @@ async function walkAndScan(only) {
       q.dropTracks.run(b.id);
       q.dropBook.run(b.id);
     }
+  }
+
+  // after the books have been read, which is when there is a count to report
+  if (progress.unreadable) {
+    progress.warning = `${progress.warning ? progress.warning + ' ' : ''}`
+      + `${progress.unreadable} file(s) could not be read — see Broken on disk for which books.`;
   }
 }

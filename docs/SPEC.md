@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.3.40.** This document describes what the app is, how every
+**Version described: 2.3.48.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.40` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.48` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -438,6 +438,23 @@ const VOLUME = /^(.*?)[\s,._-]*(?:(?:book|vol|volume|part|deel|boek)[\s.]*)?(\d{
 // roman numerals i–xx map to 1–20
 // the prefix must be at least 3 characters and the number non-zero, else no split
 ```
+
+**A file it cannot read.** `parseFile` does not throw on a file it makes nothing
+of — it answers with an empty result — so "did it throw" was never the test. A
+**container** is what says audio was read, which is the test the disk check uses
+too. Either way (no container, or a throw and its words) the file goes on
+`meta.unreadable`, and `noteUnreadable` writes a `broken` row with `reason =
+'unreadable'`: *"1 of 8 file(s) could not be read. 02.ogg: nothing in it that a
+reader recognises as audio"*. `progress.unreadable` counts them and the scan's
+warning line names the total once the books have been read — not before, which is
+where that line first went wrong.
+
+Two rules keep it honest against the disk check, which opens every file and knows
+more: the scan only clears a row **it** wrote (`reason = 'unreadable'`), and its
+`ON CONFLICT` update carries `WHERE broken.reason = 'unreadable'`, so a `damaged`
+or `gone` verdict is never talked over. And the shortcut for an unchanged book
+reads one file, so it may *add* what that file shows — *"The first of 8 file(s)
+could not be read"* — and clear nothing.
 
 Per book, `readMeta` reads every file with `parseFile` — **without** `{duration:
 true}`, which would scan every frame of every MP3 (about four seconds each); the
@@ -1576,6 +1593,7 @@ Server suites:
 | `convert-ui` | the two rows and their counts, the list naming what a book is, the button on because the tools are in the container, the cover menu offering it only for a book that is not MP3, converting from the list, and the counts and the list that was on screen following it |
 | `needs-tags-authors` | Needs tags as a browse: the authors column visible and not a maintenance list, one row per author with its count, the pane opening on all of them, an author narrowing the rows and the write-all button, both buttons still on every row, the chosen author surviving a redraw, an author leaving the column when their last book is fixed, and the empty state saying every book carries its tags |
 | `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
+| `scan-unreadable` | what a scan does with a file it cannot read: both books on Broken on disk with how many files and which one, the reason in words, the book that reads fine left off, a rescan leaving both verdicts standing from the one file it reads, the count being only what that scan read, a readable file taking a book off the list again, the warning line naming what is left, and the disk check's own verdict surviving the next scan |
 | `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
 | `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
 | `progress-follows` | a place in a book going with the book: three books, the highest id ticked off and part-heard, its folder taken away; after the rescan nothing counts as listened and nothing waits on the shelf; the next book added takes that freed id and is a fresh book with no place kept in it; and a place in a book that is really there survives a rescan |
@@ -1674,6 +1692,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.3.48 | a scan says which files it could not read, on Broken on disk and in its own line, instead of a book quietly arriving with no length |
 | 2.3.40 | an .ogg with an ID3 tag in front of it converts: the tag is skipped by its own length, ffprobe’s reason is no longer silenced, and a tool that answers once is not asked again |
 | 2.3.32 | the file inventory counts what is there, convert.js included, and "does not transcode" is no longer among the non-goals |
 | 2.3.24 | the cover menu asks again when it is pressed, so an answer from page load cannot stand after the container has restarted |
