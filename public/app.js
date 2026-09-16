@@ -2103,6 +2103,10 @@ $('#openSettings').onclick = async () => {
   libs = s.libraries;
   libsAtOpen = JSON.stringify(libs);
   $('#importPath').value = s.importPath || '';
+  // which of Google's catalogues answers, straight from the server's own list
+  $('#googleCountry').innerHTML = (s.googleCountries || [])
+    .map((c) => `<option value="${esc(c.code)}"${c.code === (s.googleCountry || '') ? ' selected' : ''}>`
+      + `${esc(c.name)}${c.code ? ` (${esc(c.code)})` : ''}</option>`).join('');
   await showTagAll();
   renderLibs();
   await loadGenreFolders();
@@ -2116,7 +2120,11 @@ $('#addLib').onclick = () => {
 };
 $('#closeSettings').onclick = () => $('#settings').close();
 $('#saveSettings').onclick = async () => {
-  await post('/api/settings', { libraries: libs, importPath: $('#importPath').value.trim() });
+  await post('/api/settings', {
+    libraries: libs,
+    importPath: $('#importPath').value.trim(),
+    googleCountry: $('#googleCountry').value,
+  });
   $('#settings').close();
   toast('Settings saved.');
   await loadScanChoices();
