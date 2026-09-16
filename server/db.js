@@ -116,7 +116,19 @@ export const googleKey = () => process.env.GOOGLE_API_KEY || '';
 // Google decides what a volume answer contains from where the request comes from,
 // and series data belongs to the Play catalogue of a country. Left to the server's
 // own address it can answer with no series at all, so the country is said outright.
-export const googleCountry = () => (process.env.GOOGLE_COUNTRY || 'US').trim().toUpperCase().slice(0, 2);
+// Which of Google's catalogues answers. Series data belongs to a country's Play
+// catalogue, so this decides how much of it comes back — and asking for a
+// catalogue that does not match the server's own address is answered, often
+// enough, with "service temporarily unavailable". It is a preference, not a
+// secret, so it is set in the page; the container variable is what a fresh
+// database starts from, and an empty setting means "let Google decide", which
+// sends no country at all.
+export const GOOGLE_COUNTRY_KEY = 'googleCountry';
+export const googleCountry = () => {
+  const saved = getSetting(GOOGLE_COUNTRY_KEY, null);
+  const raw = saved === null ? (process.env.GOOGLE_COUNTRY || 'US') : saved;
+  return raw.trim().toUpperCase().slice(0, 2);
+};
 
 // A library entry is either a folder holding genre folders, or a single genre
 // folder itself. Plain strings are entries stored before that choice existed.

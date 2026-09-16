@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.3.64.** This document describes what the app is, how every
+**Version described: 2.3.72.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.72` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1601,6 +1601,7 @@ Server suites:
 | `unreachable-tailscale` | the DNS message sends the reader to the host's `/etc/resolv.conf`, names `100.100.100.100` and `tailscale set --accept-dns=false`, does not send them to the container's own Tailscale fields (which do not set this), asserts no mechanism it cannot know (no TUN, no userspace, no sidecar), still names the custom-network case, and leaves Tailscale out of every other failure |
 | `unreachable` | what a lookup says when the request never arrives: a name that does not resolve called DNS with where Unraid keeps that setting, a resolver that does not answer the same, a timeout saying the name resolved and nothing answered, a refused or dropped connection, an intercepted certificate, anything else still carrying its code and message, the address named being the one asked about — and nothing anywhere claiming to know there is no internet |
 | `lookup-waits` | Find metadata opens with the search in the box and asks Google nothing, the body saying to press Search and the box focused and selected; Search asks once and asks what is in the box, not what the folder said; Enter does the same; and the cover menu opens the same waiting dialog |
+| `google-country` | the catalogue as a setting: the list offered to the page with "let Google decide" first, the container variable as the starting point, a choice kept and upper-cased, a word that is not a country code refused whole rather than cut down to its first two letters, and what each choice does to the request — `country=NL`, no `country` at all, and a change taking effect without a restart |
 | `google-pacing` | how the lookup asks, with Google stubbed: what `waitBefore` makes of 200, 403, 503, 429, a Retry-After of two seconds and one of an hour; a busy search tried again after the wait Google named; five results probed one at a time, at least 130 ms apart; the key and country on every request; and a second lookup of the same book costing one search and nothing else |
 | `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
 | `series-two-step` | how Google keeps series, and what it says when there is none: a series lent from the edition that has it to the ones that do not, the ebook catalogue and then all forty records asked when none has it, a sibling volume's number never borrowed, another book's series never borrowed, `country=` on every request; every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
@@ -1727,6 +1728,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.3.72 | which Google catalogue answers is chosen in Settings, "let Google decide" included — asking for a catalogue that does not match the server is what "busy" often is |
 | 2.3.64 | the lookup stops asking Google for the busy signal it complained about: one request at a time, waiting as long as Google says, and answers kept for five minutes |
 | 2.3.56 | a cover is fetched when it comes into view, so a shelf of 35 books asks the disk for 16 pictures instead of 35 |
 | 2.3.48 | a scan says which files it could not read, on Broken on disk and in its own line, instead of a book quietly arriving with no length |

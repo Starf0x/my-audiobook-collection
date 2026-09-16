@@ -146,7 +146,7 @@ check the paths it filled in:
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
 | Home Assistant token | empty | only for the polling addresses: set it to make `/api/ha…` ask for it. The page above needs no container setting |
 | Base URL | empty | only behind a reverse proxy: the address other machines reach the app on |
-| Google country | `US` | which country's Google catalogue to answer from. Series data belongs to a country's catalogue and the US one has the most of it, so leave this unless you have reason not to |
+| Google country | `US` | which country's Google catalogue a **fresh database** starts on. From 2.3.72 it is chosen in Settings, and the setting wins; this only decides where it begins. Series data belongs to a country's catalogue and the US one has the most of it — but if lookups keep saying Google is busy, try your own country instead |
 
 The last three are optional, and the two variables are masked in the form. Then
 **Apply**, and open the WebUI:
@@ -695,8 +695,13 @@ The name itself is a third endpoint, `series/get`.
 Worse, Google keeps that data **per record, not per book**. A search for one novel
 answers with several editions, and one of them can be in a series while the others
 are in nothing at all. Every request also says which **country's** catalogue to
-answer from (`GOOGLE_COUNTRY`, `US` by default): left to guess from your server's
-address, Google can hand back a record with no series data on it.
+answer from — **Settings → Which Google Books catalogue answers**, which starts at
+what `GOOGLE_COUNTRY` on the container says and `US` if it says nothing. Left to
+guess from your server's address, Google can hand back a record with no series data
+on it; asked for a catalogue that does not match where your server stands, it
+answers often enough with *service temporarily unavailable*. If lookups keep
+saying Google is busy, that setting is the first thing to try: your own country, or
+*let Google decide*, which leaves the parameter off the requests altogether.
 
 So the app asks in this order and stops at the first answer:
 

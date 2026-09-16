@@ -48,11 +48,35 @@ export const unreachable = (e, at = 'www.googleapis.com') => {
   return `Could not reach ${at}${code ? ` (${code})` : ''}: ${e?.message || 'no reason given'}.`;
 };
 
-// One address for every request, so the country goes on all of them. Series data
-// belongs to a country's Play catalogue, and left to guess from the server's own
-// address Google can answer with a volume that has none at all.
-const books = (tail, key) => `https://www.googleapis.com/books/v1/${tail}`
-  + `${tail.includes('?') ? '&' : '?'}country=${googleCountry()}&key=${key}`;
+// The catalogues Google Books answers from. Series data belongs to one country's
+// Play catalogue, so which one is asked decides how much of it comes back — and
+// asking for a catalogue that does not match the server's own address is answered
+// often enough with "service temporarily unavailable". The empty one is Google
+// deciding for itself, which is what leaving the parameter off means.
+export const GOOGLE_COUNTRIES = [
+  { code: '', name: 'Let Google decide, from the server’s own address' },
+  { code: 'US', name: 'United States — the largest catalogue, most series data' },
+  { code: 'GB', name: 'United Kingdom' }, { code: 'NL', name: 'Netherlands' },
+  { code: 'BE', name: 'Belgium' }, { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' }, { code: 'ES', name: 'Spain' },
+  { code: 'IT', name: 'Italy' }, { code: 'PT', name: 'Portugal' },
+  { code: 'IE', name: 'Ireland' }, { code: 'DK', name: 'Denmark' },
+  { code: 'SE', name: 'Sweden' }, { code: 'NO', name: 'Norway' },
+  { code: 'FI', name: 'Finland' }, { code: 'PL', name: 'Poland' },
+  { code: 'AT', name: 'Austria' }, { code: 'CH', name: 'Switzerland' },
+  { code: 'CA', name: 'Canada' }, { code: 'AU', name: 'Australia' },
+  { code: 'NZ', name: 'New Zealand' }, { code: 'ZA', name: 'South Africa' },
+  { code: 'IN', name: 'India' }, { code: 'JP', name: 'Japan' },
+  { code: 'BR', name: 'Brazil' }, { code: 'MX', name: 'Mexico' },
+];
+
+// One address for every request, so the catalogue goes on all of them — unless
+// there is none to name, and then the parameter is left off altogether.
+const books = (tail, key) => {
+  const country = googleCountry();
+  return `https://www.googleapis.com/books/v1/${tail}`
+    + `${tail.includes('?') ? '&' : '?'}${country ? `country=${country}&` : ''}key=${key}`;
+};
 
 export async function lookup(book, search, trace = null) {
   const key = googleKey();
