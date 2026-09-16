@@ -346,6 +346,31 @@ And two rules for a cheap check that shares a list with an expensive one: only
 clear the verdicts you wrote yourself (`WHERE reason = 'unreadable'`), and when you
 have read one file of forty, you may add what that file showed and clear nothing.
 
+### Three fixes for a fault that was never in the app (2.3.64 → 2.4.0)
+
+"Google Books is busy", over and over. In one afternoon I changed the pacing of
+the requests (a real burst, worth fixing), made the catalogue a setting (a real
+improvement, worth having), and rewrote the message twice — and none of it helped,
+because none of it was the cause. Six requests from his own container settled it:
+**503 on every host, every country, with the key; 429 without it, and 200 from
+Google's discovery service.** The refusal followed the key, not the server, and no
+amount of work on this side could have moved it.
+
+Two things went wrong in how I worked. The measurement I asked for first was never
+run — I let the conversation move to building instead, and did not insist. And my
+own message, *"Google Books is busy — try again in a few minutes"*, asserted a
+cause the code had not established, which is the very rule three entries above
+this one. It sent him hunting through his network for days.
+
+**Fixed** by making the app establish it: on a 503 it asks the same question once
+more with the key stripped out, and says which of the two it is — with what to
+check in the Cloud Console when the refusal follows the key.
+
+**Rule:** when a fault is on someone else's machine, the first move is the
+measurement that names the side it is on, and nothing else happens until it is
+run. "I have a good hypothesis" is not that measurement, and three good hypotheses
+are not either.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
