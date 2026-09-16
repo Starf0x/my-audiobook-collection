@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.3.24.** This document describes what the app is, how every
+**Version described: 2.3.32.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.24` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.3.32` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -51,9 +51,11 @@ delete). `/listen.html` and `/index.html` still answer, with a redirect, so old
 links keep working.
 
 **Non-goals**, deliberately: it does not download audiobooks, has no catalogue of
-its own, does not transcode, has no user accounts (a "user" is a name in a list,
-for keeping positions apart), and never moves or renames anything unasked. It
-writes tags into **MP3 only**; other formats are read, listed and played.
+its own, has no user accounts (a "user" is a name in a list, for keeping positions
+apart), and never moves or renames anything unasked. It writes tags into **MP3
+only**; other formats are read, listed and played — and can be **converted** to MP3
+when asked, one book at a time, keeping the files they came from (§7.8a). That is
+the one thing it transcodes, and never on its own.
 
 ## 2. Working agreement
 
@@ -96,13 +98,13 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 733 | Express app: every route, and nothing else |
+| `server/index.js` | 753 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 120 | schema, migrations, settings, library list |
+| `server/db.js` | 133 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 463 | walking the library, reading tags, filing books |
+| `server/scan.js` | 466 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 539 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 571 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 120 | the resumable whole-collection tag run |
@@ -113,15 +115,16 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
+| `server/convert.js` | 238 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `public/ha.html` | 85 |
-| `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with | the Home Assistant page |
+| `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
+| `public/ha.html` | 85 | the Home Assistant page |
 | `public/ha.js` | 183 | its behaviour |
-| `public/index.html` | 280 | the admin page: columns, dialogs |
-| `public/app.js` | 2027 | the admin page's behaviour |
+| `public/index.html` | 293 | the admin page: columns, dialogs |
+| `public/app.js` | 2268 | the admin page's behaviour |
 | `public/listen.html` | 85 | the listening page |
 | `public/listen.js` | 717 | the listening page's behaviour |
-| `public/style.css` | 599 | the whole look, both pages, phone included |
+| `public/style.css` | 606 | the whole look, both pages, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1654,6 +1657,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.3.32 | the file inventory counts what is there, convert.js included, and "does not transcode" is no longer among the non-goals |
 | 2.3.24 | the cover menu asks again when it is pressed, so an answer from page load cannot stand after the container has restarted |
 | 2.3.16 | and the address that answers it cannot fail silently: it runs inside the error wrapper, so a throw is a reason and not an HTML page |
 | 2.3.8 | every refusal to convert names a reason: an older container, a server that would not answer, or what the tool said |
