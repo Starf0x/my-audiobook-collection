@@ -89,6 +89,27 @@ export async function lookup(book, search, trace = null) {
   }
 }
 
+// "Service temporarily unavailable" is what Google says when it will not serve a
+// key — the same words it uses when it is genuinely busy, which sent one owner
+// hunting through his network for days. The difference is measurable: ask the
+// same thing once more with no key at all. A refusal that follows the key and not
+// the server says so; anything else, and this says nothing rather than guessing.
+export async function whoseFault(status, url) {
+  if (status !== 503) return '';
+  let without;
+  try {
+    without = await fetch(url.replace(/[?&]key=[^&]*/, ''), { signal: AbortSignal.timeout(8000) });
+  } catch {
+    return '';
+  }
+  if (without.status === 503) {
+    return ' The same request without a key is refused too, so this is Google, not your key.';
+  }
+  return ` The same request without a key is answered (HTTP ${without.status}), so this follows the key `
+    + 'rather than your server: check, for the project that key belongs to, that the Books API is enabled, '
+    + 'that the key is not restricted to other APIs, and that its daily quota is not zero — or make a new key.';
+}
+
 async function search_(book, search, key, trace = null) {
   const q = search || `intitle:${book.title}` + (book.author ? ` inauthor:${book.author}` : '');
   const url = books(`volumes?q=${encodeURIComponent(q)}&maxResults=5`, key);
@@ -112,7 +133,7 @@ async function search_(book, search, key, trace = null) {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(explain(res.status, body.error?.message));
+    throw new Error(explain(res.status, body.error?.message) + await whoseFault(res.status, url));
   }
   const data = await res.json();
   const items = await Promise.all((data.items || []).map(async (it, i) => {
