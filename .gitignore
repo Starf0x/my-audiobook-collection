@@ -15,3 +15,6 @@ fixtures/
 
 # the book put here to test the ID3-in-front-of-Ogg case with
 /Conclave of Shadows Book 2 - King of Foxes/
+
+# the tooling's own folder: no trace of it belongs in this repository
+.claude/
