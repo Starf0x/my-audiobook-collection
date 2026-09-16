@@ -5,9 +5,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
-import { db, getSetting, setSetting, getLibraries, DATA_DIR } from './db.js';
+import { db, getSetting, setSetting, getLibraries, DATA_DIR, googleCountry, GOOGLE_COUNTRY_KEY } from './db.js';
 import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
-import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries } from './google.js';
+import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries,
+  GOOGLE_COUNTRIES } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
@@ -161,12 +162,23 @@ app.post('/api/users', (req, res) => {
 app.get('/api/settings', requireAdmin, (req, res) => res.json({
   libraries: getLibraries(),
   importPath: getSetting('importPath'),
+  googleCountry: googleCountry(),
+  googleCountries: GOOGLE_COUNTRIES,
 }));
-app.post('/api/settings', requireAdmin, (req, res) => {
+app.post('/api/settings', requireAdmin, wrap(async (req, res) => {
   setSetting('libraries', JSON.stringify(req.body.libraries || []));
   setSetting('importPath', req.body.importPath || '');
+  // two letters or nothing: nothing leaves the country off the requests
+  // altogether, which is Google deciding from the server's own address
+  if (req.body.googleCountry !== undefined) {
+    // judged whole, never cut down first: slicing "Nederland" to "NE" would make a
+    // typo into another country's catalogue without a word
+    const said = String(req.body.googleCountry || '').trim().toUpperCase();
+    if (said && !/^[A-Z]{2}$/.test(said)) throw new Error(`Not a country code: ${req.body.googleCountry}`);
+    setSetting(GOOGLE_COUNTRY_KEY, said);
+  }
   res.json({ ok: true });
-});
+}));
 
 // folder picker: list sub-directories of a server path
 app.get('/api/browse', requireAdmin, (req, res) => {
