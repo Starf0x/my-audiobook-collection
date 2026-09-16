@@ -207,7 +207,7 @@ const tile = (b, resumable) => {
       : `${hms(b.into || 0) || '0h 00m'} of ${hms(b.duration) || '—'}`;
   return `<div class="tile" data-id="${b.id}" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
        data-resume="${resumable ? 1 : 0}" title="${esc(b.title)}">
-    <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="">
+    <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async">
     <div class="t">${esc(b.title)}</div>
     <div class="a">${esc(b.author)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
@@ -353,7 +353,7 @@ async function drawBooks(books, heading, kind = 'Series') {
     }
     html += `<div class="card" data-started="${b.started ? 1 : 0}">
       <div class="cover" data-glyph="▶">
-        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt=""
+        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
           onclick="playBook(${b.id})" title="Play or pause">
         <label class="listened">
           <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
