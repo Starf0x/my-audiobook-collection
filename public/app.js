@@ -323,8 +323,9 @@ async function selectSeries(genre, series, li) {
   $('#authors ul').innerHTML = authors.map((a) =>
     `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
   $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
-  await drawBooks(await api(`/api/books?genre=${encodeURIComponent(genre)}&series=${encodeURIComponent(series)}`
-    + `&user=${encodeURIComponent(state.user)}`), series);
+  const r = await api(`/api/books?genre=${encodeURIComponent(genre)}&series=${encodeURIComponent(series)}`
+    + `&user=${encodeURIComponent(state.user)}`);
+  await drawBooks(r.books, series, 'Series', r.series);
 }
 
 async function selectAuthor(author, li) {
@@ -334,22 +335,29 @@ async function selectAuthor(author, li) {
   document.querySelectorAll('#genres li[data-series]').forEach((e) => e.classList.remove('active'));
   const row = li || [...document.querySelectorAll('#authors li')].find((l) => l.dataset.name === author);
   if (row) row.classList.add('active');
-  const books = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`
+  const r = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`
     + `&user=${encodeURIComponent(state.user)}`);
-  await drawBooks(books, '');
+  await drawBooks(r.books, '', 'Series', r.series);
 }
 
-async function drawBooks(books, heading, kind = 'Series') {
+// `states` is what /api/books says each series on the page is missing; the lists
+// that do not come from there — Listened, a search — simply have none.
+async function drawBooks(books, heading, kind = 'Series', states = []) {
   // anything drawn here that is not a search result means the box no longer says
   // what is on screen
   if (kind !== 'Search') $('#q').value = '';
-  let html = heading ? `<div class="series-head">${kind} · ${esc(heading)}</div>` : '';
+  const howComplete = (name) => {
+    const s = states.find((x) => x.name === name);
+    return s && s.says
+      ? `<div class="series-gap${s.missing.length ? ' missing' : ''}">${esc(s.says)}</div>` : '';
+  };
+  let html = heading ? `<div class="series-head">${kind} · ${esc(heading)}</div>` + howComplete(heading) : '';
   let series = heading;
   for (const b of books) {
     const author = b.author;
     if (!heading && b.series !== series) {
       series = b.series;
-      if (series) html += `<div class="series-head">Series · ${esc(series)}</div>`;
+      if (series) html += `<div class="series-head">Series · ${esc(series)}</div>` + howComplete(series);
     }
     html += `<div class="card" data-started="${b.started ? 1 : 0}">
       <div class="cover" data-glyph="▶">
