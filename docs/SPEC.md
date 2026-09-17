@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.4.8.** This document describes what the app is, how every
+**Version described: 2.4.16.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.8` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.16` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -118,13 +118,14 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/convert.js` | 238 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/ha.html` | 85 | the Home Assistant page |
-| `public/ha.js` | 183 | its behaviour |
-| `public/index.html` | 293 | the admin page: columns, dialogs |
-| `public/app.js` | 2268 | the admin page's behaviour |
-| `public/listen.html` | 85 | the listening page |
-| `public/listen.js` | 717 | the listening page's behaviour |
-| `public/style.css` | 606 | the whole look, both pages, phone included |
+| `public/player.js` | 259 | the player, and carrying the book from one page to the next |
+| `public/ha.html` | 107 | the Home Assistant page |
+| `public/ha.js` | 185 | its behaviour |
+| `public/index.html` | 306 | the admin page: columns, dialogs |
+| `public/app.js` | 2106 | the admin page's behaviour |
+| `public/listen.html` | 87 | the listening page |
+| `public/listen.js` | 521 | the listening page's behaviour |
+| `public/style.css` | 606 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -132,6 +133,12 @@ Static files are served from `public/` by `express.static`, with
 `ha.html` — the Home Assistant page, which is too much for a dialog section — and
 `/listen.html` and `/index.html` redirect to those — the file names are gone from
 the address, and old links still work. `app.use(express.json({ limit: '1mb' }))`.
+
+All three pages end with their own script and then `player.js`, in that order:
+the player leans on the `$`, `api`, `post`, `toast`, `esc` and `state` each page
+declares, so it has to be parsed after them. Each page carries the same
+`<footer id="player">` markup — the Home Assistant page included, because a book
+being listened to goes on playing while its owner is in there setting it up.
 
 ## 4. Data model
 
@@ -1293,6 +1300,31 @@ the saving. Volume is
 kept in `localStorage.volume` — the one thing the browser's controls did that a
 page cannot get back on its own.
 
+**The book goes on playing when you move between the app's pages.** `/`, `/admin`
+and `/ha` are three documents, and a switch between them destroys the `<audio>`
+element along with the rest of the page: there is no way to keep one element
+alive across a navigation. So the listening is handed over instead. On
+`pagehide` the player writes `{ id, track, position, playing }` into
+`sessionStorage.carrying` and sends the place to `/api/progress` by
+`navigator.sendBeacon` — an ordinary request is cancelled with the document that
+made it, which used to lose the last seconds at every switch. The next page reads
+that on load, loads the book at exactly that second, and calls `play()` only if
+it was playing when the last page went away.
+
+`sessionStorage`, not `localStorage`: this is one tab carrying on, not every
+window in the browser starting to play. And `playBook(id, carried)` takes a
+second argument for it, because a carried book is not a press of Play: it must
+not toggle, and a *finished* book must not be rewound to the beginning and
+unticked — that is what pressing Play on it means, not what carrying it means.
+
+Whether the new page may make a sound at all is the browser's to say, and it was
+measured rather than assumed: Edge refuses `play()` with `NotAllowedError` on a
+page opened cold, and allows it on a page reached by a click — `location.assign`,
+`location.replace` and a plain link alike, which is all three of the ways this
+app navigates. Reached any other way (a typed address, a refresh) the refusal is
+caught and the player is left loaded and waiting with a line saying to press ▶,
+rather than silently doing nothing.
+
 The shelf bar (`.tile .tbar`) is 5px of **yellow** — `#ffb628` to `#ffe066` — on a
 `#2c3342` track. It was 4px of the interface's own purple-to-cyan on
 `var(--panel2)`, which against a dark tile you had to hunt for; the job bars in
@@ -1567,6 +1599,18 @@ skips them will reproduce the bugs.
 40. **The tap that ends a long press is still a click.** A hold that opens a menu
     on a phone is followed by a `click` on whatever was held: without swallowing
     that one click the menu shuts again and the cover underneath starts playing.
+41. **Nothing survives a page switch except what was written down.** The three
+    pages are three documents; the `<audio>` element does not carry over. What
+    goes on playing does so because `pagehide` stored the book, the track and the
+    second, and the next page loaded them again. A request begun on the way out
+    does not survive either — that place goes by `sendBeacon` or it is lost.
+42. **A new page may only make a sound if a click brought the reader to it.**
+    Measured, not assumed: `play()` on a page opened cold is refused with
+    `NotAllowedError`. So the refusal is caught and said out loud — a player that
+    silently does nothing reads as a broken app.
+43. **`player.js` is parsed after the page's own script**, because it uses what
+    that declares. Nothing in it may run before the page has drawn: the only
+    thing it does at load is pick up a carried book.
 
 
 ## 10. Measured performance
@@ -1663,6 +1707,7 @@ Server suites:
 | `progress-follows` | a place in a book going with the book: three books, the highest id ticked off and part-heard, its folder taken away; after the rescan nothing counts as listened and nothing waits on the shelf; the next book added takes that freed id and is a fresh book with no place kept in it; and a place in a book that is really there survives a rescan |
 | `download-abort` | five downloads broken off part way and a file taken away mid-send: the app is still there, still answering, nothing on stderr — no listener leak, no error thrown once the headers are out — and a download left alone still arrives whole, the promised length, with every file in it |
 | `download` | a whole book as one archive: the type, the name in both spellings, the promised length matching what arrives, **Windows extracting it** with PowerShell and every file compared byte for byte with the one on disk, two discs whose file names collide both surviving renamed apart, a missing book as a 404, and a book whose files are gone saying so instead of sending an empty archive |
+| `plays-on` | the book goes on playing across every switch the interface offers — `/` to `/admin` by the Admin button, on to `/ha` through the Settings pulldown, back to `/admin`, and `/ha` to `/` — each time the same book, not paused, its clock really moving, and picked up within a second of where it was left, never at the start and never elsewhere in the book; a book paused first comes back loaded at its place and *stays* paused; a page opened before anything has been played carries nothing and shows no player at all; and not one of the three pages throws anything into the console along the way |
 | `transport` | the player's own controls, on both pages and on a phone: no browser controls left, ours in their place, it plays and the button says how to stop it, the yellow grows as it plays, dragging the line seeks to where it was dragged, the button pauses and resumes, the volume slider sets and remembers the volume, mute says so, and a reload keeps it |
 | `played-line` | how far into a book you are, measured rather than read off the stylesheet: the line is there and part filled, its first stop is the yellow, it is 5px, and its contrast against both the track and the tile is at least 5:1 — on both pages and on a phone |
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
@@ -1756,6 +1801,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.4.16 | the book goes on playing when you move between the app's pages: the player is one file all three of them load, the Home Assistant page has one too, and the listening is handed from each page to the next |
 | 2.4.8 | a lookup is one request: the series hunt that cost eight is a button, and a refusal is tried eight short times instead of three long ones |
 | 2.4.0 | a 503 is asked about once more without the key, so "Google is busy" and "Google will not serve this key" stop looking the same |
 | 2.3.80 | and the lookup says which one it is about to ask, in the dialog, before a word is sent |

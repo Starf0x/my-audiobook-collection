@@ -79,7 +79,29 @@
   </section>
 </main>
 
+<!-- the same player as the other two pages: a book being listened to goes on
+     playing when the reader comes here to set Home Assistant up -->
+<footer id="player" hidden>
+  <img id="pCover" alt="">
+  <div class="meta">
+    <strong id="pTitle"></strong>
+    <span id="pTrack"></span>
+  </div>
+  <audio id="audio" preload="metadata"></audio>
+  <button id="pPlay" class="ghost" title="Play or pause">▶</button>
+  <span id="pAt" class="tick">0:00</span>
+  <input id="seek" type="range" min="0" max="1000" value="0" step="1"
+    aria-label="Position in this track">
+  <span id="pOf" class="tick">0:00</span>
+  <button id="pVolBtn" class="ghost" title="Mute or unmute">🔊</button>
+  <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="Volume">
+  <a id="pGet" class="ghost" title="Download the whole book" download>⤓</a>
+  <select id="trackSelect"></select>
+</footer>
+
 <div id="toast"></div>
 <script src="ha.js"></script>
+<!-- after the page's own script: the player leans on what that declares -->
+<script src="player.js"></script>
 </body>
 </html>

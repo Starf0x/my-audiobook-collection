@@ -43,7 +43,9 @@ $('#brand').onclick = () => { location.href = '/'; };
 $('#toAdmin').onclick = () => { location.href = '/admin'; };
 $('#toListen').onclick = () => { location.href = '/'; };
 
-const state = { players: [], config: null };
+// the last three are the player's, which this page carries like the other two:
+// the name is the one the listening page remembered for this browser
+const state = { players: [], config: null, user: localStorage.user || '', book: null, track: 0 };
 
 const when = (iso) => {
   if (!iso) return 'never';
