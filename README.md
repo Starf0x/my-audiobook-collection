@@ -1,37 +1,66 @@
 # My Audiobook Collection
 
-A small, self-hosted web app to browse and play an audiobook collection that is
-organised on disk as **Genre → Author → Book** or **Genre → Author → Series → Book**.
+A small, self-hosted web app for an audiobook collection that is organised on disk
+as **Genre → Author → Book** or **Genre → Author → Series → Book**.
+
+It does three things, and it does them properly:
+
+> **It writes the metadata into your MP3s.** Not into a database only its own
+> interface can read — into the files, where every other player will find it.
+>
+> **It turns `.m4b` and `.ogg` into MP3, a chapter to a track.** So the books
+> that could not be tagged, can be.
+>
+> **It plays them,** and remembers where each person got to in every book.
 
 The full manual, with screenshots of every part of it, is in the
 [wiki](https://github.com/Starf0x/my-audiobook-collection/wiki).
+
+### Writing the tags into the files
+
+* Shows per book which tags the **files themselves** carry, in green, so metadata that is only in the database is visible as such
+* A **Needs tags** list of every book whose files miss a required tag — nine of them — with writing and lookup on the spot
+* Fills in what is missing from the **Google Books API**, or by hand, and writes it back into the MP3s
+* Writes album, title, artist, album artist, genre, year, description, cover art, narrator and a renumbered track number
+* **Merges**: frames it is not setting are left alone, and a value it does not have is left out rather than written empty
+* A value written by another tagger is picked up by the next scan — what it says, not only that it is there
+* The whole collection in one run, **on the server**: closing the page does not stop it, and it can be stopped and carried on
+* Two books, or two series, can be written at once, each with its own bar — but never the same book twice at once
+
+### Converting to MP3
+
+* Converts `.m4b` and `.ogg` books to MP3 — **a chapter becomes a track**, named and numbered in order
+* A **Needs converting** list of every book whose files are not MP3, and *⤳ Convert to MP3…* on any cover
+* Keeps what it came from: the originals move to **Converted**, with their size and date, and you delete them when you are satisfied
+* Cover art the source carried is written beside the audio, so nothing is lost
+* `ffmpeg` and `ffprobe` are **part of the image** — nothing to install, upload or configure
+* Every refusal says why, in words: an older container, a file the tool could not read, or what the tool itself said
+
+### Playing it
+
+* Streams in the browser, remembers the position **per user**, and marks a book listened when it runs out
+* The player is the app's own: dark, with a yellow line measuring **time through the book**, not tracks
+* **A book keeps playing when you change page** — the listening page, the admin page and the Home Assistant page hand it over between them
+* The Play button of the book that is playing is its Pause button, on the card you started it from
+* The cover is a play button too: click the picture to start a book, click it again to pause it
+* Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
+* **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
+* **Home Assistant** reads the collection and carries a book on to any media player in the house
+
+### And around all that
 
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
 * One search box for the lot: title, author, genre, series, narrator or a few words from the description
 * Each genre lists its series underneath it, from a series folder, from sibling volume names, or from the tags
 * Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
 * Scans one or more library folders on the server (with a built-in folder browser)
-* Reads ID3 / audio metadata from the files (title, narrator, year, description, embedded cover art)
 * Draws a cover for a book that has none, so a shelf is never a row of empty rectangles
-* Shows per book which tags the **files themselves** carry, so database-only metadata is visible as such
-* Fills in missing metadata via the **Google Books API**, or by hand, and writes it back into the MP3s
-* A *Needs tags* list of every book whose files miss a required tag, with writing and lookup on the spot
-* Converts `.m4b` and `.ogg` books to MP3 — **a chapter becomes a track** — and keeps the files they came from
 * Files new audiobooks from an **import folder** into the right genre, author and series
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
-* Streams books in the browser, remembers the playback position **per user**, and marks books listened
-* Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
-* The Play button of the book that is playing is its Pause button, on the card you started it from
-* The player is the app's own: dark, with a yellow line showing how far into the track you are
-* **A book keeps playing when you change page** — the listening page, the admin page and the Home Assistant page hand it over between them
-* **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
-* The cover is a play button too: click the picture to start a book, click it again to pause it
+* Says which books it could not read, and which folders it walked past, rather than quietly finding fewer
 * The page itself, and the covers drawn for books with no art of their own, turn their colours every day
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
-* **Home Assistant** reads the collection and carries a book on to any media player in the house
 * Runs as a single Docker container, SQLite storage, no external services
-* One job at a time: whichever button started the job greys out until it is done, wherever it was pressed
-* Except tag writes: two books, or two series, can be written at once, each with its own bar
 
 ## Folder layout it expects
 
