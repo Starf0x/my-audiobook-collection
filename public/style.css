@@ -69,6 +69,10 @@ main li.active .count { color: #e8e2ff; }
 
 .list { padding: 4px 16px; display: flex; flex-direction: column; gap: 12px; }
 .series-head { color: var(--accent2); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin-top: 8px; }
+/* what the collection has of that series, under its name: red where a volume
+   number has no book on it, quiet where the run is whole or cannot be judged */
+.series-gap { color: var(--dim); font-size: 12px; margin-top: 2px; }
+.series-gap.missing { color: #ffa8a8; }
 .card {
   display: grid; grid-template-columns: 96px 1fr auto; gap: 14px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px;

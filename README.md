@@ -52,6 +52,7 @@ The full manual, with screenshots of every part of it, is in the
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
 * One search box for the lot: title, author, genre, series, narrator or a few words from the description
 * Each genre lists its series underneath it, from a series folder, from sibling volume names, or from the tags
+* Says under a series which volume you are missing, from the numbers it already has — no requests, no key
 * Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
 * Scans one or more library folders on the server (with a built-in folder browser)
 * Draws a cover for a book that has none, so a shelf is never a row of empty rectangles
@@ -155,6 +156,29 @@ their folders having to change.
 All three are shown the same way, on the cards and as a heading in the author
 view. A series that was not a folder never moves a file: the folders stay as they
 are, and *Move…* and the **Series** field still work on the folder alone.
+
+### Which volumes you are missing
+
+Under the name of a series, on both pages, is a line saying what the collection
+has of it — *Missing: book 3* in red where a number has no book on it, or *Book 1
+to 5 are all here* where nothing between them is absent.
+
+It reads the **volume numbers**, so it can only say as much as those do:
+
+* **It never calls a series finished.** A shelf holding books 1 to 5 says exactly
+  that; whether a book 6 was ever published is not something the app can know.
+  Google's Books API will not answer it either — it says whether a *series* is
+  complete, never which volumes are in it — so this is counted at home, and costs
+  no requests and no key.
+* **Books with no number are counted and said.** *Missing: book 2. 1 book(s) here
+  carry no volume number, so what is missing may be among them* — the unnumbered
+  one may well be the gap. Give it a number in *Edit metadata* and the line
+  settles.
+* **A series nobody has numbered says so** rather than pretending to a verdict, and
+  a single book on its own gets no line at all.
+* **It counts the whole series, not the books on screen.** Browsing by author
+  shows one author's share of a shared series; the book another author wrote still
+  counts as one you have.
 
 ## Run it on Unraid
 

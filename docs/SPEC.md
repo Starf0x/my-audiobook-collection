@@ -359,7 +359,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/home` | — | `{continue, recent}` |
 | `GET /api/genres` | — | `[{name, books, series: [{name, books}]}]` |
 | `GET /api/authors?genre=` | — | `[{name, books}]` |
-| `GET /api/books?genre=&author=|series=&user=` | — | cards |
+| `GET /api/books?genre=&author=|series=&user=` | — | `{books, series}` — the cards, and for each series among them `{name, books, highest, missing, unnumbered, says}` |
 | `GET /api/search?q=&user=` | — | cards, across everything |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
@@ -1162,6 +1162,40 @@ on every column matters — concatenating a NULL in SQLite yields NULL and the b
 would never match. Results carry the same fields as an ordinary book list, so
 both pages render them with the code they already have.
 
+### 7.10a Whether a series is all there
+
+`seriesState(genre, name)` answers it from the volume numbers alone, and
+`/api/books` sends one for every series on the page beside the cards. The books of
+the series that carry a number are laid out from **1** to the highest, and the
+numbers with no book on them are `missing`. Four facts come back — `books`,
+`highest`, `missing`, `unnumbered` — and the sentence built from them:
+
+| what is there | what it says |
+| --- | --- |
+| 1, 2, 4, 5 | `Missing: book 3.` |
+| 1, 2, 3 | `Book 1 to 3 are all here.` |
+| 1, 3, and one book with no number | `Missing: book 2. 1 book(s) here carry no volume number, so what is missing may be among them.` |
+| no numbers at all | `No volume numbers here, so nothing can be said about what is missing.` |
+| a single book | nothing: one book is a folder, not a series to judge |
+
+Three things this deliberately does **not** do:
+
+* **It never claims a series is complete.** Nothing in the library can know that a
+  book after the highest was ever published — the Books API has no endpoint that
+  lists a series' volumes, only `isComplete` on the series itself — so the
+  sentence says which run is here and stops. Asking Google was considered and
+  refused: it would cost a request per series to answer worse than the numbers do.
+* **It counts over the whole series, never over the books on screen.** Browsing by
+  author shows one author's share of a series; a shared world whose book 2 is
+  filed under another author would otherwise read as a gap. The state is queried
+  by `(genre, series)` for exactly that reason.
+* **It says when it cannot say.** A series nobody has numbered gets the sentence
+  saying so rather than a blank, and where some books carry no number the caveat
+  rides along with the gap — the missing volume may be one of them.
+
+The sentence is built on the server because the library page and the listening
+page both draw series heads, and a rule with two readers drifts.
+
 ### 7.11 The one password (`admin.js`)
 
 `ADMIN_PASSWORD` on the container. A salt is made at startup and the password is
@@ -1245,6 +1279,15 @@ status endpoint and removes itself a few seconds after finishing.
 alone folds; clicking the **name** selects the genre and leaves the list as it
 was. Open genres are remembered in `localStorage.openGenres` and restored on
 load. Series rows are `li[data-genre][data-series]`, selected with `CSS.escape`.
+
+**A series head says what is missing.** Under every `series-head` —
+the one at the top of a series, and the ones `drawBooks` writes between the groups
+of an author's books — goes the `says` sentence from `/api/books` (§7.10a) as a
+`.series-gap`, red where a volume number has no book on it and quiet where the run
+is whole or cannot be judged. `drawBooks(books, heading, kind, states)` takes those
+states as its fourth argument; the lists that do not come from `/api/books` — a
+search, the Listened view — pass none and get no line. The page decides nothing
+about it but the colour.
 
 **Books** are cards: cover, listened checkbox, title with a listened/part/new
 note, author, `Series · <name> · book <n>`, badges (year, narrator, running time,
@@ -1680,6 +1723,7 @@ Server suites:
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
+| `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen |
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
