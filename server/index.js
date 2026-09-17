@@ -461,7 +461,48 @@ app.get('/api/authors', (req, res) => res.json(
   db.prepare('SELECT author AS name, COUNT(*) AS books FROM books WHERE genre = ? GROUP BY author ORDER BY author')
     .all(req.query.genre)));
 
-// Books of one author, or of one series: the same card either way.
+// Whether a series is all there. Only the volume numbers can say it: the books of
+// one series that carry a number are laid out from 1 to the highest, and the
+// numbers with no book on them are the ones the collection does not have. Nothing
+// here can know that a book *after* the highest was ever published, so it never
+// claims more than "1 to N are here" — and where books carry no number at all, the
+// honest answer is that none can be given.
+//
+// Counted over the whole series, not over the books on screen: browsing by author
+// shows one author's share of a series, and a gap in that is not a gap in the
+// collection.
+//
+// The sentence it comes with is built here rather than in the pages because the
+// library page and the listening page both draw these heads, and a rule with two
+// readers drifts.
+const andList = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+const saysOf = (books, highest, missing, unnumbered) => {
+  // one book on its own is a folder, not a series to check
+  if (books < 2) return '';
+  const noNumber = unnumbered ? ` ${unnumbered} book(s) here carry no volume number` : '';
+  if (!highest) return 'No volume numbers here, so nothing can be said about what is missing.';
+  if (missing.length) {
+    return `Missing: book ${andList(missing)}.`
+      + (noNumber ? `${noNumber}, so what is missing may be among them.` : '');
+  }
+  return (highest === 1 ? 'Book 1 is here.' : `Book 1 to ${highest} are all here.`)
+    + (noNumber ? `${noNumber}.` : '');
+};
+
+const seriesState = (genre, name) => {
+  const nos = db.prepare(`SELECT b.series_no AS no FROM books b
+                          WHERE b.genre = ? AND ${SERIES} = ?`).all(genre, name).map((r) => r.no);
+  const numbered = [...new Set(nos.filter((n) => n > 0))].sort((a, b) => a - b);
+  const unnumbered = nos.filter((n) => !n).length;
+  const highest = numbered.length ? numbered[numbered.length - 1] : 0;
+  const missing = [];
+  for (let n = 1; n <= highest; n++) if (!numbered.includes(n)) missing.push(n);
+  return { name, books: nos.length, highest, missing, unnumbered,
+           says: saysOf(nos.length, highest, missing, unnumbered) };
+};
+
+// Books of one author, or of one series: the same card either way, and with them
+// what each series on the page is missing.
 app.get('/api/books', (req, res) => {
   const bySeries = !!req.query.series;
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
@@ -471,8 +512,12 @@ app.get('/api/books', (req, res) => {
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
                            ORDER BY series IS NULL, series, b.series_no, b.title`)
     .all(req.query.user || '', req.query.genre, bySeries ? req.query.series : req.query.author);
-  res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
-    finished: isFinished({ ...b, trackSeconds }) })));
+  res.json({
+    books: rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+      finished: isFinished({ ...b, trackSeconds }) })),
+    series: [...new Set(rows.map((b) => b.series).filter(Boolean))]
+      .map((name) => seriesState(req.query.genre, name)),
+  });
 });
 
 // The box at the top of the page. Every word has to appear somewhere in the
