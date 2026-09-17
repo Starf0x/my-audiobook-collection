@@ -23,6 +23,7 @@ The full manual, with screenshots of every part of it, is in the
 * Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * The Play button of the book that is playing is its Pause button, on the card you started it from
 * The player is the app's own: dark, with a yellow line showing how far into the track you are
+* **A book keeps playing when you change page** — the listening page, the admin page and the Home Assistant page hand it over between them
 * **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
 * The cover is a play button too: click the picture to start a book, click it again to pause it
 * The page itself, and the covers drawn for books with no art of their own, turn their colours every day
@@ -299,6 +300,22 @@ track it is on, and since those are the books you are in the middle of it reads
 **▶ Resume** — a place kept is a place to carry on from, whether or not anything
 is loaded in the player, so a reload does not turn it back into *Play*. Tapping
 the cover does the same as pressing it.
+
+### It keeps playing when you change page
+
+Going to the admin page while a book is playing does not stop it, and neither
+does going on to the Home Assistant page or coming back. The player follows you:
+the same book, at the same second, still playing, on all three pages — which is
+why the Home Assistant page has a player at the foot of it too.
+
+A book you **paused** stays paused. It comes back loaded, at the place you left
+it, waiting for ▶ — changing page is not a reason to start a book.
+
+One thing is the browser's to decide rather than this app's: a page is only
+allowed to start making a sound when a click brought you there. That covers every
+way the app itself moves between its pages. If you get to a page another way — by
+typing the address, or refreshing — the browser may refuse, and then the player
+is there with the book loaded and a line asking you to press ▶.
 
 ### The right button on a cover
 
