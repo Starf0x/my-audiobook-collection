@@ -102,6 +102,23 @@ $('#pCover').onclick = () => {
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 };
 
+// Nothing is being listened to any more, so the bar has nothing to say and goes.
+// The place is written down first — putting the player away is not losing where
+// you were — and the carried book goes with it: `pagehide` only writes a carry
+// while a book is loaded, so an old one left in sessionStorage would have the
+// next page of the app pick the book straight back up and put the bar back.
+// Paused is not this: a book you stopped for a moment is still the book you are
+// listening to, and the bar is how you carry on with it.
+function closePlayer() {
+  saveProgress();
+  audio.pause();
+  state.book = null;
+  $('#player').hidden = true;
+  sessionStorage.removeItem(CARRY);
+  markPlaying();
+}
+$('#pClose').onclick = closePlayer;
+
 // --- the transport ------------------------------------------------------
 // A browser's own audio controls cannot be recoloured: the timeline lives in a
 // shadow tree the page may not touch, which is why the line that says how far
@@ -188,15 +205,26 @@ audio.onended = () => {
 
 async function finishedListening() {
   const id = state.book.id;
-  saveProgress();
+  // it has run out: there is nothing left to carry on with, so the bar goes the
+  // same way it does when it is put away by hand. This saves the place too, and
+  // it happens before the returns below, so a book that runs out with nobody
+  // named does not leave a dead bar standing.
+  closePlayer();
   if (!state.user) return;
   try { await post('/api/listened', { user: state.user, bookId: id, done: true }); } catch { return; }
   // the card of that book, if it happens to be on screen, without a redraw
   const tick = document.querySelector(`.card .listened input[onchange*="setListened(${id},"]`);
   if (tick) {
     tick.checked = true;
-    const note = tick.closest('.card').querySelector('.note');
+    const card = tick.closest('.card');
+    const note = card.querySelector('.note');
     if (note) { note.className = 'note done'; note.title = 'Listened'; }
+    // and its button is the one that has to say what pressing it does now. While
+    // the bar stood there it was the thing you would have gone back to; with the
+    // bar gone, a book you have just finished is one to play again — never a
+    // Resume, which would mean the last seconds of it.
+    const play = card.querySelector('.actions button[onclick^="playBook"]');
+    if (play) play.dataset.again = '1';
   }
   // the pages with lists of their own redraw them; the Home Assistant page has
   // neither, and is not asked for what it does not have

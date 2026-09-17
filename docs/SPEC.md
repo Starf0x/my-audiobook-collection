@@ -1327,7 +1327,39 @@ touch, so the line saying how far into a track you are was whatever grey the
 browser felt like, on a light slab in a dark interface. So `<audio>` carries no
 `controls` attribute and is `display: none` — it is only the engine — and the
 footer holds `#pPlay` (▶/⏸, lit while playing), `#pAt`, `#seek`, `#pOf`,
-`#pVolBtn` and `#vol`, then the track select.
+`#pVolBtn` and `#vol`, then the track select and `#pClose`.
+
+**The bar is there only while something is being listened to.** `<footer
+id="player">` ships `hidden`; `playBook` is the only thing that shows it, and
+`closePlayer()` is the only thing that puts it back:
+
+```js
+function closePlayer() {
+  saveProgress();            // putting the player away is not losing your place
+  audio.pause();
+  state.book = null;
+  $('#player').hidden = true;
+  sessionStorage.removeItem(CARRY);   // or the next page picks the book back up
+  markPlaying();             // and the cards stop saying Pause
+}
+```
+
+It runs in two cases, and only two. **`#pClose`**, the ✕ at the end of the bar —
+dim until hovered, because it sits next to the volume and is not a thing to press
+by accident. And **a book running out**: `finishedListening` calls it before its
+own early returns, so a book that ends with nobody named does not leave a dead
+bar standing either. Removing the carry matters as much as hiding the bar:
+`pagehide` only *writes* a carry while a book is loaded, so an old one left in
+`sessionStorage` would have the next page of the app pick the book straight back
+up and the bar would reappear on its own.
+
+**Paused is not this.** A book stopped for a moment is still the book you are
+listening to, and the bar is the way back into it — hiding it on `pause` would
+leave no way to resume. What ends the bar is the book ending, or being asked.
+
+A book that has just run out also has `data-again` set on its card's play button,
+so with the bar gone the card says *▶ Play again* rather than *▶ Resume* — which
+would otherwise offer the last seconds of a book already finished.
 
 Both sliders are `<input type="range">` with the fill drawn by CSS from a custom
 property: `--played` is set on the element in JS, and
