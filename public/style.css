@@ -110,6 +110,10 @@ footer .tick { color: var(--dim); font-size: 12px; font-variant-numeric: tabular
 footer #seek { flex: 1; min-width: 120px; }
 footer #vol { width: 96px; flex: 0 0 auto; }
 footer #pVolBtn { padding: 7px 9px; font-size: 14px; line-height: 1; }
+/* putting the player away is not a thing to press by accident on the way to the
+   volume, so it sits quietly until it is looked for */
+footer #pClose { padding: 7px 9px; font-size: 14px; line-height: 1; color: var(--dim); }
+footer #pClose:hover { color: var(--text); }
 
 /* one look for both sliders: yellow up to --played, the track beyond it */
 footer input[type="range"] {
