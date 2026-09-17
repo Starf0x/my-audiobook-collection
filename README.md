@@ -370,6 +370,25 @@ way the app itself moves between its pages. If you get to a page another way —
 typing the address, or refreshing — the browser may refuse, and then the player
 is there with the book loaded and a line asking you to press ▶.
 
+### The bar is only there while you are listening
+
+The player at the foot of the page is not furniture: it appears when a book is
+loaded into it and goes away when there is nothing to listen to.
+
+* **A book that runs out takes the bar with it.** The last track ends, the book
+  ticks itself as *Listened*, and the bar goes — there is nothing left to carry
+  on with, and its card now offers **▶ Play again** rather than *Resume*.
+* **✕ at the end of the bar puts it away** whenever you like. Your place is
+  written down first, so the book stays on *Continue listening* and picks up
+  where you left it; the bar simply stops taking up the bottom of the screen. It
+  stays away when you move between the pages, too.
+* **Pausing does not hide it.** A book you stopped for a moment is still the book
+  you are listening to, and the bar is how you carry on with it — press ▶, or ✕
+  if you are really done.
+
+A fresh page with nothing loaded has no bar at all, which is why you may never
+have seen it on a page you had only just opened.
+
 ### The right button on a cover
 
 Right-click any cover — the one on a card, one on a shelf, or the one in the
