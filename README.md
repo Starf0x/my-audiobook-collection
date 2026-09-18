@@ -596,6 +596,14 @@ is not the page you left. It keeps the distance between its two glows, so it is
 still this app whatever day it is, and after a year it is back where it began. A
 page left open overnight — on a tablet in the kitchen — turns when the day does.
 
+**The progress bar is lit by the same two.** Every bar that runs while the app is
+working on your books — a scan, a tag write, a conversion, an import, the disk
+check, a lookup — fills from the colour of the glow on the **left** of the page
+into the colour of the glow on the **right**, at full strength rather than the
+faint wash behind the panels. It is the same pair, so a bar never sits in
+yesterday's colours against today's page, and a bar that happens to be running at
+midnight turns with everything else.
+
 Nothing is written to disk for this — it is drawn when the page asks for the
 cover. A book with a drawn cover still counts as one that **needs tags**, so
 finding it real art and writing that into the files remains the fix.

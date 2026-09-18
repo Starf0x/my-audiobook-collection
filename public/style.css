@@ -5,8 +5,18 @@
      nought is the pair the app was drawn in. The two glows keep their distance
      from each other, so the page stays this app whatever day it is. */
   --day: 0;
-  --glow1: hsl(calc(252 + var(--day)) 100% 68% / .34);
-  --glow2: hsl(calc(188 + var(--day)) 86% 53% / .30);
+  /* The pair the day turns, named once. 252° and 188° are --accent and --accent2
+     themselves — #7c5cff is hsl(252 100% 68%), #22d3ee is hsl(188 86% 53%) — so
+     on day nought everything below is the colour it has always been, and on every
+     other day it has moved with the page. --glow is that pair behind the page,
+     faint; --tint is the same pair at full strength, for anything drawn on a
+     panel, where .34 opacity would be a smear. */
+  --hue1: calc(252 + var(--day));
+  --hue2: calc(188 + var(--day));
+  --glow1: hsl(var(--hue1) 100% 68% / .34);
+  --glow2: hsl(var(--hue2) 86% 53% / .30);
+  --tint1: hsl(var(--hue1) 100% 68%);
+  --tint2: hsl(var(--hue2) 86% 53%);
 }
 * { box-sizing: border-box; }
 /* This is an application, not a document: clicking a list, a card or a tile
@@ -172,7 +182,9 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 #progress { padding: 8px 16px; background: var(--panel); border-top: 1px solid var(--line); display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 #progress .job { flex: 1 1 340px; display: flex; align-items: center; gap: 10px; min-width: 280px; }
 #progress .track { flex: 1; height: 8px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
-#progress .fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .25s; }
+/* left to right, the two glows behind the page: the bar is lit by the same pair
+   the page stands in, and turns with it at midnight without being told */
+#progress .fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--tint1), var(--tint2)); transition: width .25s; }
 #progress .say { color: var(--dim); font-size: 12px; flex: 0 1 auto; max-width: 55%; text-align: right; }
 #progress .say.warn { color: #ffb4a8; }
 
@@ -189,7 +201,8 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 
 #lookupProgress { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; }
 #lookupProgress .track { flex: 1; height: 8px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
-#lookupBar { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .25s; }
+/* the same bar in a dialog, so the same day's colours */
+#lookupBar { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--tint1), var(--tint2)); transition: width .25s; }
 #lookupState { color: var(--dim); font-size: 12px; min-width: 250px; text-align: right; }
 
 .badge.tagged { color: #8ee0b4; border-color: #2b5a45; background: #16241d; }
