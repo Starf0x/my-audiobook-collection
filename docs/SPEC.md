@@ -1269,6 +1269,25 @@ accent colours over `--bg`, fixed. `body { cursor: default; user-select: none }`
 because this is an application, not a document — inputs, descriptions and status
 text opt back in.
 
+**The day's pair, named once.** `--day` (degrees, set by `day.js`) turns two hues
+— `--hue1: calc(252 + var(--day))` and `--hue2: calc(188 + var(--day))` — and
+everything that moves with the day is derived from those: `--glow1` / `--glow2`
+are the pair at .34 and .30 opacity, which is the background; `--tint1` /
+`--tint2` are the same pair at full strength, for anything drawn *on* a panel,
+where a third of an opacity would be a smear. 252° and 188° are `--accent` and
+`--accent2` themselves — `#7c5cff` **is** `hsl(252 100% 68%)` and `#22d3ee` **is**
+`hsl(188 86% 53%)` — so on day nought every derived colour is the one the app was
+drawn in, which is what makes the turn invisible in a screenshot of day nought and
+obvious on any other day.
+
+The **progress bars** run `linear-gradient(90deg, var(--tint1), var(--tint2))`:
+left to right, the glow on the left of the page into the glow on the right, full
+strength. Both bars — `#progress .fill`, one per running job, and `#lookupBar` in
+the Find-metadata dialog — read the same pair, so they cannot drift apart. Nothing
+subscribes to anything: `day.js` sets `--day` on `documentElement` five seconds
+after midnight, and every rule above recomputes because it was written in terms of
+it. A bar running across midnight turns while it runs.
+
 Covers are 2:3 everywhere: 96×144 on cards, 104×156 on tiles, 60×90 on lookup
 candidates, 36×54 in the footer.
 
