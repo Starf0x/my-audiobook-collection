@@ -180,6 +180,15 @@ It reads the **volume numbers**, so it can only say as much as those do:
   shows one author's share of a shared series; the book another author wrote still
   counts as one you have.
 
+And when you would rather ask than come across them: **Settings → Series with a
+volume missing** goes through every series in the collection and lists the ones
+with a hole, the widest hole first — genre, series, which volumes are gone, and
+how far the run gets. Pressing a row opens that series in the library. It is the
+same counting as the line under a series head, so it asks Google nothing and
+costs no quota. Series that carry no volume numbers at all are named under the
+table rather than left out of it: they are the ones no verdict could be given
+about, and an empty table would otherwise read as *nothing missing*.
+
 ## Run it on Unraid
 
 The template does the whole form for you. Copy

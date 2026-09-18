@@ -360,6 +360,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/genres` | — | `[{name, books, series: [{name, books}]}]` |
 | `GET /api/authors?genre=` | — | `[{name, books}]` |
 | `GET /api/books?genre=&author=|series=&user=` | — | `{books, series}` — the cards, and for each series among them `{name, books, highest, missing, unnumbered, says}` |
+| `GET /api/series-gaps` | admin | `{looked, gaps, unnumbered}` — every series in the collection with a volume missing, biggest hole first |
 | `GET /api/search?q=&user=` | — | cards, across everything |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
@@ -1196,6 +1197,21 @@ Three things this deliberately does **not** do:
 The sentence is built on the server because the library page and the listening
 page both draw series heads, and a rule with two readers drifts.
 
+**And the same count over the whole collection.** `GET /api/series-gaps` calls
+`seriesState` once per `(genre, series)` pair and answers `{looked, gaps,
+unnumbered}`: the series with a hole, sorted by **how many volumes are missing**
+and then by genre and name, so six missing of eight sorts above one of nine; a
+count of everything looked at; and, listed apart, the series whose books carry no
+volume numbers at all. That third group is the reason this is not a filter over
+the second: dropping the unjudgeable ones would let *"nothing missing"* stand for
+*"nothing to judge"*, and only one of those is good news.
+
+It is a query per series rather than one clever statement, because the rule then
+lives in exactly one place and the two views can never disagree. It reads the
+database and asks Google nothing, so unlike the series report below it spends no
+quota and needs no key — it is a button only because a large collection is a
+query per series.
+
 ### 7.11 The one password (`admin.js`)
 
 `ADMIN_PASSWORD` on the container. A salt is made at startup and the password is
@@ -1426,6 +1442,18 @@ tall for a thumb.
 
 `#openSettings` is still the id that opens the dialog, so everything that drove it
 before still works.
+
+**Series with a volume missing** (`#seriesGaps`, printing into `#gapsOut`) is the
+collection-wide reading of §7.10a. It is a plain `async` handler with a *Counting…*
+line and not a `work()` job: it reads the database, so it has no business taking
+the one-job lock a scan or a tag write holds. The table is genre, series (with how
+many books it holds and how many of those carry no number), the missing volumes in
+the `worse` red, and the highest volume that is here. Pressing a row closes the
+dialog, unfolds that genre in the column — or it would land on the one row that
+cannot be seen — and opens the series, which is where the hole gets filled in.
+Under the table, the series nobody has numbered are named in a `hint` line, since
+a reader who sees no rows deserves to know which series that verdict could not
+cover.
 
 **And the same size as its neighbour.** Settings holds as much as the Home
 Assistant page does, so `#settings` is `min(820px, 94vw)` wide — the page's own
@@ -1755,7 +1783,7 @@ Server suites:
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
-| `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen |
+| `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen. Then the same count over the whole collection: only the series with a hole listed, the two-volume hole above the one-volume ones, a whole series and a single book both absent from it, and the unnumbered series named apart with the genre a row needs to open it |
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
 | `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
