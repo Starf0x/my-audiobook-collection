@@ -406,3 +406,10 @@ here:
   Ticking is what "listened" means, and only unticking or playing a book again
   takes it off — a position reported by Home Assistant does not. An older suite
   assumed the opposite; the check now says the rule out loud.
+* **A fixture book must outlast the check's own waiting.** Two tracks of three and
+  two seconds ran out while a check watched the hand-over between pages, and the
+  player rightly putting itself away read as the hand-over being broken. The demo
+  book's tracks are a minute and ten seconds for that reason.
+* **The wiki is a second repository**, cloned into `fixtures\wiki`. It commits
+  under its own identity, which has to be set on the clone, and the project's
+  `git status` will never mention that its pages are still uncommitted.
