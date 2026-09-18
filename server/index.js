@@ -457,6 +457,35 @@ app.get('/api/genres', (req, res) => {
   res.json(genres.map((g) => ({ ...g, series: series.filter((s) => s.genre === g.name).map(({ name, books }) => ({ name, books })) })));
 });
 
+// Every series the collection has a hole in, in one pass. It is the same count as
+// the line under a series head (§7.10a), asked of the whole library instead of the
+// series on one page — the rule is not repeated here, `seriesState` is called for
+// each, so the two can never disagree.
+//
+// Nothing is asked of Google, so this costs no quota and needs no key; it is a
+// button rather than something a page loads by itself only because a large
+// collection is a query per series.
+//
+// Three groups come back, because "we cannot say" is an answer and hiding it
+// would read as "nothing missing": the series with a gap, a count of those whose
+// books carry no volume numbers at all, and the total looked at.
+app.get('/api/series-gaps', requireAdmin, (req, res) => {
+  const all = db.prepare(`SELECT b.genre, ${SERIES} AS name FROM books b
+                          WHERE ${SERIES} IS NOT NULL
+                          GROUP BY b.genre, name`).all();
+  const states = all.map((s) => ({ genre: s.genre, ...seriesState(s.genre, s.name) }));
+  res.json({
+    looked: states.length,
+    // the biggest holes first: one missing volume of nine is a different morning's
+    // work from six of eight
+    gaps: states.filter((s) => s.missing.length).sort((a, b) => b.missing.length - a.missing.length
+      || a.genre.localeCompare(b.genre) || a.name.localeCompare(b.name)),
+    unnumbered: states.filter((s) => s.books > 1 && !s.highest)
+      .map(({ genre, name, books }) => ({ genre, name, books }))
+      .sort((a, b) => a.genre.localeCompare(b.genre) || a.name.localeCompare(b.name)),
+  });
+});
+
 app.get('/api/authors', (req, res) => res.json(
   db.prepare('SELECT author AS name, COUNT(*) AS books FROM books WHERE genre = ? GROUP BY author ORDER BY author')
     .all(req.query.genre)));

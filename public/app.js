@@ -1013,6 +1013,45 @@ $('#checkPerms').onclick = async () => {
 // more than a dialog section can hold.
 $('#toHa').onclick = () => { location.href = '/ha'; };
 
+// Every series with a volume number nothing sits on. It reads what the collection
+// already knows — no requests, no key, no waiting — so it is an ordinary read and
+// not a job: it does not take the one-job lock that a scan or a tag write holds.
+// A row opens that series in the library, which is where the missing book would
+// be filled in, so the dialog gets out of the way.
+$('#seriesGaps').onclick = async () => {
+  $('#gapsOut').innerHTML = '<p class="hint">Counting…</p>';
+  let r;
+  try { r = await api('/api/series-gaps'); } catch (e) { $('#gapsOut').innerHTML = ''; return toast(e.message); }
+  const rows = r.gaps.map((s) => `<tr data-genre="${esc(s.genre)}" data-series="${esc(s.name)}">
+      <td>${esc(s.genre)}</td>
+      <td>${esc(s.name)}<div class="hint">${s.books} book(s) here${s.unnumbered
+        ? `, ${s.unnumbered} of them with no number` : ''}</div></td>
+      <td class="worse">${s.missing.map((n) => `book ${n}`).join(', ')}</td>
+      <td>book ${s.highest}</td>
+    </tr>`).join('');
+  // said even when nothing is missing: "no gaps" and "nothing numbered to judge"
+  // are different answers, and only one of them is good news
+  const cannot = r.unnumbered.length
+    ? `<p class="hint">${r.unnumbered.length} series with no volume numbers at all, so nothing can be
+       said about ${r.unnumbered.length === 1 ? 'it' : 'those'}:
+       ${r.unnumbered.map((s) => esc(`${s.genre} · ${s.name}`)).join(', ')}.</p>`
+    : '';
+  $('#gapsOut').innerHTML = (rows
+    ? `<p class="hint">${r.gaps.length} of ${r.looked} series ${r.gaps.length === 1 ? 'has' : 'have'} a gap.</p>
+       <table class="cmp"><tr><th>Genre</th><th>Series</th><th>Missing</th><th>Highest here</th></tr>${rows}</table>`
+    : `<p class="hint">Nothing missing below the highest volume of any of the ${r.looked} series.</p>`)
+    + cannot;
+  $('#gapsOut').querySelectorAll('tr[data-series]').forEach((tr) => {
+    tr.onclick = () => {
+      $('#settings').close();
+      // unfold the genre first, or the series it lands on is the one row in the
+      // column that cannot be seen
+      showSeriesOf(tr.dataset.genre, true);
+      selectSeries(tr.dataset.genre, tr.dataset.series, null);
+    };
+  });
+};
+
 // What Google answered for a stretch of books, as a table to read and to send on.
 // Its own request count per book is the part worth seeing: a series in the title
 // is free, and everything else is not.
