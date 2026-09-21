@@ -410,6 +410,10 @@ here:
   two seconds ran out while a check watched the hand-over between pages, and the
   player rightly putting itself away read as the hand-over being broken. The demo
   book's tracks are a minute and ten seconds for that reason.
+* **A listing this app serves must end.** Music Assistant pages the Audiobookshelf
+  answers with a loop that stops only on an empty page; the series listing ignored
+  page and answered with everything each time, so that folder never opened and
+  nothing logged a reason.
 * **The wiki is a second repository**, cloned into `fixtures\wiki`. It commits
   under its own identity, which has to be set on the clone, and the project's
   `git status` will never mention that its pages are still uncommitted.
