@@ -1018,45 +1018,6 @@ $('#checkPerms').onclick = async () => {
 // more than a dialog section can hold.
 $('#toHa').onclick = () => { location.href = '/ha'; };
 
-// Every series with a volume number nothing sits on. It reads what the collection
-// already knows — no requests, no key, no waiting — so it is an ordinary read and
-// not a job: it does not take the one-job lock that a scan or a tag write holds.
-// A row opens that series in the library, which is where the missing book would
-// be filled in, so the dialog gets out of the way.
-$('#seriesGaps').onclick = async () => {
-  $('#gapsOut').innerHTML = '<p class="hint">Counting…</p>';
-  let r;
-  try { r = await api('/api/series-gaps'); } catch (e) { $('#gapsOut').innerHTML = ''; return toast(e.message); }
-  const rows = r.gaps.map((s) => `<tr data-genre="${esc(s.genre)}" data-series="${esc(s.name)}">
-      <td>${esc(s.genre)}</td>
-      <td>${esc(s.name)}<div class="hint">${s.books} book(s) here${s.unnumbered
-        ? `, ${s.unnumbered} of them with no number` : ''}</div></td>
-      <td class="worse">${s.missing.map((n) => `book ${n}`).join(', ')}</td>
-      <td>book ${s.highest}</td>
-    </tr>`).join('');
-  // said even when nothing is missing: "no gaps" and "nothing numbered to judge"
-  // are different answers, and only one of them is good news
-  const cannot = r.unnumbered.length
-    ? `<p class="hint">${r.unnumbered.length} series with no volume numbers at all, so nothing can be
-       said about ${r.unnumbered.length === 1 ? 'it' : 'those'}:
-       ${r.unnumbered.map((s) => esc(`${s.genre} · ${s.name}`)).join(', ')}.</p>`
-    : '';
-  $('#gapsOut').innerHTML = (rows
-    ? `<p class="hint">${r.gaps.length} of ${r.looked} series ${r.gaps.length === 1 ? 'has' : 'have'} a gap.</p>
-       <table class="cmp"><tr><th>Genre</th><th>Series</th><th>Missing</th><th>Highest here</th></tr>${rows}</table>`
-    : `<p class="hint">Nothing missing below the highest volume of any of the ${r.looked} series.</p>`)
-    + cannot;
-  $('#gapsOut').querySelectorAll('tr[data-series]').forEach((tr) => {
-    tr.onclick = () => {
-      $('#settings').close();
-      // unfold the genre first, or the series it lands on is the one row in the
-      // column that cannot be seen
-      showSeriesOf(tr.dataset.genre, true);
-      selectSeries(tr.dataset.genre, tr.dataset.series, null);
-    };
-  });
-};
-
 // --- Series to complete -------------------------------------------------
 // Two questions in one list, and they are answered by different things. What is
 // missing *between* the volumes you have is counted from your own numbers, free
@@ -1137,9 +1098,24 @@ function drawSeriesPane(gaps, online, author = null) {
             ${g.books} book(s) here, up to book ${g.highest}</div>
           <div class="sub missing">${esc(g.says)}</div>
         </div>
-        <div class="actions"><button class="copy-search"
-          data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}">⧉ Copy to search</button></div>
+        <div class="actions">
+          <button class="open-series" data-genre="${esc(g.genre)}"
+            data-series="${esc(g.name)}">Open in library</button>
+          <button class="ghost copy-search"
+            data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}">⧉ Copy to search</button>
+        </div>
       </div>`).join('')
+    : '';
+
+  // said even where nothing is missing: "no gaps" and "nothing numbered to
+  // judge" are different answers, and only one of them is good news
+  const unnumbered = author ? [] : (gaps.unnumbered || []);
+  const cannotCount = unnumbered.length
+    ? `<p class="hint">${unnumbered.length} series with no volume numbers at all, so
+       ${unnumbered.length === 1 ? 'its' : 'their'} own books can say nothing about gaps:
+       ${unnumbered.map((s) => esc(`${s.genre} · ${s.name}`)).join(', ')}.
+       Wikidata can still be asked about ${unnumbered.length === 1 ? 'it' : 'those'}, and matches
+       by title.</p>`
     : '';
 
   const found = short.length ? short.map(missingSeries).join('')
@@ -1155,7 +1131,9 @@ function drawSeriesPane(gaps, online, author = null) {
           <div class="sub">${esc(r.genre)}${r.author ? ` · ${esc(r.author)}` : ''}</div>
           <div class="sub">${esc(r.why)}</div></div></div>`).join('') : '');
 
-  $('#books .list').innerHTML = header + own + found + rest;
+  $('#books .list').innerHTML = header + own + cannotCount
+    + '<div class="series-head">Volumes Wikidata knows and you do not have</div>'
+    + found + rest;
   $('#books #askWikidata').onclick = askWikidata;
 }
 
@@ -1235,9 +1213,20 @@ $('#seriesList').onclick = async () => {
   drawSeriesPane(gaps, online);
 };
 
-// The copy button, wherever it appears in the book pane: what goes on the
-// clipboard is "author - thing", which is what a search box or a shop wants.
+// The two buttons on these rows. The copy puts "author - thing" on the
+// clipboard, which is what a search box or a shop wants; the other leaves this
+// list for the series itself in the library, which is where the missing book
+// would be filled in — it was the one thing the Settings list could do that
+// this pane could not, and moving a list means moving what it could do.
 $('#books').addEventListener('click', async (e) => {
+  const open = e.target.closest('.open-series');
+  if (open) {
+    document.body.classList.remove('maintenance');
+    // unfold the genre first, or the series it lands on is the one row in the
+    // column that cannot be seen
+    showSeriesOf(open.dataset.genre, true);
+    return void selectSeries(open.dataset.genre, open.dataset.series, null);
+  }
   const button = e.target.closest('.copy-search');
   if (!button) return;
   const text = button.dataset.copyText || '';

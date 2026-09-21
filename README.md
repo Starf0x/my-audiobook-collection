@@ -182,14 +182,15 @@ It reads the **volume numbers**, so it can only say as much as those do:
   shows one author's share of a shared series; the book another author wrote still
   counts as one you have.
 
-And when you would rather ask than come across them: **Settings → Series with a
-volume missing** goes through every series in the collection and lists the ones
-with a hole, the widest hole first — genre, series, which volumes are gone, and
-how far the run gets. Pressing a row opens that series in the library. It is the
-same counting as the line under a series head, so it asks Google nothing and
-costs no quota. Series that carry no volume numbers at all are named under the
-table rather than left out of it: they are the ones no verdict could be given
-about, and an empty table would otherwise read as *nothing missing*.
+And when you would rather ask than come across them: **Series to complete**, in
+the left column under *Maintenance*, goes through every series in the collection
+and lists the ones with a hole — genre, author, series, which volumes are gone,
+and how far the run gets. *Open in library* on a row goes to that series, which
+is where the missing book would land. It is the same counting as the line under a
+series head, so it asks Google nothing and costs no quota. Series that carry no
+volume numbers at all are named there rather than left out: they are the ones no
+verdict could be given about, and an empty list would otherwise read as *nothing
+missing*.
 
 ### Does a volume exist that I do not have?
 

@@ -138,18 +138,11 @@
     <select id="googleCountry"></select>
   </div>
 
-  <label>Series with a volume missing</label>
-  <p class="hint">Goes through every series in the collection and lists the ones with a volume
-    number nothing sits on — <em>book 3 of The Dark Tower</em>, where you have 1, 2, 4 and 5. It
-    reads the numbers your books already carry, so it asks Google nothing and costs no quota. It
-    cannot know that a book after the highest one you own was ever published: it says what is
-    missing below that, and nothing more. Pressing a row opens that series in the library.</p>
-  <button id="seriesGaps" class="ghost">List series with a gap</button>
-  <div id="gapsOut"></div>
-
-  <p class="hint">Whether a volume exists that you do not have is a question this app cannot answer
-    from your own files. <strong>Series to complete</strong>, in the left column under Maintenance,
-    asks Wikidata.</p>
+  <label>Series that are not complete</label>
+  <p class="hint">Both answers live together in <strong>Series to complete</strong>, in the left
+    column under Maintenance: what is missing between the books you already have, counted from
+    their own numbers, and — when you ask Wikidata there — which volumes exist that you do not
+    have at all.</p>
 
   <label>What Google says about series</label>
   <p class="hint">Asks Google about the first books that have no series yet, and reports what came
