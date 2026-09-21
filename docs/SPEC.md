@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.4.80.** This document describes what the app is, how every
+**Version described: 2.5.0.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.80` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.0` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -98,7 +98,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1087 | Express app: every route, and nothing else |
+| `server/index.js` | 1067 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -117,7 +117,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `server/abs.js` | 500 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 557 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
@@ -1230,6 +1230,20 @@ Collections, playlists and shelves answer **empty in the right shape** rather
 than 404: the provider reads them, finds nothing and moves on, where a 404 reads
 as a broken server.
 
+**A playback session is described, not opened.** Pressing play calls
+`POST /api/items/<id>/play`, and this app streams the files straight out, so
+there is nothing to open and nothing to keep: the answer says what *would* have
+been opened, and what matters in it is `audioTracks`, where Music Assistant
+reads the addresses it will fetch. It opens at the place the listener already
+has rather than at nought.
+
+It is also the one answer here that was **invented rather than transcribed**,
+and it went out missing seven required fields. The page said so exactly — *Field
+"device_info" of type DeviceInfo is missing in PlaybackSessionExpanded
+instance* — which is the kindest failure in this whole integration and the only
+one that named itself. `coverPath` is worth singling out: it is a plain `str`
+there, so a book with no picture sends an empty string, never a null.
+
 **Every paged listing must answer an empty page past the end.** The client's
 pager is a bare `while True` — page 0, 1, 2 … — and the caller stops only when a
 page comes back with no results in it. A listing that ignores `page` and answers
@@ -2067,6 +2081,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.0 | pressing play in Music Assistant works: the playback session was the one answer invented rather than transcribed, and it went out missing seven required fields |
 | 2.4.80 | the series listing ends: it ignored its paging, and the client that reads it pages with a loop that only stops on an empty page |
 | 2.4.72 | browsing into an author or a series in Music Assistant works: the two addresses it asks for were missing, and a missing one reads there as a wordless NotFoundError |
 | 2.4.64 | Music Assistant can be pointed at this app: it answers as an Audiobookshelf server, so MA's own provider browses the collection, plays it, and syncs where you got to |

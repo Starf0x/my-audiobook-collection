@@ -421,6 +421,63 @@ export function socketSay(req, res) {
   }
   return res.type('text/html').send('ok');
 }
+// --- a playback session --------------------------------------------------
+// Asked for the moment somebody presses play, and the one answer here that was
+// invented rather than transcribed: it went out missing seven fields, and the
+// page said so in as many words — *Field "device_info" of type DeviceInfo is
+// missing in PlaybackSessionExpanded instance*. Every field below is one the
+// client's dataclass gives no default, so every one of them has to be here.
+//
+// This app opens nothing and keeps nothing: the files are streamed straight
+// out, and the session is a description of what would have been opened. What
+// matters to Music Assistant is `audioTracks`, which is where it reads the
+// addresses it will fetch.
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+export function playbackSession(b, user, req, version) {
+  const item = expandedItem(b, req);
+  const when = new Date();
+  const place = progressOf(user, b);
+  return {
+    id: `pl-${b.id}-${when.getTime().toString(36)}`,
+    userId: `us-${b64(user || '')}`,
+    libraryId: LIB,
+    libraryItemId: String(b.id),
+    episodeId: null,
+    mediaType: 'book',
+    mediaMetadata: item.media.metadata,
+    displayTitle: b.title || '',
+    displayAuthor: b.author || '',
+    // a string, not a nullable one: a book with no picture has no path, and
+    // that is an empty string here rather than a null the client will not take
+    coverPath: b.cover || '',
+    duration: item.media.duration,
+    // 0 is direct play: the player fetches the files as they are, and nothing
+    // here transcodes on the way out
+    playMethod: 0,
+    mediaPlayer: 'music-assistant',
+    deviceInfo: {
+      deviceId: 'music-assistant',
+      clientName: 'Music Assistant',
+      clientVersion: '',
+      manufacturer: '',
+      model: '',
+    },
+    serverVersion: version,
+    date: when.toISOString().slice(0, 10),
+    dayOfWeek: DAYS[when.getDay()],
+    timeListening: 0,
+    // where this listener already is, so a session opened on a book in progress
+    // does not describe it as starting from nought
+    startTime: place ? place.currentTime : 0,
+    currentTime: place ? place.currentTime : 0,
+    startedAt: when.getTime(),
+    updatedAt: when.getTime(),
+    chapters: item.media.chapters,
+    audioTracks: item.media.tracks,
+  };
+}
+
 // --- one author, one series ----------------------------------------------
 // Browsing into an author or a series asks for it by the id this app handed
 // out, and a 404 there is not a gentle "nothing here": the client raises a bare
