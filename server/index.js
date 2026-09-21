@@ -17,7 +17,7 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, haSettings, saveHaSettings, haPing, haPlayers,
-  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush } from './ha.js';
+  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush, sameSecret } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -308,7 +308,7 @@ app.post('/api/broken/:id/delete', requireAdmin, wrap(async (req, res) => {
 // --- cover files no book uses any more ---------------------------------
 app.post('/api/covers/tidy', requireAdmin, wrap(async (req, res) => res.json(tidyCovers())));
 app.post('/api/covers/duplicates/delete', requireAdmin, wrap(async (req, res) => res.json(deleteDuplicates())));
-app.post('/api/covers/duplicates/zip', requireAdmin, wrap(async (req, res) => res.json(zipDuplicates(Date.now()))));
+app.post('/api/covers/duplicates/zip', requireAdmin, wrap(async (req, res) => res.json(await zipDuplicates(Date.now()))));
 
 // --- copies an import replaced -----------------------------------------
 app.get('/api/replaced', requireAdmin, (req, res) => res.json(listReplaced()));
@@ -701,7 +701,7 @@ const forMA = (req, res, next) => {
 app.post('/login', (req, res) => {
   if (!absEnabled()) return res.status(404).end();
   const name = String((req.body || {}).username || '').trim();
-  if (String((req.body || {}).password || '') !== absToken()) {
+  if (!sameSecret(String((req.body || {}).password || ''), absToken())) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
   if (name) db.prepare('INSERT OR IGNORE INTO users (name) VALUES (?)').run(name);
@@ -909,10 +909,18 @@ app.patch('/api/me/progress/:id', forMA, (req, res) => {
   if (!b) return res.status(404).end();
   const said = req.body || {};
   const seconds = Number(said.currentTime);
+  // The client sends this in three separate calls — isFinished on its own, then
+  // a percentage, then the duration with the seconds — so only the one that
+  // carries `isFinished` may decide the tick. Reading a missing field as false
+  // would let the last of the three rub out a book the first had just finished.
+  const tick = 'isFinished' in said ? said.isFinished === true : undefined;
   if (Number.isFinite(seconds)) {
-    absWriteProgress(req.listener, b.id, seconds, said.isFinished === true);
-  } else if (said.isFinished === true) {
+    absWriteProgress(req.listener, b.id, seconds, tick);
+  } else if (tick === true) {
     absWriteProgress(req.listener, b.id, b.duration || 0, true);
+  } else if (tick === false) {
+    // "not finished", with no position: take the tick off and leave the place
+    absWriteProgress(req.listener, b.id, absProgress(req.listener, b)?.currentTime || 0, false);
   }
   res.json(absProgress(req.listener, b) || {});
 });
