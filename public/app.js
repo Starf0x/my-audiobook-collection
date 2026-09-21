@@ -1148,6 +1148,11 @@ function drawSeriesPane(gaps, online, author = null) {
   $('#books #askWikidata').onclick = askWikidata;
 }
 
+// Which author is being looked at, kept outside the drawing: the Wikidata check
+// answers one series a second and the whole view is drawn again each time, so
+// without this the column would throw you back to Every author while you read.
+let seriesAuthor = null;
+
 // The authors column, filled with whoever is short of something — the same shape
 // as browsing the library, so the way in is the way you already know.
 function drawSeriesAuthors(gaps, online) {
@@ -1158,19 +1163,33 @@ function drawSeriesAuthors(gaps, online) {
     if (r.found && (r.missing || []).length) add(r.author, r.missing.length);
   }
   const names = [...short.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  $('#authors ul').innerHTML = `<li data-name="" class="active">
+  // an author whose last gap has just been answered away is no longer there to
+  // stay on, and a pane filtered to a name with no rows would read as empty
+  if (seriesAuthor !== null && !short.has(seriesAuthor)) seriesAuthor = null;
+  const mark = (name) => (name === (seriesAuthor ?? '') ? ' class="active"' : '');
+  $('#authors ul').innerHTML = `<li data-name=""${mark('')}>
       <span>Every author</span><span class="count">${[...short.values()]
     .reduce((n, v) => n + v, 0)}</span></li>`
-    + names.map(([name, n]) => `<li data-name="${esc(name)}">
+    + names.map(([name, n]) => `<li data-name="${esc(name)}"${mark(name)}>
         <span>${esc(name) || 'author unknown'}</span><span class="count">${n}</span></li>`).join('');
   $('#authors ul').querySelectorAll('li').forEach((li) => {
     li.onclick = () => {
       $('#authors ul').querySelectorAll('li').forEach((o) => o.classList.remove('active'));
       li.classList.add('active');
-      drawSeriesPane(gaps, online, li.dataset.name || null);
+      seriesAuthor = li.dataset.name || null;
+      drawSeriesPane(gaps, online, seriesAuthor);
       show('books');
     };
   });
+}
+
+// The column and the pane are one view, and both are drawn from the same pair of
+// answers. Drawing only the pane was the bug: Wikidata would find four volumes
+// missing under an author the column had never heard of, and the row's own count
+// said five series while the column could only lead you to three of them.
+function drawSeriesBoth(gaps, online) {
+  drawSeriesAuthors(gaps, online);
+  drawSeriesPane(gaps, online, seriesAuthor);
 }
 
 let onlineWatch = null;
@@ -1185,12 +1204,16 @@ async function askWikidata() {
     if (!s) return;
     if (s.total) bar.at((s.done / s.total) * 100);
     bar.say(onlineWords(s), !!s.error);
-    if ($('#seriesList').classList.contains('active')) drawSeriesPane(lastGaps, s);
+    const open = () => $('#seriesList').classList.contains('active');
+    if (open()) drawSeriesBoth(lastGaps, s);
     if (!s.running) {
       clearInterval(onlineWatch);
       onlineWatch = null;
       bar.done(s.error ? 15000 : 4000);
-      loadSeriesCount();
+      // the count beside the row and the view itself come from one read, or the
+      // row can say five series while the pane shows what it knew a second ago
+      const fresh = await loadSeriesCount();
+      if (open()) drawSeriesBoth(fresh.gaps, fresh.online);
     }
   }, 1000);
   return undefined;
@@ -1213,15 +1236,18 @@ async function loadSeriesCount() {
 }
 
 $('#seriesList').onclick = async () => {
-  document.body.classList.add('maintenance');
+  // this view browses by author, so the authors column stays where it is —
+  // `maintenance` is what hides that column and takes the app down to two,
+  // which is why the list it was written for sets it and Listened does not
+  document.body.classList.remove('maintenance');
   document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
   $('#seriesList').classList.add('active');
+  seriesAuthor = null;
   $('#authors ul').innerHTML = '<li class="empty">Counting…</li>';
   $('#books .list').innerHTML = '<div class="empty">Counting…</div>';
   show('authors');
   const { gaps, online } = await loadSeriesCount();
-  drawSeriesAuthors(gaps, online);
-  drawSeriesPane(gaps, online);
+  drawSeriesBoth(gaps, online);
 };
 
 // The two buttons on these rows. The copy puts "author - thing" on the

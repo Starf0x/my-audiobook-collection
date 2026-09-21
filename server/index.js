@@ -23,7 +23,7 @@ import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from 
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 import { toolsWhy, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
-import { checkSeriesOnline, onlineProgress, lastOnlineAt, ONLINE_KEY } from './wikidata.js';
+import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
 import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
   loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
   minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
@@ -539,8 +539,8 @@ app.post('/api/series-online', requireAdmin, (req, res) => {
         .all(s.genre, s.name).map((r) => r.no),
     };
   });
+  // it keeps its own answer and its own timestamp: see checkSeriesOnline
   checkSeriesOnline(asking)
-    .then(() => setSetting(ONLINE_KEY, new Date().toISOString()))
     .catch(() => { /* onlineProgress.error already says what happened */ });
   res.json({ started: asking.length });
 });
