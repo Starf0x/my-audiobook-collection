@@ -1070,23 +1070,51 @@ function onlineWords(s) {
   return `Asked about ${s.total} series; Wikidata knew ${s.found}.`;
 }
 
-const onlineRow = (r) => `<div class="fix">
+// A volume that is not here, drawn as the book it would be. It is a card like
+// any other — cover, title, author, series and number — because that is what a
+// reader is looking for: the thing to go and find. What it does not get is a
+// Play button, and its cover is drawn rather than a hole in the shelf.
+const missingCard = (r, v) => {
+  const search = [r.author, v.title].filter(Boolean).join(' - ');
+  return `<div class="card missing-book">
+    <div class="cover">
+      <img src="/api/drawn-cover?title=${encodeURIComponent(v.title)}&author=${encodeURIComponent(r.author)}"
+        alt="" loading="lazy" decoding="async">
+    </div>
     <div>
-      <strong>${esc(r.name)}</strong>
-      <div class="sub">${esc(r.genre)} · ${r.byTitle
-        ? 'your books here carry no numbers, so this was matched by title'
-        : `you have ${r.have.length} numbered book(s)`}</div>
-      <div class="sub missing">Not here: ${r.missing.map((n) => `book ${n}`).join(', ')}</div>
-      <div class="sub">${esc(r.label)} — ${esc(r.description)} ·
-        <a href="${esc(r.url)}" target="_blank" rel="noopener">on Wikidata</a>:
-        ${r.titles.filter((t) => r.missing.includes(t.no))
-    .map((t) => `${t.no}. ${esc(t.title)}`).join(', ')}</div>
+      <h3>${esc(v.title)}</h3>
+      <div class="sub">${esc(r.author) || 'author unknown'}</div>
+      <div class="sub series-of">Series · ${esc(r.name)} · book ${v.no}</div>
+      <div class="sub" style="margin-top:6px">
+        <span class="badge untagged">Not in your collection</span>
+        <span class="badge">${esc(r.genre)}</span>
+      </div>
+      <div class="desc">Wikidata lists this as book ${v.no} of
+        ${esc(r.label)}${r.description ? ` (${esc(r.description)})` : ''}.</div>
+    </div>
+    <div class="actions">
+      <button class="copy-search" data-copy-text="${esc(search)}">⧉ Copy to search</button>
+      <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">On Wikidata</a>
     </div>
   </div>`;
+};
 
-function drawSeriesPane(gaps, online) {
+// One series, headed the way the library heads a series, with its own copy
+// button: what you paste into a shop or a search is the series, not one volume.
+const missingSeries = (r) => `<div class="series-head">Series · ${esc(r.name)}
+    <button class="copy-search linkish" data-copy-text="${esc([r.author, r.name].filter(Boolean).join(' - '))}"
+      title="Copy “author - series” to search for it">⧉ copy</button></div>
+  <div class="series-gap missing">${r.missing.length} of ${r.volumes.length} volume(s) not here${r.byTitle
+  ? ' — your books in it carry no numbers, so this was matched by title' : ''}</div>
+  ${r.titles.filter((v) => v.no && r.missing.includes(v.no)).map((v) => missingCard(r, v)).join('')}`;
+
+// The pane, browsed the way the library is: this author's missing volumes, or
+// everybody's when no author is picked.
+function drawSeriesPane(gaps, online, author = null) {
   const short = (online.series || []).filter((r) => r.found && r.missing && r.missing.length)
-    .sort((a, b) => b.missing.length - a.missing.length);
+    .filter((r) => !author || r.author === author)
+    .sort((a, b) => (a.genre || '').localeCompare(b.genre || '')
+      || (a.author || '').localeCompare(b.author || '') || a.name.localeCompare(b.name));
   const whole = (online.series || []).filter((r) => r.found && !(r.missing || []).length);
   const silent = (online.series || []).filter((r) => !r.found);
 
@@ -1098,34 +1126,62 @@ function drawSeriesPane(gaps, online) {
       <button id="askWikidata" class="ghost">Check every series against Wikidata</button>
     </div>`;
 
-  // First, what is certain: the holes between the numbers already on the shelf.
-  const own = gaps.gaps.length
-    ? `<div class="series-head">Missing between the books you have</div>`
-      + gaps.gaps.map((g) => `<div class="fix"><div>
+  // What is certain comes first and stays apart: these are holes between books
+  // you own, counted here, not asked of anybody.
+  const mineGaps = gaps.gaps.filter((g) => !author || g.author === author);
+  const own = mineGaps.length
+    ? '<div class="series-head">Missing between the books you have</div>'
+      + mineGaps.map((g) => `<div class="fix"><div>
           <strong>${esc(g.name)}</strong>
-          <div class="sub">${esc(g.genre)} · ${g.books} book(s) here, up to book ${g.highest}</div>
+          <div class="sub">${esc(g.genre)}${g.author ? ` · ${esc(g.author)}` : ''} ·
+            ${g.books} book(s) here, up to book ${g.highest}</div>
           <div class="sub missing">${esc(g.says)}</div>
-        </div></div>`).join('')
-    : `<div class="series-head">Missing between the books you have</div>
-       <div class="empty">No gaps in the numbering of ${gaps.looked} series.</div>`;
+        </div>
+        <div class="actions"><button class="copy-search"
+          data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}">⧉ Copy to search</button></div>
+      </div>`).join('')
+    : '';
 
-  // Then, what was asked of the world, kept apart from it on purpose.
-  const found = `<div class="series-head">Volumes Wikidata knows and you do not have</div>`
-    + (short.length ? short.map(onlineRow).join('')
-      : `<div class="empty">${online.total ? 'Nothing Wikidata knows of is missing.'
-        : 'Not asked yet — press the button above.'}</div>`);
+  const found = short.length ? short.map(missingSeries).join('')
+    : `<div class="empty">${online.total
+      ? 'Nothing Wikidata knows of is missing here.'
+      : 'Not asked yet — press <em>Check every series against Wikidata</em> above.'}</div>`;
 
-  const rest = (whole.length ? `<p class="hint">${whole.length} series are complete as far as
-        Wikidata knows: ${whole.map((r) => esc(r.name)).join(', ')}.</p>` : '')
-    // a series it could not place is not a series that is whole, and saying so
-    // is the difference between a check and a reassurance
-    + (silent.length ? `<div class="series-head">It could not say</div>`
+  // Only when looking at everything: per author these would be noise.
+  const rest = author ? '' : (whole.length ? `<p class="hint">${whole.length} series are complete as
+        far as Wikidata knows: ${whole.map((r) => esc(r.name)).join(', ')}.</p>` : '')
+    + (silent.length ? '<div class="series-head">It could not say</div>'
       + silent.map((r) => `<div class="fix"><div><strong>${esc(r.name)}</strong>
-          <div class="sub">${esc(r.genre)}</div>
+          <div class="sub">${esc(r.genre)}${r.author ? ` · ${esc(r.author)}` : ''}</div>
           <div class="sub">${esc(r.why)}</div></div></div>`).join('') : '');
 
   $('#books .list').innerHTML = header + own + found + rest;
   $('#books #askWikidata').onclick = askWikidata;
+}
+
+// The authors column, filled with whoever is short of something — the same shape
+// as browsing the library, so the way in is the way you already know.
+function drawSeriesAuthors(gaps, online) {
+  const short = new Map();
+  const add = (name, n) => short.set(name || '', (short.get(name || '') || 0) + n);
+  for (const g of gaps.gaps) add(g.author, g.missing.length);
+  for (const r of (online.series || [])) {
+    if (r.found && (r.missing || []).length) add(r.author, r.missing.length);
+  }
+  const names = [...short.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  $('#authors ul').innerHTML = `<li data-name="" class="active">
+      <span>Every author</span><span class="count">${[...short.values()]
+    .reduce((n, v) => n + v, 0)}</span></li>`
+    + names.map(([name, n]) => `<li data-name="${esc(name)}">
+        <span>${esc(name) || 'author unknown'}</span><span class="count">${n}</span></li>`).join('');
+  $('#authors ul').querySelectorAll('li').forEach((li) => {
+    li.onclick = () => {
+      $('#authors ul').querySelectorAll('li').forEach((o) => o.classList.remove('active'));
+      li.classList.add('active');
+      drawSeriesPane(gaps, online, li.dataset.name || null);
+      show('books');
+    };
+  });
 }
 
 let onlineWatch = null;
@@ -1171,12 +1227,23 @@ $('#seriesList').onclick = async () => {
   document.body.classList.add('maintenance');
   document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
   $('#seriesList').classList.add('active');
-  $('#authors ul').innerHTML = '';
+  $('#authors ul').innerHTML = '<li class="empty">Counting…</li>';
   $('#books .list').innerHTML = '<div class="empty">Counting…</div>';
-  show('books');
+  show('authors');
   const { gaps, online } = await loadSeriesCount();
+  drawSeriesAuthors(gaps, online);
   drawSeriesPane(gaps, online);
 };
+
+// The copy button, wherever it appears in the book pane: what goes on the
+// clipboard is "author - thing", which is what a search box or a shop wants.
+$('#books').addEventListener('click', async (e) => {
+  const button = e.target.closest('.copy-search');
+  if (!button) return;
+  const text = button.dataset.copyText || '';
+  if (!text) return;
+  toast((await toClipboard(text)) ? `Copied: ${text}` : 'The browser would not copy that.');
+});
 
 // What Google answered for a stretch of books, as a table to read and to send on.
 // Its own request count per book is the part worth seeing: a series in the title
@@ -1850,7 +1917,11 @@ async function toClipboard(text) {
   const box = document.createElement('textarea');
   box.value = text;
   box.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
-  $('#edit').append(box);
+  // Inside whichever dialog is open, because a modal one makes the rest of the
+  // document inert and a textarea in the body could not be selected. With none
+  // open — a copy button on a card, say — the body is where it has to go, since
+  // a closed dialog is not rendered and nothing in it can be selected either.
+  (document.querySelector('dialog[open]') || document.body).append(box);
   box.select();
   const ok = document.execCommand('copy');
   box.remove();

@@ -206,6 +206,16 @@ apart, because they are not equally certain: what is missing **between your own
 books** is counted here and exact, and what **Wikidata knows and you do not
 have** is a question asked of the world.
 
+**It is browsed the way the library is.** The authors column fills with whoever
+is short of something, with a count each, and clicking a name narrows the pane
+to their series. A volume you do not have is drawn as **the card it would be** —
+cover, title, author, *Series · name · book 3* — because what you want is the
+thing to go and find. Those cards are dashed and dimmed, and have no Play
+button, so a shelf of them never reads as part of your collection. Every card
+and every series heading carries a **⧉ copy** button that puts
+`author - title` (or `author - series`) on the clipboard, ready to paste into a
+search.
+
 Three things it will tell you rather than hide:
 
 * **Which entry it took**, with a link. A name is not an identifier — *The Dark

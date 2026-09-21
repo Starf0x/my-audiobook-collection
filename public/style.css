@@ -282,6 +282,16 @@ table.cmp th, table.cmp td { text-align: left; padding: 5px 8px; border-bottom: 
 table.cmp th { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 table.cmp td:first-child { color: var(--dim); }
 table.cmp td.better { color: #7ee2a8; font-weight: 600; }
+/* A volume you do not have, shown as the book it would be: the same card, but
+   its cover is not a button and the whole thing sits back a little, so a shelf
+   of these never reads as part of the collection. */
+.card.missing-book { border-style: dashed; }
+.card.missing-book .cover { cursor: default; }
+.card.missing-book img { opacity: .55; }
+.card.missing-book .actions button,
+.card.missing-book .actions a { white-space: nowrap; }
+.series-head .copy-search { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+
 /* the gap list: each row leads to that series in the library */
 #gapsOut tr[data-series] { cursor: pointer; }
 #gapsOut tr[data-series]:hover td { background: var(--panel2); }

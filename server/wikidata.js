@@ -235,7 +235,8 @@ export async function checkSeriesOnline(all, { ask = defaultAsk } = {}) {
       onlineProgress.current = s.name;
       // eslint-disable-next-line no-await-in-loop -- one at a time is the point
       const said = await volumesOf(s.name, s.titles);
-      const row = { genre: s.genre, name: s.name, have: s.have, highest: s.highest, ...said };
+      const row = { genre: s.genre, name: s.name, author: s.author || '',
+        have: s.have, highest: s.highest, ...said };
       if (said.found) {
         onlineProgress.found++;
         // A volume is yours if you have its **number** or its **title**. The
