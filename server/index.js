@@ -28,6 +28,7 @@ import { enabled as absEnabled, inboundToken as absToken, listener as absListene
   minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
   progressOf as absProgress, writeProgressFromWhole as absWriteProgress,
   socketOpen as absSocketOpen, socketPoll as absSocketPoll, socketSay as absSocketSay,
+  author as absAuthor, seriesWithProgress as absSeries, filteredBooks as absFiltered,
   LIB as ABS_LIB } from './abs.js';
 
 const absLibraryId = () => ABS_LIB;
@@ -748,7 +749,7 @@ app.get('/api/libraries/:id', forMA, (req, res) => {
 // One page of the collection. The client pages through with limit and page, and
 // asks for the minified shape unless it says otherwise.
 app.get('/api/libraries/:id/items', forMA, (req, res) => {
-  const all = absBooks();
+  const all = absFiltered(req.query.filter);
   const limit = Math.max(0, Number(req.query.limit) || 0);
   const page = Math.max(0, Number(req.query.page) || 0);
   const slice = limit ? all.slice(page * limit, page * limit + limit) : all;
@@ -806,6 +807,21 @@ app.get('/api/libraries/:id/collections', forMA, (req, res) =>
 app.get('/api/libraries/:id/playlists', forMA, (req, res) =>
   res.json({ total: 0, limit: 0, page: 0, results: [] }));
 app.get('/api/libraries/:id/personalized', forMA, (req, res) => res.json([]));
+
+// Browsing into an author or a series asks for it by id. These are the two the
+// page walks into from the Authors and Series folders, and a 404 here is what a
+// reader sees as a wordless "NotFoundError".
+app.get('/api/authors/:id', forMA, (req, res) => {
+  const a = absAuthor(req.params.id);
+  if (!a) return res.status(404).end();
+  res.json(a);
+});
+
+app.get('/api/series/:id', forMA, (req, res) => {
+  const s = absSeries(req.params.id, req.listener);
+  if (!s) return res.status(404).end();
+  res.json(s);
+});
 
 app.get('/api/items/batch/get', forMA, (req, res) => res.status(404).end());
 app.post('/api/items/batch/get', forMA, (req, res) => {
