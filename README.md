@@ -46,7 +46,7 @@ The full manual, with screenshots of every part of it, is in the
 * Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
 * **Home Assistant** reads the collection and carries a book on to any media player in the house
-* **Music Assistant** can be pointed at it as an Audiobookshelf server: browse the books there, play them, and the place syncs both ways
+* **Music Assistant** can be pointed at it as an Audiobookshelf server: browse the books there, play them on any speaker, and the place syncs both ways
 
 ### And around all that
 
@@ -625,19 +625,38 @@ Music Assistant can read this collection and play it: the books, their series,
 their chapters, and where you got to in each — including the place syncing back,
 so a book you carried on with on a speaker is where you left it here.
 
-**Setting it up.** Put a password of your choosing in `MA_TOKEN` on the
-container. Then in Music Assistant add a music provider of the type
-**Audiobookshelf**, and give it:
+### Connecting it, step by step
 
-| Field | What to put |
-| --- | --- |
-| Server URL | the address of this app, e.g. `http://192.168.1.10:8523` |
-| Username | your listener name here, exactly as it is in the app |
-| Password | the `MA_TOKEN` you set |
+1. **This app on 2.5.0 or newer.** Playing does not work on older builds.
+2. **Put a password of your choosing in `MA_TOKEN`** on the container — on
+   Unraid it is *Music Assistant token* in the template, possibly behind *Show
+   more settings*. Leave it empty and none of this exists at all.
+3. **Look at the name you listen under** in this app's header. That exact
+   spelling is what you type next.
+4. In Music Assistant: **Settings → Music Providers → Add → Audiobookshelf**,
+   and fill in:
 
-The username matters: it is how the app knows whose place to keep. A name Music
-Assistant logs in with that this app has not seen becomes a listener, the same as
-typing it into the page.
+   | Field | What to put |
+   | --- | --- |
+   | Server URL | the address of this app, e.g. `http://192.168.1.10:8523` — the one you open in a browser, no trailing path. Not `localhost`: Music Assistant runs in its own container |
+   | Username | your listener name here, exactly as in step 3 |
+   | Password | the `MA_TOKEN` you set |
+
+5. **Save.** The books appear under *Audiobooks*; a large collection takes a
+   moment, since they come in pages of thirty.
+
+You do **not** need Audiobookshelf installed — nothing of it is involved.
+
+**The username is the part people get wrong.** It is not an account, it is which
+listener the places belong to. Use the name you use in the app, or Music
+Assistant keeps its position under somebody else. A name it logs in with that
+this app has not seen becomes a new listener, the same as typing one into the
+page — so a second name appearing in the app's list is the sign you mistyped it.
+
+The folders Music Assistant shows inside the library — *Audiobooks*, *Series*,
+*Authors*, *Narrators*, Collections, Playlists — are its own layout, not this
+app's. Collections and Playlists are empty here, on purpose: this app groups by
+folder and by series and has neither.
 
 **Why it says Audiobookshelf.** Music Assistant has no supported way to load a
 provider written by anyone else — its maintainers were asked and said no, and the
@@ -646,12 +665,22 @@ under your house. It *does* have a provider for Audiobookshelf, which is the sam
 shape of thing this app is. So this app answers as one, and Music Assistant needs
 no changes and no extra parts.
 
-Two honest limits. It is an imitation of another product's API, so an update to
+Three honest limits. It is an imitation of another product's API, so an update to
 either side can break it — if Music Assistant stops connecting after an update,
-that is the first place to look. And a change you make here reaches Music
+that is the first place to look. A change you make here reaches Music
 Assistant on its next sync rather than the instant you make it: the live channel
 between them is open, because Music Assistant will not start without one, but
-this app sends nothing down it yet.
+this app sends nothing down it yet. And **this app's own page does not refresh
+itself**: listen in Music Assistant with the page open and the time under the
+book stands still until you reload it. The position is kept — it is only the
+drawing that waits.
+
+**When it will not work**, the useful evidence is the red toast in Music
+Assistant's corner and the breadcrumb above it, not the log: both solved real
+problems here. A *NotFoundError* means an address this app does not answer, and
+the breadcrumb says which folder you were opening. A named field — *Field
+"device_info" … is missing* — is the kindest failure of all, since it says
+exactly what was left out. The wiki page has a table of the ones seen so far.
 
 **Leave `MA_TOKEN` empty and none of this exists**: every address it would use
 answers "not found", so an install that does not want this grows no new surface.
