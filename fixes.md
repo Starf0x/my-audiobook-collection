@@ -422,3 +422,21 @@ here:
   fired twice and both runs pushed `:latest`. The images were the same source but
   not the same digest — v2.5.64 built `29a69492…` and `e896a8ed…` — and the tag
   went to whichever finished last, three seconds apart. It runs on tags only now.
+* **`body.maintenance` hides the authors column.** It is there so the maintenance
+  lists can have that space, so a maintenance view that browses *by author* must
+  not set it — *Books you've listened to* already clears it for that reason.
+  *Series to complete* set it, and its authors column was built, filled and never
+  visible above 720px: a whole feature, invisible for two versions.
+* **`innerText` answers for a hidden element.** Checking the column by reading
+  `#authors ul` in the console said it was fine while the screen showed nothing.
+  For "is it on screen", ask `getBoundingClientRect().width` or the computed
+  `display`, or look at a screenshot.
+* **A remembered question needs its answer beside it.** The Wikidata run wrote
+  only its timestamp to the settings table, so a restart left the pane saying
+  "last asked 16:13" with nothing under it — minutes of somebody's free service
+  thrown away, and the surviving half made it look as though nothing had been
+  lost. Whatever writes the date writes the rows.
+* **A view and the column beside it are one view.** The Wikidata poll redrew the
+  pane and not the authors column, so Wikidata found volumes under authors the
+  column had never heard of. Draw both from one pair of answers, and keep the
+  chosen row across redraws or a per-second refresh throws the reader out of it.

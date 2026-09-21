@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.72.** This document describes what the app is, how every
+**Version described: 2.5.80.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.72` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.80` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1457,6 +1457,35 @@ page loading. `POST /api/series-online` begins it, `GET /api/series-online/statu
 follows it, and the answer per series says which Wikidata entry was taken, with a
 link, so the reader can check the machine's guess.
 
+**The answer is kept, not only the date it was asked.** `checkSeriesOnline`
+writes both `seriesOnlineRows` and `seriesOnlineAt` when a run finishes, and
+loads the rows back into `onlineProgress` when the module starts. It used to
+write the timestamp from the route and the rows nowhere, so a container restart
+left the pane saying *"Wikidata last asked 16:13"* with nothing under it and an
+authors column that had quietly lost everybody Wikidata had found — minutes of
+somebody else's free service thrown away, and the one thing kept was the part
+that made it look as though nothing was wrong. The module that learns it is the
+module that remembers it, which is also what makes it checkable: run, import the
+module a second time, and the answer is still there.
+
+**The column beside the pane is part of the pane.** Both halves are drawn from
+one pair of answers by `drawSeriesBoth`, because drawing only the body was a bug
+you could watch happen: Wikidata would find four volumes missing under an author
+the column had never heard of, and the row's own count said five series while the
+column could lead you to three. The author being looked at is held outside the
+drawing, since a redraw every second would otherwise throw the reader back to
+*Every author* mid-read, and an author whose last gap has just been answered away
+stops being a choice rather than becoming an empty pane.
+
+**And it does not set `maintenance`.** That class hides `#authors` and takes the
+grid down to two columns, which is right for the lists it was written for and
+wrong for this one: it browses by author, so — exactly like *Books you've
+listened to*, which had already met this — it clears the class and lets the three
+columns stand. With the class on, the column was built, filled and never once
+visible on a screen wider than a phone, so the feature shipped in 2.5.48 could
+only be seen by reading the DOM. Measuring the DOM is what hid it: `innerText`
+answers for an element that is `display: none`.
+
 ### 7.10a Whether a series is all there
 
 `seriesState(genre, name)` answers it from the volume numbers alone, and
@@ -2221,6 +2250,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.80 | the authors column of Series to complete is actually on screen, grows while the check runs, and what Wikidata said survives a restart |
 | 2.5.72 | one build per release: the workflow runs on tags only, so two runs can no longer race for `:latest` |
 | 2.5.64 | a hole in your own numbering is drawn as a book too: a series head and one card per missing volume, one under the other, instead of a dense line |
 | 2.5.56 | one place for incomplete series: the Settings table is gone, and Series to complete under Maintenance holds both answers — with the Open in library button the table used to have |
