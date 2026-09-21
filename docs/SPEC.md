@@ -98,7 +98,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1051 | Express app: every route, and nothing else |
+| `server/index.js` | 1064 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -117,7 +117,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `server/abs.js` | 343 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 427 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
@@ -404,6 +404,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/ha/continue.m3u?user=` | token | the book being listened to, from where it stopped, plus `X-Audiobook-Id` and `X-Audiobook-Seek` |
 | `GET /api/ha/example.yaml` | token | the HA configuration with this server's address in it |
 | **The Audiobookshelf face** (§7.9d) — all of it 404 unless `MA_TOKEN` is set | | |
+| `GET/POST /socket.io/` | — | the Engine.IO handshake the provider opens at setup and will not start without; polling only, `upgrades: []` |
 | `POST /login` | — | `{username, password}`: the password is `MA_TOKEN`, the username is which listener this is. Answers a `LoginResponse` whose token carries the name |
 | `POST /api/authorize`, `POST /logout` | MA token | the same answer for a client configured with a token; and a logout that keeps nothing |
 | `GET /api/libraries`, `/api/libraries/:id[?include=filterdata]` | MA token | the one library, and its filter data |
@@ -1241,9 +1242,25 @@ walked back over the tracks into the track and position this app keeps. The tick
 is set when MA says the book is finished, and `MAX(progress.done, …)` on the
 upsert means a book already ticked here is not un-ticked by a stale report.
 
-**What is not there yet**: the WebSocket the provider subscribes to for live
-events from the server side, so a change made in this app reaches MA on its next
-sync rather than at once; and podcasts, which this app does not have.
+**The socket is not optional, which is worth knowing before anyone trims it.**
+The provider's `handle_async_init` calls `init_client()` — `socketio.AsyncClient
+.connect(url)` — and the only exception caught around it is a login error. With
+nothing listening at `/socket.io/`, setup raises `ConnectionError` and the
+provider never connects at all; every carefully shaped answer above is then
+unreachable. There is no setting to switch it off.
+
+So `abs.js` answers **Engine.IO v4 over long polling**, and nothing else. The
+open packet declares `upgrades: []`, so the client does not try a WebSocket it
+would be refused: writing framing, masking and ping by hand to carry events
+nothing sends yet would be the larger change and the less honest one. A poll is
+*held* for the ping interval rather than answered empty, or the client would
+return at once and the two would spin; it lets go on `close` and on `finish`, so
+a reader who has gone leaves no timer and no response behind. The packets used:
+`0` open, `2` ping, `3` pong, `40` connect, `42` an event, joined by `\x1e`.
+
+**What is not there**: events pushed *from* this app, so a book added or renamed
+here reaches MA on its next sync rather than the moment it happens — the channel
+is open, nothing is sent down it. And podcasts, which this app does not have.
 
 ### 7.10 Search
 
@@ -1903,7 +1920,7 @@ Server suites:
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
-| `abs-contract` | the Audiobookshelf face against what Music Assistant will parse: every required field of every model `aioaudiobookshelf` reads — login, user, permissions, server settings, library, folder, item, book, metadata, track, audio file, chapter, progress, series, author, narrator — plus the enums it refuses anything else for, the doubled slash its client sends, a token in the query for the audio and none without, a position from MA landing on the right track, finishing there ticking the book here, and every address answering 404 when MA_TOKEN is unset |
+| `abs-contract` | the Audiobookshelf face against what Music Assistant will parse: every required field of every model `aioaudiobookshelf` reads — login, user, permissions, server settings, library, folder, item, book, metadata, track, audio file, chapter, progress, series, author, narrator — plus the enums it refuses anything else for, the Engine.IO handshake its client opens at setup and will not start without, the doubled slash it sends, a token in the query for the audio and none without, a position from MA landing on the right track, finishing there ticking the book here, and every address answering 404 when MA_TOKEN is unset |
 | `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen. Then the same count over the whole collection: only the series with a hole listed, the two-volume hole above the one-volume ones, a whole series and a single book both absent from it, and the unnumbered series named apart with the genre a row needs to open it |
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
