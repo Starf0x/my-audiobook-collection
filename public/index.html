@@ -41,6 +41,7 @@
       <li id="convertList"><span>Needs converting</span><span class="count" id="convertCount">…</span></li>
       <li id="convertedList"><span>Converted</span><span class="count" id="convertedCount">…</span></li>
       <li id="brokenList"><span>Broken on disk</span><span class="count" id="brokenCount">…</span></li>
+      <li id="seriesList"><span>Series to complete</span><span class="count" id="seriesCount">…</span></li>
       <li id="skippedList" hidden><span>Not counted</span><span class="count" id="skippedCount">0</span></li>
       <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
       <li id="replacedList"><span>Replaced</span><span class="count" id="replacedCount">…</span></li>
@@ -145,6 +146,10 @@
     missing below that, and nothing more. Pressing a row opens that series in the library.</p>
   <button id="seriesGaps" class="ghost">List series with a gap</button>
   <div id="gapsOut"></div>
+
+  <p class="hint">Whether a volume exists that you do not have is a question this app cannot answer
+    from your own files. <strong>Series to complete</strong>, in the left column under Maintenance,
+    asks Wikidata.</p>
 
   <label>What Google says about series</label>
   <p class="hint">Asks Google about the first books that have no series yet, and reports what came
