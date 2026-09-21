@@ -492,36 +492,52 @@ export function playbackSession(b, user, req, version) {
   };
 }
 
+// Which book a session is about, whether or not this process remembers opening
+// it. The id carries the book, and that is deliberate: sessions live in memory,
+// so an update to this container forgets every one of them — and Music
+// Assistant goes on asking for the id it is holding. Its route for fetching a
+// part does not recover from a session it cannot find the way opening one does:
+// it answers its own 404, and ffmpeg stops with *Server returned 404 Not
+// Found*. Reading the book out of the id means a restart costs nothing.
+const aboutBook = (id) => {
+  const said = sessions.get(String(id));
+  if (said) return said;
+  const [, bookId] = String(id).match(/^pl-(\d+)-/) || [];
+  return bookId ? { book: Number(bookId), user: null, at: Date.now() } : null;
+};
+
 // The session again, by its id. The answer is rebuilt rather than stored: what
 // matters in it is `audioTracks`, and those are the files as they are now.
-export function openSession(id, req, version) {
-  const said = sessions.get(String(id));
+export function openSession(id, req, version, listener) {
+  const said = aboutBook(id);
   if (!said) return null;
   const b = book(said.book);
   if (!b) return null;
-  said.at = Date.now();
-  const out = playbackSession(b, said.user, req, version);
+  // a session this process never opened belongs to whoever is asking
+  const user = said.user === null ? (listener || '') : said.user;
+  const out = playbackSession(b, user, req, version);
   // the same session, not a new one: the id MA is holding has to keep working
   sessions.delete(out.id);
   out.id = String(id);
-  sessions.set(out.id, said);
+  sessions.set(out.id, { book: said.book, user, at: Date.now() });
   return out;
 }
 
 // What MA reports while a book plays, and once more when it stops: seconds into
 // the whole book. The same walk back over the tracks as a progress PATCH, so
 // there is one rule for where a second belongs, not two.
-export function syncSession(id, body) {
-  const said = sessions.get(String(id));
-  if (!said) return false;
-  said.at = Date.now();
+export function syncSession(id, body, listener) {
+  const said = aboutBook(id);
+  if (!said || !book(said.book)) return false;
+  const user = said.user === null ? (listener || '') : said.user;
+  sessions.set(String(id), { book: said.book, user, at: Date.now() });
   const seconds = Number((body || {}).currentTime);
-  if (Number.isFinite(seconds)) writeProgressFromWhole(said.user, said.book, seconds, false);
+  if (Number.isFinite(seconds)) writeProgressFromWhole(user, said.book, seconds, false);
   return true;
 }
 
-export function closeSession(id, body) {
-  const ok = syncSession(id, body);
+export function closeSession(id, body, listener) {
+  const ok = syncSession(id, body, listener);
   sessions.delete(String(id));
   return ok;
 }
