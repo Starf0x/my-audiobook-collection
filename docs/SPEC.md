@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.4.56.** This document describes what the app is, how every
+**Version described: 2.4.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -98,7 +98,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 840 | Express app: every route, and nothing else |
+| `server/index.js` | 1051 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -117,6 +117,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/abs.js` | 343 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
@@ -270,6 +271,7 @@ Settings shows it as a table.
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
 | `HA_TOKEN` | empty | when set, every `/api/ha…` address needs it as `?token=` or `Authorization: Bearer`. The audio itself stays open, or a speaker could not play it |
+| `MA_TOKEN` | empty | the password Music Assistant logs in with (§7.9d). **Empty means the whole Audiobookshelf face is not there**: every one of its addresses answers 404, so a default install grows no new surface |
 | `BASE_URL` | empty | the address other machines reach the app on, when that is not the one they asked at (a reverse proxy). Every URL inside the Home Assistant answers is built from it |
 | `GOOGLE_COUNTRY` | `US` | which country's Google catalogue answers. Series data belongs to a country's Play catalogue, and left to the server's own address Google can answer with a record that has none |
 
@@ -401,6 +403,17 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/ha/book/:id.m3u?from=` | token | a book as an `#EXTM3U` playlist, from a track on |
 | `GET /api/ha/continue.m3u?user=` | token | the book being listened to, from where it stopped, plus `X-Audiobook-Id` and `X-Audiobook-Seek` |
 | `GET /api/ha/example.yaml` | token | the HA configuration with this server's address in it |
+| **The Audiobookshelf face** (§7.9d) — all of it 404 unless `MA_TOKEN` is set | | |
+| `POST /login` | — | `{username, password}`: the password is `MA_TOKEN`, the username is which listener this is. Answers a `LoginResponse` whose token carries the name |
+| `POST /api/authorize`, `POST /logout` | MA token | the same answer for a client configured with a token; and a logout that keeps nothing |
+| `GET /api/libraries`, `/api/libraries/:id[?include=filterdata]` | MA token | the one library, and its filter data |
+| `GET /api/libraries/:id/items?limit=&page=` | MA token | a page of books in the minified shape |
+| `GET /api/libraries/:id/series\|authors\|narrators` | MA token | the groupings this app keeps; series become MA's collapsible collections |
+| `GET /api/libraries/:id/collections\|playlists\|personalized` | MA token | empty answers of the right shape — this app has none of those |
+| `GET /api/items/:id`, `POST /api/items/batch/get` | MA token | one book expanded, with its tracks and chapters; or several |
+| `GET /api/items/:id/cover`, `GET /api/items/:id/file/:trackId` | MA token in the query | the picture and the audio, fetched by the player itself |
+| `POST /api/items/:id/play` | MA token | a playback session, which this app keeps nothing of |
+| `GET /api/me`, `GET/PATCH /api/me/progress/:id` | MA token | the listener and their places; a PATCH is seconds into the whole book |
 | `GET /api/download/:id` | — | the whole book as one zip, streamed, with the exact length promised up front |
 | `GET /api/stream/:trackId` | — | audio, with byte-range support |
 | `POST /api/progress` | — | position, per user |
@@ -1174,6 +1187,64 @@ The name is `<Author> - <Title>.zip`, sent twice — plain for old clients and
 `filename*=UTF-8''…` for accents. The route is not behind the admin password:
 the audio it contains is already open to anyone who can reach the listening page.
 
+#### 7.9d Music Assistant, through an Audiobookshelf face (`abs.js`)
+
+**Why an imitation.** Music Assistant has no supported way to load a provider
+written by anyone else. Its maintainers were asked for an extension point — a
+folder or an entry point — and declined: *"No, we don't consider that. Just
+follow the development workflow and we're open for PR's"*
+(music-assistant/discussions/4167). The one community route,
+`music-assistant-plugin-manager`, is a pre-release package that monkey-patches
+MA's provider loader at runtime and needs MA started through a wrapper; that is
+not a thing to put under somebody's house. What MA *does* ship is an
+**Audiobookshelf** provider, and ABS is the same shape of thing this app is: a
+self-hosted server with books, series, chapters and a listening position. So
+this app answers as one, and MA needs no changes at all.
+
+**What the contract actually is.** Not Audiobookshelf's documentation — what
+`aioaudiobookshelf`, MA's own client, will parse. Its models are mashumaro
+dataclasses: a field with no default is required and a missing one is a hard
+parse error, which reaches the owner as "Music Assistant cannot connect" with
+nothing saying why. Two properties of that client make the imitation survivable:
+`forbid_extra_keys = False`, so extra fields are ignored and only the required
+ones matter; and it still accepts the **pre-2.26 token**, so this app hands out
+one token and never enters the refresh-and-logout dance.
+
+**Logging in is how a listener is chosen.** MA asks for a username and a
+password. The password is `MA_TOKEN`; the username is the listener's name in
+this app, and a name it has not seen is added the way the listening page's own
+dialog would add it. The token handed back is `base64url(name) + "." +
+MA_TOKEN` — exactly as strong as `MA_TOKEN`, since it contains it — so every
+later call knows whose place to read and write. A bare `MA_TOKEN` is accepted
+too and means the nameless listener.
+
+**The shapes.** One library holding everything (genres are a field on a book
+here, not a shelf). A book is a `LibraryItem` with a `Book` inside it, minified
+for a list and expanded for one book; every file of the book is one audio file
+and one track, laid end to end by `startOffset`, and one chapter each, because
+this app knows no finer division. Series become MA's collapsible collections.
+Collections, playlists and shelves answer **empty in the right shape** rather
+than 404: the provider reads them, finds nothing and moves on, where a 404 reads
+as a broken server.
+
+**Two traps that would each have been invisible.** The client joins its base
+address to an endpoint that already begins with a slash, so every call arrives
+as `//api/…`; Express does not read that as `/api/…`, so a middleware strips the
+extra one before anything else sees it. And MA builds the audio address itself
+as `${base}${contentUrl}?token=…`, so `contentUrl` has to be a path from the
+root and the route behind it has to take the token from the **query** — a player
+fetches the audio itself and sends none of our headers.
+
+**Progress both ways.** `GET /api/me` carries every place this listener has, and
+a `PATCH /api/me/progress/:id` from MA is seconds into the *whole* book, which is
+walked back over the tracks into the track and position this app keeps. The tick
+is set when MA says the book is finished, and `MAX(progress.done, …)` on the
+upsert means a book already ticked here is not un-ticked by a stale report.
+
+**What is not there yet**: the WebSocket the provider subscribes to for live
+events from the server side, so a change made in this app reaches MA on its next
+sync rather than at once; and podcasts, which this app does not have.
+
 ### 7.10 Search
 
 One box, one query. Every word must appear somewhere in the same book, matched
@@ -1832,6 +1903,7 @@ Server suites:
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
+| `abs-contract` | the Audiobookshelf face against what Music Assistant will parse: every required field of every model `aioaudiobookshelf` reads — login, user, permissions, server settings, library, folder, item, book, metadata, track, audio file, chapter, progress, series, author, narrator — plus the enums it refuses anything else for, the doubled slash its client sends, a token in the query for the audio and none without, a position from MA landing on the right track, finishing there ticking the book here, and every address answering 404 when MA_TOKEN is unset |
 | `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen. Then the same count over the whole collection: only the series with a hole listed, the two-volume hole above the one-volume ones, a whole series and a single book both absent from it, and the unnumbered series named apart with the genre a row needs to open it |
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
 | `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
@@ -1954,6 +2026,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.4.64 | Music Assistant can be pointed at this app: it answers as an Audiobookshelf server, so MA's own provider browses the collection, plays it, and syncs where you got to |
 | 2.4.56 | this document brought back in step with the code: the four releases below it, the `converted` table and the `progress` trigger in the schema, the day in the cover marker, the convert routes, and every line count |
 | 2.4.48 | the progress bars stand in the day's own colours: they fill from the glow on the left of the page into the one on the right, and turn with it at midnight |
 | 2.4.40 | Settings lists every series with a volume missing, widest hole first, a row opening that series — the same count as the line under a series head, over the whole collection |
