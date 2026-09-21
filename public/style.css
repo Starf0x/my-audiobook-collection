@@ -290,6 +290,15 @@ table.cmp td.better { color: #7ee2a8; font-weight: 600; }
 .card.missing-book img { opacity: .55; }
 .card.missing-book .actions button,
 .card.missing-book .actions a { white-space: nowrap; }
+/* the two ways out of a card you cannot play — Wikipedia and the Wikidata entry
+   — are links, because they go somewhere and a middle click should work, but
+   they sit in a column of buttons and have to read as buttons */
+.card.missing-book .actions a.ghost {
+  display: block; text-align: center; text-decoration: none;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 12px; color: var(--text); font-weight: 500;
+}
+.card.missing-book .actions a.ghost:hover { filter: brightness(1.15); }
 .series-head .copy-search,
 .series-head .open-series { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
 
@@ -389,7 +398,9 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   .card { grid-template-columns: 84px 1fr; gap: 12px; padding: 10px; }
   .card img { width: 84px; height: 126px; }
   .card .actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 8px; }
-  .card .actions button { flex: 1 1 45%; }
+  /* the links on a card you cannot play share that row with the buttons */
+  .card .actions button,
+  .card.missing-book .actions a.ghost { flex: 1 1 45%; }
   .card .actions .row2 { flex: 1 1 100%; }
   .fix { grid-template-columns: 1fr; }
   .fix .actions { flex-wrap: wrap; }

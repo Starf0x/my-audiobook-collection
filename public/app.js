@@ -1041,6 +1041,13 @@ function onlineWords(s) {
 const missingCard = ({ name, author, genre, no, title, why, extra = '' }) => {
   const shown = title || `Book ${no}`;
   const search = [author, title || `${name} ${no}`].filter(Boolean).join(' - ');
+  // Wikipedia by its own search rather than a guessed article address: measured,
+  // `index.php?search=` answers 302 straight to the article when the name is a
+  // page — *The Dark Tower III: The Waste Lands* and *Dragonriders of Pern* both
+  // land on theirs — and where there is no article it shows the search instead of
+  // a red link. A volume with no title of its own has nothing to look up, so that
+  // card asks about the series, which is the page that lists the books anyway.
+  const wiki = `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(title || name)}`;
   return `<div class="card missing-book">
     <div class="cover">
       <img src="/api/drawn-cover?title=${encodeURIComponent(shown)}&author=${encodeURIComponent(author || '')}"
@@ -1058,6 +1065,8 @@ const missingCard = ({ name, author, genre, no, title, why, extra = '' }) => {
     </div>
     <div class="actions">
       <button class="copy-search" data-copy-text="${esc(search)}">⧉ Copy to search</button>
+      <a class="ghost" href="${esc(wiki)}" target="_blank" rel="noopener"
+        title="Read about ${esc(title || name)} on Wikipedia, in a new tab">Wikipedia ↗</a>
       ${extra}
     </div>
   </div>`;
