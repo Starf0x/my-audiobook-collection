@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.48.** This document describes what the app is, how every
+**Version described: 2.5.56.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.48` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.56` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -126,8 +126,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 322 | the admin page: columns, dialogs |
-| `public/app.js` | 2351 | the admin page's behaviour |
+| `public/index.html` | 315 | the admin page: columns, dialogs |
+| `public/app.js` | 2340 | the admin page's behaviour |
 | `public/listen.html` | 89 | the listening page |
 | `public/listen.js` | 528 | the listening page's behaviour |
 | `public/style.css` | 640 | the whole look, every page, phone included |
@@ -1734,17 +1734,17 @@ tall for a thumb.
 `#openSettings` is still the id that opens the dialog, so everything that drove it
 before still works.
 
-**Series with a volume missing** (`#seriesGaps`, printing into `#gapsOut`) is the
-collection-wide reading of §7.10a. It is a plain `async` handler with a *Counting…*
-line and not a `work()` job: it reads the database, so it has no business taking
-the one-job lock a scan or a tag write holds. The table is genre, series (with how
-many books it holds and how many of those carry no number), the missing volumes in
-the `worse` red, and the highest volume that is here. Pressing a row closes the
-dialog, unfolds that genre in the column — or it would land on the one row that
-cannot be seen — and opens the series, which is where the hole gets filled in.
-Under the table, the series nobody has numbered are named in a `hint` line, since
-a reader who sees no rows deserves to know which series that verdict could not
-cover.
+**Nothing about incomplete series lives in Settings.** It began there as a table
+and it is now one place in the left column, **Series to complete** under
+Maintenance, holding both answers: §7.10a's count over the collection and
+§7.10b's question to Wikidata. A dialog was the wrong home for a list a reader
+comes back to, and two homes for one question was worse than either. Moving it
+meant moving what it could do, so the row that names a local gap kept its way
+into the library — an *Open in library* button that leaves the maintenance view,
+unfolds that genre in the column (or it would land on the one row that cannot be
+seen) and opens the series — and the `hint` line naming the series nobody has
+numbered came too, since a reader who sees no rows deserves to know which series
+the verdict could not cover.
 
 **And the same size as its neighbour.** Settings holds as much as the Home
 Assistant page does, so `#settings` is `min(820px, 94vw)` wide — the page's own
@@ -2199,6 +2199,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.56 | one place for incomplete series: the Settings table is gone, and Series to complete under Maintenance holds both answers — with the Open in library button the table used to have |
 | 2.5.48 | Series to complete is browsed like the library — authors in their column, a missing volume drawn as the card it would be — and every one carries a copy button to search with |
 | 2.5.40 | Series to complete, under Maintenance: what is missing between the books you have, and — asked of Wikidata — which volumes exist that you do not have |
 | 2.5.32 | a read of every file: ten things the review found, from a socket handshake anyone could open by the hundred to a zip writer whose comment promised what its last line undid |
