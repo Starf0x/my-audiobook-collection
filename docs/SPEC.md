@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.4.72.** This document describes what the app is, how every
+**Version described: 2.4.80.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.72` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.80` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -98,7 +98,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1080 | Express app: every route, and nothing else |
+| `server/index.js` | 1087 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -1230,6 +1230,15 @@ Collections, playlists and shelves answer **empty in the right shape** rather
 than 404: the provider reads them, finds nothing and moves on, where a 404 reads
 as a broken server.
 
+**Every paged listing must answer an empty page past the end.** The client's
+pager is a bare `while True` — page 0, 1, 2 … — and the caller stops only when a
+page comes back with no results in it. A listing that ignores `page` and answers
+with the whole list each time is therefore not a wrong answer but an **infinite
+loop inside Music Assistant**: the folder never opens, and nothing anywhere logs
+a reason. That is what the series listing did. All four listings — items,
+series, collections, playlists — go through one `paged()` helper now, and a
+request with no `limit` at all is one page of everything followed by nothing.
+
 **Browsing *into* a thing asks for it by id, and a 404 there is not gentle.**
 The Authors and Series folders list what this app hands out, and opening one
 calls `GET /api/authors/<id>?include=items,series` or `GET
@@ -2058,6 +2067,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.4.80 | the series listing ends: it ignored its paging, and the client that reads it pages with a loop that only stops on an empty page |
 | 2.4.72 | browsing into an author or a series in Music Assistant works: the two addresses it asks for were missing, and a missing one reads there as a wordless NotFoundError |
 | 2.4.64 | Music Assistant can be pointed at this app: it answers as an Audiobookshelf server, so MA's own provider browses the collection, plays it, and syncs where you got to |
 | 2.4.56 | this document brought back in step with the code: the four releases below it, the `converted` table and the `progress` trigger in the schema, the day in the cover marker, the convert routes, and every line count |
