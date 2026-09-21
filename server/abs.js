@@ -1,0 +1,343 @@
+// The Audiobookshelf face of this app, so Music Assistant can be pointed at it.
+//
+// Why an imitation rather than a provider of our own: Music Assistant has no
+// supported way to load a third-party provider. Its maintainers were asked for an
+// extension point and declined — "Just follow the development workflow and we're
+// open for PR's" (music-assistant discussion 4167) — and the one community
+// workaround is a pre-release package that monkey-patches MA's provider loader at
+// runtime. What MA *does* have is an Audiobookshelf provider, and ABS is the same
+// shape of thing this app is: a self-hosted server with books, series, chapters
+// and a listening position. So this answers enough of the ABS API for that
+// provider to work, and MA needs no changes at all.
+//
+// Say the honest part out loud: this imitates another product's private API. The
+// contract is not ABS's documentation but what `aioaudiobookshelf` — MA's own
+// client — will parse, and either side can move. Two things make that survivable.
+// Its models set `forbid_extra_keys = False`, so extra fields are ignored and
+// only the *required* ones matter. And it still accepts the pre-2.26 token, so
+// this hands out one token and never enters the refresh dance: fewer moving
+// parts to break.
+//
+// The whole surface is off unless MA_TOKEN is set on the container, the way the
+// Home Assistant answers are gated by HA_TOKEN.
+import fs from 'node:fs';
+import { db } from './db.js';
+import { baseUrl } from './ha.js';
+
+export const inboundToken = () => (process.env.MA_TOKEN || '').trim();
+export const enabled = () => !!inboundToken();
+
+// A listener is a name in this app, and Music Assistant asks for a username and a
+// password: so the username is which person is listening, and the password is the
+// container's token. The token handed back carries the name, which is what makes
+// a position written from MA land on the right person — and it is exactly as
+// strong as MA_TOKEN, since it contains it.
+const b64 = (s) => Buffer.from(s, 'utf8').toString('base64url');
+const unb64 = (s) => Buffer.from(s, 'base64url').toString('utf8');
+const tokenFor = (user) => `${b64(user || '')}.${inboundToken()}`;
+
+// Who this request is, or null when it may not ask. A bare MA_TOKEN is allowed
+// and means the nameless listener the app already supports.
+export function listener(req) {
+  const want = inboundToken();
+  if (!want) return null;
+  const said = String(req.query.token || '')
+    || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!said) return null;
+  if (said === want) return '';
+  const cut = said.indexOf('.');
+  if (cut < 0 || said.slice(cut + 1) !== want) return null;
+  try { return unb64(said.slice(0, cut)); } catch { return null; }
+}
+
+const ms = (iso) => (iso ? Date.parse(iso) || 0 : 0);
+const now = () => Date.now();
+
+// One library holding the collection. Genres are a field on a book here, not a
+// shelf of their own, and a reader browsing in MA wants every book in one place.
+const LIB = 'mac-library';
+const FOLDER = 'mac-folder';
+
+const library = () => ({
+  id: LIB,
+  name: 'My Audiobook Collection',
+  folders: [{ id: FOLDER, fullPath: '/audiobooks', libraryId: LIB, addedAt: 0 }],
+  displayOrder: 1,
+  icon: 'audiobookshelf',
+  mediaType: 'book',
+  provider: 'audible',
+  settings: { coverAspectRatio: 1, disableWatcher: false },
+  createdAt: 0,
+  lastUpdate: now(),
+});
+
+// --- a book, in the shapes ABS answers with ------------------------------
+// Minified for a list, expanded for one book with its tracks. The fields below
+// are the ones aioaudiobookshelf requires; anything it does not ask for is left
+// out rather than invented.
+const BOOK = `SELECT b.id, b.title, b.author, b.narrator, b.year, b.description, b.genre,
+                     b.duration, b.cover,
+                     COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')) AS series,
+                     b.series_no
+              FROM books b`;
+
+const tracksOf = (id) => db.prepare(
+  'SELECT id, idx, path, title, duration FROM tracks WHERE book_id = ? ORDER BY idx').all(id);
+
+const fileMeta = (t) => {
+  let size = 0;
+  try { size = fs.statSync(t.path).size; } catch { /* the disk check reports these */ }
+  const name = t.path.split(/[\\/]/).pop() || `${t.idx + 1}.mp3`;
+  return {
+    filename: name,
+    ext: (name.match(/\.[^.]+$/) || ['.mp3'])[0],
+    path: t.path,
+    relPath: name,
+    size,
+    mtimeMs: 0,
+    ctimeMs: 0,
+    birthtimeMs: 0,
+  };
+};
+
+const metadata = (b) => ({
+  title: b.title,
+  subtitle: null,
+  genres: b.genre ? [b.genre] : [],
+  publishedYear: b.year || null,
+  publishedDate: null,
+  publisher: null,
+  description: b.description || null,
+  isbn: null,
+  asin: null,
+  language: null,
+  explicit: false,
+  authors: [{ id: `au-${b64(b.author || '')}`, name: b.author || '' }],
+  narrators: b.narrator ? [b.narrator] : [],
+  // the sequence is a string in ABS, and a book with no number has none rather
+  // than a nought, which would sort it in front of book one
+  series: b.series ? [{ id: `se-${b64(b.series)}`, name: b.series,
+    sequence: b.series_no ? String(b.series_no) : null }] : [],
+  // the minified shape wants these flattened as well
+  titleIgnorePrefix: b.title,
+  authorName: b.author || '',
+  authorNameLF: b.author || '',
+  narratorName: b.narrator || '',
+  seriesName: b.series || '',
+});
+
+// Every file of the book is one audio file and one track, laid end to end: the
+// offsets are what let a player seek across a book of forty files.
+const audio = (b, base) => {
+  const tracks = tracksOf(b.id);
+  let at = 0;
+  const files = [];
+  const list = [];
+  for (const t of tracks) {
+    const meta = fileMeta(t);
+    const seconds = t.duration || 0;
+    files.push({
+      index: t.idx + 1,
+      ino: String(t.id),
+      metadata: meta,
+      addedAt: 0,
+      updatedAt: 0,
+      manuallyVerified: false,
+      exclude: false,
+      error: null,
+      format: 'mp3',
+      duration: seconds,
+      codec: 'mp3',
+      timeBase: '1/1000',
+      mimeType: 'audio/mpeg',
+    });
+    list.push({
+      index: t.idx + 1,
+      startOffset: at,
+      duration: seconds,
+      title: t.title || meta.filename,
+      // MA builds the stream address as `${base}${contentUrl}?token=…`, so this
+      // has to be a path from the root and the route behind it has to take a
+      // token in the query
+      contentUrl: `/api/items/${b.id}/file/${t.id}`,
+      metadata: meta,
+      mimeType: 'audio/mpeg',
+    });
+    at += seconds;
+  }
+  // one chapter per file: this app knows no finer division, and a book of one
+  // long file honestly has one chapter
+  const chapters = list.map((t, i) => ({
+    id: i, start: t.startOffset, end: t.startOffset + (t.duration || 0), title: t.title,
+  }));
+  return { files, tracks: list, chapters, duration: at, size: files.reduce((n, f) => n + (f.metadata.size || 0), 0), base };
+};
+
+const itemBase = (b) => ({
+  id: String(b.id),
+  ino: String(b.id),
+  libraryId: LIB,
+  folderId: FOLDER,
+  path: `/audiobooks/${b.genre}/${b.author}/${b.title}`,
+  relPath: `${b.genre}/${b.author}/${b.title}`,
+  isFile: false,
+  mtimeMs: 0,
+  ctimeMs: 0,
+  birthtimeMs: 0,
+  addedAt: 0,
+  updatedAt: now(),
+  isMissing: false,
+  isInvalid: false,
+  mediaType: 'book',
+});
+
+export const minifiedItem = (b) => {
+  const tracks = tracksOf(b.id);
+  return {
+    ...itemBase(b),
+    numFiles: tracks.length,
+    size: 0,
+    media: {
+      metadata: metadata(b),
+      coverPath: b.cover || null,
+      tags: [],
+      numTracks: tracks.length,
+      numAudioFiles: tracks.length,
+      numChapters: tracks.length,
+      duration: b.duration || tracks.reduce((n, t) => n + (t.duration || 0), 0),
+      size: 0,
+    },
+  };
+};
+
+export const expandedItem = (b, req) => {
+  const a = audio(b, baseUrl(req));
+  return {
+    ...itemBase(b),
+    size: a.size,
+    libraryFiles: [],
+    media: {
+      libraryItemId: String(b.id),
+      metadata: metadata(b),
+      coverPath: b.cover || null,
+      tags: [],
+      audioFiles: a.files,
+      chapters: a.chapters,
+      duration: a.duration || b.duration || 0,
+      size: a.size,
+      tracks: a.tracks,
+    },
+  };
+};
+
+// --- what a listener has done with a book --------------------------------
+// ABS keeps a progress row per item; this app keeps one per user and book, which
+// is the same thing said differently.
+export const progressOf = (user, b) => {
+  const p = db.prepare(`SELECT p.position, p.track_idx, p.done, p.updated
+                        FROM progress p WHERE p.user = ? AND p.book_id = ?`).get(user || '', b.id);
+  if (!p) return null;
+  const behind = db.prepare(`SELECT COALESCE(SUM(duration), 0) AS s FROM tracks
+                             WHERE book_id = ? AND idx < ?`).get(b.id, p.track_idx || 0).s;
+  const into = behind + (p.position || 0);
+  const whole = b.duration || 0;
+  return {
+    id: `pr-${b.id}`,
+    libraryItemId: String(b.id),
+    mediaItemId: String(b.id),
+    mediaItemType: 'book',
+    duration: whole,
+    progress: whole ? Math.min(1, into / whole) : 0,
+    currentTime: into,
+    isFinished: !!p.done,
+    hideFromContinueListening: false,
+    lastUpdate: ms(p.updated) || now(),
+    startedAt: ms(p.updated) || now(),
+    finishedAt: p.done ? (ms(p.updated) || now()) : null,
+  };
+};
+
+// The seconds MA reports are seconds into the whole book; this app keeps a track
+// and a position inside it, so the number is walked back over the tracks.
+export function writeProgressFromWhole(user, bookId, seconds, finished) {
+  const tracks = tracksOf(bookId);
+  if (!tracks.length) return;
+  let left = Math.max(0, seconds);
+  let idx = 0;
+  for (const t of tracks) {
+    const d = t.duration || 0;
+    if (left < d || t === tracks[tracks.length - 1]) { idx = t.idx; break; }
+    left -= d;
+  }
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, done)
+              VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT(user, book_id) DO UPDATE SET
+                track_idx = excluded.track_idx, position = excluded.position,
+                updated = excluded.updated, done = MAX(progress.done, excluded.done)`)
+    .run(user || '', bookId, idx, left, new Date().toISOString(), finished ? 1 : 0);
+}
+
+export const user = (name) => ({
+  id: `us-${b64(name || '')}`,
+  username: name || 'listener',
+  type: 'user',
+  token: tokenFor(name),
+  mediaProgress: db.prepare(`${BOOK} JOIN progress p ON p.book_id = b.id AND p.user = ?`)
+    .all(name || '').map((b) => progressOf(name, b)).filter(Boolean),
+  seriesHideFromContinueListening: [],
+  bookmarks: [],
+  isActive: true,
+  isLocked: false,
+  lastSeen: now(),
+  createdAt: 0,
+  permissions: {
+    download: true, update: false, delete: false, upload: false,
+    accessAllLibraries: true, accessAllTags: true, accessExplicitContent: true,
+  },
+  librariesAccessible: [],
+  itemTagsAccessible: [],
+});
+
+// Enough of a server for the provider to read; the values are this app's, not
+// pretend Audiobookshelf ones, except where a field has to be one of a set.
+export const serverSettings = (version) => ({
+  id: 'mac-server',
+  scannerFindCovers: false,
+  scannerCoverProvider: 'google',
+  scannerParseSubtitle: false,
+  scannerPreferMatchedMetadata: false,
+  scannerDisableWatcher: true,
+  storeCoverWithItem: false,
+  storeMetadataWithItem: false,
+  metadataFileFormat: 'json',
+  rateLimitLoginRequests: 10,
+  rateLimitLoginWindow: 600000,
+  backupSchedule: '',
+  backupsToKeep: 2,
+  maxBackupSize: 1,
+  loggerDailyLogsToKeep: 7,
+  loggerScannerLogsToKeep: 2,
+  homeBookshelfView: 1,
+  bookshelfView: 1,
+  sortingIgnorePrefix: false,
+  sortingPrefixes: ['the'],
+  chromecastEnabled: false,
+  dateFormat: 'dd/MM/yyyy',
+  timeFormat: 'HH:mm',
+  language: 'en-us',
+  logLevel: 2,
+  // the provider is tested against ABS 2.19 and up, and says so in its own docs
+  version: `2.19.0 (My Audiobook Collection ${version})`,
+});
+
+export const loginResponse = (name, version) => ({
+  user: user(name),
+  userDefaultLibraryId: LIB,
+  serverSettings: serverSettings(version),
+  Source: 'my-audiobook-collection',
+});
+
+export const libraries = () => [library()];
+export const books = () => db.prepare(`${BOOK} ORDER BY b.author, series, b.series_no, b.title`).all();
+export const book = (id) => db.prepare(`${BOOK} WHERE b.id = ?`).get(Number(id));
+export { LIB };

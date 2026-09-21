@@ -46,6 +46,7 @@ The full manual, with screenshots of every part of it, is in the
 * Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
 * **Home Assistant** reads the collection and carries a book on to any media player in the house
+* **Music Assistant** can be pointed at it as an Audiobookshelf server: browse the books there, play them, and the place syncs both ways
 
 ### And around all that
 
@@ -207,6 +208,7 @@ check the paths it filled in:
 | File mode mask | `000` | the mode of what it creates. `000` is what an Unraid share normally is; `022` makes it read-only to others |
 | Admin password | empty | guards everything that changes the collection; the only place it is set |
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
+| `MA_TOKEN` | empty | the password Music Assistant logs in with. Empty means that whole face of the app is not there |
 | Home Assistant token | empty | only for the polling addresses: set it to make `/api/ha…` ask for it. The page above needs no container setting |
 | Base URL | empty | only behind a reverse proxy: the address other machines reach the app on |
 | Google country | `US` | which country's Google catalogue a **fresh database** starts on. From 2.3.72 it is chosen in Settings, and the setting wins; this only decides where it begins. Series data belongs to a country's catalogue and the US one has the most of it — but if lookups keep saying Google is busy, try your own country instead |
@@ -616,6 +618,42 @@ Settings moves every cover file no book refers to into `covers/duplicates`,
 overwriting a file of the same name already there. Once that folder holds more
 than a thousand files it says so and asks whether to delete them; decline and
 they are zipped into one archive beside them and the loose files removed.
+
+## Music Assistant
+
+Music Assistant can read this collection and play it: the books, their series,
+their chapters, and where you got to in each — including the place syncing back,
+so a book you carried on with on a speaker is where you left it here.
+
+**Setting it up.** Put a password of your choosing in `MA_TOKEN` on the
+container. Then in Music Assistant add a music provider of the type
+**Audiobookshelf**, and give it:
+
+| Field | What to put |
+| --- | --- |
+| Server URL | the address of this app, e.g. `http://192.168.1.10:8523` |
+| Username | your listener name here, exactly as it is in the app |
+| Password | the `MA_TOKEN` you set |
+
+The username matters: it is how the app knows whose place to keep. A name Music
+Assistant logs in with that this app has not seen becomes a listener, the same as
+typing it into the page.
+
+**Why it says Audiobookshelf.** Music Assistant has no supported way to load a
+provider written by anyone else — its maintainers were asked and said no, and the
+one community workaround patches MA while it runs, which is not a thing to put
+under your house. It *does* have a provider for Audiobookshelf, which is the same
+shape of thing this app is. So this app answers as one, and Music Assistant needs
+no changes and no extra parts.
+
+Two honest limits. It is an imitation of another product's API, so an update to
+either side can break it — if Music Assistant stops connecting after an update,
+that is the first place to look. And a change you make here reaches Music
+Assistant on its next sync rather than the instant you make it; the live channel
+Audiobookshelf has for that is not built yet.
+
+**Leave `MA_TOKEN` empty and none of this exists**: every address it would use
+answers "not found", so an install that does not want this grows no new surface.
 
 ## Home Assistant
 
