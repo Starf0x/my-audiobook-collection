@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.8.** This document describes what the app is, how every
+**Version described: 2.5.16.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.8` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.16` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,7 +101,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1067 | Express app: every route, and nothing else |
+| `server/index.js` | 1097 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -120,7 +120,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `server/abs.js` | 557 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 615 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
@@ -418,7 +418,10 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/series/:id?include=progress` | MA token | one series, its books in reading order, and which of them this listener has finished |
 | `GET /api/items/:id`, `POST /api/items/batch/get` | MA token | one book expanded, with its tracks and chapters; or several |
 | `GET /api/items/:id/cover`, `GET /api/items/:id/file/:trackId` | MA token in the query | the picture and the audio, fetched by the player itself |
-| `POST /api/items/:id/play` | MA token | a playback session, which this app keeps nothing of |
+| `POST /api/items/:id/play` | MA token | opens a playback session and remembers it |
+| `GET /api/session/:id` | MA token | that session again — **what every audio part goes through** for a listener signed in with a password |
+| `POST /api/session/:id/sync`, `/close` | MA token | the position while it plays, and the last word when it stops |
+| `POST /api/session/local`, `/local-all` | MA token | sessions a player kept while it was offline |
 | `GET /api/me`, `GET/PATCH /api/me/progress/:id` | MA token | the listener and their places; a PATCH is seconds into the whole book |
 | `GET /api/download/:id` | — | the whole book as one zip, streamed, with the exact length promised up front |
 | `GET /api/stream/:trackId` | — | audio, with byte-range support |
@@ -1232,6 +1235,19 @@ this app knows no finer division. Series become MA's collapsible collections.
 Collections, playlists and shelves answer **empty in the right shape** rather
 than 404: the provider reads them, finds nothing and moves on, where a 404 reads
 as a broken server.
+
+**The session has to be remembered, and which way a listener signed in decides
+whether anything plays at all.** The provider streams two different ways. A
+listener configured with an **API key** gets `{base}{contentUrl}?token=…` and
+fetches the files straight from here. A listener configured with a **username
+and password** — which is how this app tells one person from the next, so it is
+the normal way here — never does: Music Assistant serves every part of the book
+through an address of its own, and that address calls `GET /api/session/<id>`
+first and redirects to the file. A 404 there becomes `SessionNotFoundError`,
+which it turns into a 404 of its own, and **nothing plays** — not one book,
+whether it was half finished or never started. So sessions are kept in memory,
+answered again under the id MA is holding, and `sync` and `close` write the
+position through the same walk-back over the tracks a progress `PATCH` uses.
 
 **A playback session is described, not opened.** Pressing play calls
 `POST /api/items/<id>/play`, and this app streams the files straight out, so
@@ -2084,6 +2100,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.16 | audio plays: a listener signed in with a password fetches every part through Music Assistant, which looks the session up here first, and that address was missing |
 | 2.5.8 | the versioning rule in §2 says what the tags actually did: there is no ceiling at 75, and four lines ran to .80 |
 | 2.5.0 | pressing play in Music Assistant works: the playback session was the one answer invented rather than transcribed, and it went out missing seven required fields |
 | 2.4.80 | the series listing ends: it ignored its paging, and the client that reads it pages with a loop that only stops on an empty page |
