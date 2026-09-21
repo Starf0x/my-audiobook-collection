@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.64.** This document describes what the app is, how every
+**Version described: 2.5.72.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.72` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -315,14 +315,25 @@ Docker tab stops treating it as managed. Force update lives in the Docker tab's
 
 ### Publishing
 
-`.github/workflows/docker.yml`, on push to `main` and on `v*` tags:
+`.github/workflows/docker.yml`, on `v*` tags and on manual dispatch:
 checkout → `docker/setup-buildx-action@v3` → `docker/login-action@v3` →
 `docker/metadata-action@v5` (tags: `type=ref,event=tag` and
 `type=raw,value=latest,enable={{is_default_branch}}`) →
 `docker/build-push-action@v6` for `linux/amd64,linux/arm64` →
-`peter-evans/dockerhub-description@v4` (main only).
+`peter-evans/dockerhub-description@v4` (on the tag, the only run there is).
 
 Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`.
+
+**Tags only, and that is the fix for a race.** It used to run on `main` as well,
+and since `metadata-action` counts a tag as the default branch, a tagged release
+fired twice and **both runs pushed `:latest`**. The two images came from one
+commit but were not byte-for-byte equal — v2.5.64 made `29a69492…` on the branch
+run and `e896a8ed…` on the tag run — so `:latest` went to whichever finished
+last, three seconds apart. Nothing would have been wrong in the image, but
+`:latest` could stop being the digest its `vX.Y.Z` names, and every pull would
+fetch layers it already had. Every shipped change is tagged here anyway, so one
+run per release settles it. `workflow_dispatch` on `main` still moves `:latest`
+by itself; that one is a person deciding, not two runs racing.
 
 **There is one README.** The Docker Hub page is generated from `README.md` by that
 last step, so "update both READMEs" is one edit. Images in it must use absolute
@@ -2178,7 +2189,7 @@ to insert order and looks broken when the app is right.
    `validate-test` and `covers-test` pass.
 10. `work()`, the per-job bars and the greying; make `greyed-button` pass.
 11. README (which is also the Docker Hub page), the wiki, the workflow. Bump,
-    commit, tag, push, and check both builds.
+    commit, tag, push, and check the build the tag starts.
 
 ## 13. Where this version stands
 
@@ -2210,6 +2221,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.72 | one build per release: the workflow runs on tags only, so two runs can no longer race for `:latest` |
 | 2.5.64 | a hole in your own numbering is drawn as a book too: a series head and one card per missing volume, one under the other, instead of a dense line |
 | 2.5.56 | one place for incomplete series: the Settings table is gone, and Series to complete under Maintenance holds both answers — with the Open in library button the table used to have |
 | 2.5.48 | Series to complete is browsed like the library — authors in their column, a missing volume drawn as the card it would be — and every one carries a copy button to search with |
