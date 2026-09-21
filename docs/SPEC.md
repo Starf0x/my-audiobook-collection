@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.4.64.** This document describes what the app is, how every
+**Version described: 2.4.72.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.72` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -98,7 +98,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1064 | Express app: every route, and nothing else |
+| `server/index.js` | 1080 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -117,7 +117,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `server/abs.js` | 427 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 500 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
@@ -408,9 +408,11 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /login` | — | `{username, password}`: the password is `MA_TOKEN`, the username is which listener this is. Answers a `LoginResponse` whose token carries the name |
 | `POST /api/authorize`, `POST /logout` | MA token | the same answer for a client configured with a token; and a logout that keeps nothing |
 | `GET /api/libraries`, `/api/libraries/:id[?include=filterdata]` | MA token | the one library, and its filter data |
-| `GET /api/libraries/:id/items?limit=&page=` | MA token | a page of books in the minified shape |
+| `GET /api/libraries/:id/items?limit=&page=&filter=` | MA token | a page of books in the minified shape; `filter=narrators.<id>` is how browsing a narrator is done |
 | `GET /api/libraries/:id/series\|authors\|narrators` | MA token | the groupings this app keeps; series become MA's collapsible collections |
 | `GET /api/libraries/:id/collections\|playlists\|personalized` | MA token | empty answers of the right shape — this app has none of those |
+| `GET /api/authors/:id?include=items,series` | MA token | one author with their books and their series — what browsing *into* an author asks for |
+| `GET /api/series/:id?include=progress` | MA token | one series, its books in reading order, and which of them this listener has finished |
 | `GET /api/items/:id`, `POST /api/items/batch/get` | MA token | one book expanded, with its tracks and chapters; or several |
 | `GET /api/items/:id/cover`, `GET /api/items/:id/file/:trackId` | MA token in the query | the picture and the audio, fetched by the player itself |
 | `POST /api/items/:id/play` | MA token | a playback session, which this app keeps nothing of |
@@ -1228,6 +1230,19 @@ Collections, playlists and shelves answer **empty in the right shape** rather
 than 404: the provider reads them, finds nothing and moves on, where a 404 reads
 as a broken server.
 
+**Browsing *into* a thing asks for it by id, and a 404 there is not gentle.**
+The Authors and Series folders list what this app hands out, and opening one
+calls `GET /api/authors/<id>?include=items,series` or `GET
+/api/series/<id>?include=progress`. The client raises `NotFoundError` **bare**,
+so its `str()` is empty: Music Assistant logs `Error handling message:
+music/browse:` with nothing after the colon and shows the reader a toast saying
+only *NotFoundError*. That is what a missing address looks like from the outside
+— which is why both answer, and why an author or series nobody has is a 404 on
+purpose rather than an empty shape. A narrator is different again: it is not
+asked for, it filters the item list as `filter=narrators.<the id we handed
+out>`, and ignoring that would answer with the whole collection under one
+narrator's name.
+
 **Two traps that would each have been invisible.** The client joins its base
 address to an endpoint that already begins with a slash, so every call arrives
 as `//api/…`; Express does not read that as `/api/…`, so a middleware strips the
@@ -2043,6 +2058,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.4.72 | browsing into an author or a series in Music Assistant works: the two addresses it asks for were missing, and a missing one reads there as a wordless NotFoundError |
 | 2.4.64 | Music Assistant can be pointed at this app: it answers as an Audiobookshelf server, so MA's own provider browses the collection, plays it, and syncs where you got to |
 | 2.4.56 | this document brought back in step with the code: the four releases below it, the `converted` table and the `progress` trigger in the schema, the day in the cover marker, the convert routes, and every line count |
 | 2.4.48 | the progress bars stand in the day's own colours: they fill from the glow on the left of the page into the one on the right, and turn with it at midnight |

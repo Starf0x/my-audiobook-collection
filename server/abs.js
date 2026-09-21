@@ -421,6 +421,79 @@ export function socketSay(req, res) {
   }
   return res.type('text/html').send('ok');
 }
+// --- one author, one series ----------------------------------------------
+// Browsing into an author or a series asks for it by the id this app handed
+// out, and a 404 there is not a gentle "nothing here": the client raises a bare
+// NotFoundError, which the page shows as an error with no words in it. So both
+// answer, and the ids are read back the way they were written.
+const nameIn = (id) => { try { return unb64(String(id).replace(/^[a-z]{2}-/, '')); } catch { return ''; } };
+
+export const author = (id) => {
+  const name = nameIn(id);
+  const mine = books().filter((b) => b.author === name);
+  if (!mine.length) return null;
+  const named = [...new Set(mine.map((b) => b.series).filter(Boolean))];
+  return {
+    id: String(id),
+    name,
+    description: null,
+    imagePath: null,
+    addedAt: 0,
+    updatedAt: now(),
+    numBooks: mine.length,
+    libraryItems: mine.map(minifiedItem),
+    series: named.map((s) => ({
+      id: `se-${b64(s)}`,
+      name: s,
+      items: mine.filter((b) => b.series === s).map(minifiedItem),
+    })),
+  };
+};
+
+// The books of a series, in reading order, and which of them this listener has
+// finished — the provider reads the order straight out of `libraryItemIds`.
+export const seriesWithProgress = (id, user) => {
+  const name = nameIn(id);
+  const mine = books().filter((b) => b.series === name)
+    .sort((a, b) => (a.series_no || 0) - (b.series_no || 0) || a.title.localeCompare(b.title));
+  if (!mine.length) return null;
+  const done = new Set(db.prepare('SELECT book_id FROM progress WHERE user = ? AND done = 1')
+    .all(user || '').map((r) => String(r.book_id)));
+  const ids = mine.map((b) => String(b.id));
+  const finished = ids.filter((bookId) => done.has(bookId));
+  return {
+    id: String(id),
+    name,
+    description: null,
+    addedAt: 0,
+    updatedAt: now(),
+    books: mine.map(minifiedItem),
+    progress: {
+      libraryItemIds: ids,
+      libraryItemIdsFinished: finished,
+      isFinished: finished.length === ids.length,
+    },
+  };
+};
+
+// Browsing a narrator filters the item list rather than asking for the narrator:
+// `filter=narrators.<the id we handed out>`. Ignoring it would answer with the
+// whole collection under one narrator's name, which is worse than an error.
+export const filteredBooks = (filter) => {
+  const all = books();
+  const said = String(filter || '');
+  if (!said) return all;
+  const [group, value] = [said.slice(0, said.indexOf('.')), said.slice(said.indexOf('.') + 1)];
+  const name = nameIn(decodeURIComponent(value));
+  if (group === 'narrators') return all.filter((b) => b.narrator === name);
+  if (group === 'authors') return all.filter((b) => b.author === name);
+  if (group === 'series') return all.filter((b) => b.series === name);
+  if (group === 'genres') return all.filter((b) => b.genre === name);
+  // a filter this app does not know is answered with everything rather than
+  // nothing: a shelf that is empty for no stated reason reads as a broken server
+  return all;
+};
+
 export const libraries = () => [library()];
 export const books = () => db.prepare(`${BOOK} ORDER BY b.author, series, b.series_no, b.title`).all();
 export const book = (id) => db.prepare(`${BOOK} WHERE b.id = ?`).get(Number(id));
