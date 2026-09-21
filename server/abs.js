@@ -432,14 +432,28 @@ export function socketSay(req, res) {
 // out, and the session is a description of what would have been opened. What
 // matters to Music Assistant is `audioTracks`, which is where it reads the
 // addresses it will fetch.
+// A session has to be remembered, and that is not about bookkeeping: a listener
+// configured with a **username and password** — which is how this app tells
+// Music Assistant apart from one person and the next — never fetches the audio
+// directly. Every part goes through MA's own address, which looks the session up
+// with `GET /api/session/<id>` and redirects to the file. A 404 there becomes
+// SessionNotFoundError, which that route turns into a 404 of its own, and then
+// nothing plays at all — not one book, played or half finished. Only a listener
+// configured with an API key streams straight from here.
+const sessions = new Map();
+const KEEP = 12 * 60 * 60 * 1000;
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export function playbackSession(b, user, req, version) {
   const item = expandedItem(b, req);
   const when = new Date();
   const place = progressOf(user, b);
+  const id = `pl-${b.id}-${when.getTime().toString(36)}`;
+  for (const [old, s] of sessions) if (when.getTime() - s.at > KEEP) sessions.delete(old);
+  sessions.set(id, { book: b.id, user: user || '', at: when.getTime() });
   return {
-    id: `pl-${b.id}-${when.getTime().toString(36)}`,
+    id,
     userId: `us-${b64(user || '')}`,
     libraryId: LIB,
     libraryItemId: String(b.id),
@@ -476,6 +490,50 @@ export function playbackSession(b, user, req, version) {
     chapters: item.media.chapters,
     audioTracks: item.media.tracks,
   };
+}
+
+// The session again, by its id. The answer is rebuilt rather than stored: what
+// matters in it is `audioTracks`, and those are the files as they are now.
+export function openSession(id, req, version) {
+  const said = sessions.get(String(id));
+  if (!said) return null;
+  const b = book(said.book);
+  if (!b) return null;
+  said.at = Date.now();
+  const out = playbackSession(b, said.user, req, version);
+  // the same session, not a new one: the id MA is holding has to keep working
+  sessions.delete(out.id);
+  out.id = String(id);
+  sessions.set(out.id, said);
+  return out;
+}
+
+// What MA reports while a book plays, and once more when it stops: seconds into
+// the whole book. The same walk back over the tracks as a progress PATCH, so
+// there is one rule for where a second belongs, not two.
+export function syncSession(id, body) {
+  const said = sessions.get(String(id));
+  if (!said) return false;
+  said.at = Date.now();
+  const seconds = Number((body || {}).currentTime);
+  if (Number.isFinite(seconds)) writeProgressFromWhole(said.user, said.book, seconds, false);
+  return true;
+}
+
+export function closeSession(id, body) {
+  const ok = syncSession(id, body);
+  sessions.delete(String(id));
+  return ok;
+}
+
+// A session a player kept to itself while it was offline: it carries the book
+// and the second, so it needs no session of ours to have existed.
+export function syncFromLocal(user, said) {
+  const bookId = Number((said || {}).libraryItemId);
+  const seconds = Number((said || {}).currentTime);
+  if (!bookId || !Number.isFinite(seconds) || !book(bookId)) return false;
+  writeProgressFromWhole(user, bookId, seconds, false);
+  return true;
 }
 
 // --- one author, one series ----------------------------------------------

@@ -29,7 +29,9 @@ import { enabled as absEnabled, inboundToken as absToken, listener as absListene
   progressOf as absProgress, writeProgressFromWhole as absWriteProgress,
   socketOpen as absSocketOpen, socketPoll as absSocketPoll, socketSay as absSocketSay,
   author as absAuthor, seriesWithProgress as absSeries, filteredBooks as absFiltered,
-  playbackSession as absSession } from './abs.js';
+  playbackSession as absSession, openSession as absOpenSession,
+  syncSession as absSyncSession, closeSession as absCloseSession,
+  syncFromLocal as absSyncFromLocal } from './abs.js';
 
 
 const app = express();
@@ -861,6 +863,34 @@ app.post('/api/items/:id/play', forMA, (req, res) => {
   const b = absBook(req.params.id);
   if (!b) return res.status(404).end();
   res.json(absSession(b, req.listener, req, VERSION));
+});
+
+// A session by its id, and what happens to it while a book plays. The first of
+// these is the one that decides whether anything plays at all for a listener
+// signed in with a password: Music Assistant serves each part of the book
+// through an address of its own, and that address looks the session up here
+// before redirecting to the file.
+app.get('/api/session/:id', forMA, (req, res) => {
+  const s = absOpenSession(req.params.id, req, VERSION);
+  if (!s) return res.status(404).end();
+  res.json(s);
+});
+
+app.post('/api/session/:id/sync', forMA, (req, res) =>
+  (absSyncSession(req.params.id, req.body) ? res.json({}) : res.status(404).end()));
+
+app.post('/api/session/:id/close', forMA, (req, res) =>
+  (absCloseSession(req.params.id, req.body) ? res.json({}) : res.json({})));
+
+// Sessions a player kept while it was offline. This app has nothing to reconcile
+// — the position it is told is the position — so they are taken and answered.
+app.post('/api/session/local', forMA, (req, res) => {
+  absSyncFromLocal(req.listener, req.body);
+  res.json({});
+});
+app.post('/api/session/local-all', forMA, (req, res) => {
+  for (const s of ((req.body || {}).sessions || [])) absSyncFromLocal(req.listener, s);
+  res.json({});
 });
 
 app.get('/api/me', forMA, (req, res) => res.json(absUser(req.listener)));
