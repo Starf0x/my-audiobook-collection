@@ -29,9 +29,8 @@ import { enabled as absEnabled, inboundToken as absToken, listener as absListene
   progressOf as absProgress, writeProgressFromWhole as absWriteProgress,
   socketOpen as absSocketOpen, socketPoll as absSocketPoll, socketSay as absSocketSay,
   author as absAuthor, seriesWithProgress as absSeries, filteredBooks as absFiltered,
-  LIB as ABS_LIB } from './abs.js';
+  playbackSession as absSession } from './abs.js';
 
-const absLibraryId = () => ABS_LIB;
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -861,26 +860,7 @@ app.get('/api/items/:id/file/:trackId', forMA, (req, res) => {
 app.post('/api/items/:id/play', forMA, (req, res) => {
   const b = absBook(req.params.id);
   if (!b) return res.status(404).end();
-  const item = absExpanded(b, req);
-  res.json({
-    id: `pl-${b.id}-${Date.now()}`,
-    userId: `us-${Buffer.from(req.listener || '').toString('base64url')}`,
-    libraryId: absLibraryId(),
-    libraryItemId: String(b.id),
-    mediaType: 'book',
-    mediaMetadata: item.media.metadata,
-    chapters: item.media.chapters,
-    displayTitle: b.title,
-    displayAuthor: b.author,
-    coverPath: b.cover || null,
-    duration: item.media.duration,
-    playMethod: 0,
-    mediaPlayer: 'music-assistant',
-    startTime: 0,
-    currentTime: 0,
-    audioTracks: item.media.tracks,
-    libraryItem: item,
-  });
+  res.json(absSession(b, req.listener, req, VERSION));
 });
 
 app.get('/api/me', forMA, (req, res) => res.json(absUser(req.listener)));
