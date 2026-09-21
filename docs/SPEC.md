@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.4.16.** This document describes what the app is, how every
+**Version described: 2.4.56.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.4.56` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -98,13 +98,13 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 753 | Express app: every route, and nothing else |
+| `server/index.js` | 840 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 133 | schema, migrations, settings, library list |
+| `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 466 | walking the library, reading tags, filing books |
+| `server/scan.js` | 518 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 571 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 688 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 120 | the resumable whole-collection tag run |
@@ -115,17 +115,17 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
-| `server/convert.js` | 238 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
+| `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 259 | the player, and carrying the book from one page to the next |
-| `public/ha.html` | 107 | the Home Assistant page |
+| `public/player.js` | 287 | the player, and carrying the book from one page to the next |
+| `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 306 | the admin page: columns, dialogs |
-| `public/app.js` | 2106 | the admin page's behaviour |
-| `public/listen.html` | 87 | the listening page |
-| `public/listen.js` | 521 | the listening page's behaviour |
-| `public/style.css` | 606 | the whole look, every page, phone included |
+| `public/index.html` | 317 | the admin page: columns, dialogs |
+| `public/app.js` | 2153 | the admin page's behaviour |
+| `public/listen.html` | 89 | the listening page |
+| `public/listen.js` | 528 | the listening page's behaviour |
+| `public/style.css` | 630 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -192,6 +192,14 @@ CREATE TABLE replaced (
   files INTEGER, bytes INTEGER, quality TEXT, replaced_at TEXT
 );
 
+-- what a conversion came from, kept until the owner says otherwise (§7.8a)
+CREATE TABLE converted (
+  id INTEGER PRIMARY KEY,
+  path TEXT UNIQUE, was_path TEXT,
+  genre TEXT, author TEXT, series TEXT, title TEXT,
+  files INTEGER, bytes INTEGER, converted_at TEXT
+);
+
 CREATE TABLE trash (
   id INTEGER PRIMARY KEY,
   was_path TEXT, trash_path TEXT,
@@ -203,15 +211,27 @@ CREATE TABLE trash (
 -- book's "broken" verdict.
 CREATE TRIGGER broken_follows_books AFTER DELETE ON books
 BEGIN DELETE FROM broken WHERE book_id = OLD.id; END;
+-- and for the same reason its place and its tick: a scan that drops a book whose
+-- folder has gone used to leave these behind, and the next book added was handed
+-- the freed id along with a stranger's place in it (§9.35)
+CREATE TRIGGER progress_follows_books AFTER DELETE ON books
+BEGIN DELETE FROM progress WHERE book_id = OLD.id; END;
 ```
+
+Both triggers are `CREATE TRIGGER IF NOT EXISTS`, and a database written before
+`progress_follows_books` existed is swept once at startup:
+`DELETE FROM progress WHERE book_id NOT IN (SELECT id FROM books)`.
 
 Everything is `CREATE TABLE IF NOT EXISTS`. Four columns added after the first
 release are also applied as guarded `ALTER TABLE` in `try/catch`, so an old
 database catches up: `progress.done`, `books.tagged`, `books.tag_series`,
 `books.series_no`.
 
-Two one-off repairs run at startup: descriptions that are iTunes normalisation
-hex (`/^[0-9a-f]{6,8}( +[0-9a-f]{6,8})+$/i`) are emptied, and the old
+Four one-off repairs run at startup, in `db.js`: descriptions that are iTunes
+normalisation hex (`/^[0-9a-f]{6,8}( +[0-9a-f]{6,8})+$/i`) are emptied; places
+left behind by books that no longer exist are deleted (the sweep above, for
+databases older than the trigger); narrators that are really the author are
+cleared, but only where the files name none (§7.3); and the old
 `adminHash`/`adminSalt` settings rows are deleted (the password comes from the
 container now).
 
@@ -344,6 +364,11 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/covers/tidy` | admin | move unused covers to `covers/duplicates` |
 | `POST /api/covers/duplicates/delete` | admin | delete the loose ones |
 | `POST /api/covers/duplicates/zip` | admin | zip them, remove the loose ones |
+| `GET /api/convertible` | admin | `{tools, why, books}`: the .m4b and .ogg books, and whether ffmpeg is there to do it |
+| `POST /api/convert/:id` | admin | convert one book to MP3, one at a time |
+| `GET /api/convert/status` | — | the conversion's progress |
+| `GET /api/converted` | admin | what each conversion came from, still on disk |
+| `POST /api/converted/all`, `POST /api/converted/:id` | admin | delete those originals. `all` is declared **before** `:id`, or Express reads "all" as an id |
 | `GET /api/replaced` | admin | copies an import displaced |
 | `POST /api/replaced/all`, `POST /api/replaced/:id` | admin | delete them |
 | `POST /api/move/:id` | admin | move a book to genre/author/series/title |
@@ -362,6 +387,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/books?genre=&author=|series=&user=` | — | `{books, series}` — the cards, and for each series among them `{name, books, highest, missing, unnumbered, says}` |
 | `GET /api/series-gaps` | admin | `{looked, gaps, unnumbered}` — every series in the collection with a volume missing, biggest hole first |
 | `GET /api/search?q=&user=` | — | cards, across everything |
+| `GET /api/listened?user=` | — | every book that listener has finished, the Listened section's own list |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
@@ -388,11 +414,15 @@ Cover URLs carry a marker so a browser may cache for a week:
 
 ```js
 const coverV = (b) => crypto.createHash('md5')
-  .update(b.cover || `title:${b.title || ''}`).digest('hex').slice(0, 12);
+  .update(b.cover || `title:${b.title || ''}:day${dayIndex()}`).digest('hex').slice(0, 12);
 ```
 
 Falling back to the **title** when there is no picture is what makes a renamed
-book ask for a new drawn cover instead of showing the old name for a week.
+book ask for a new drawn cover instead of showing the old name for a week. The
+**day** is in there for the same reason: a drawn cover is redrawn in new colours
+every night (§7.9), and without the day in the marker a browser allowed to keep
+the picture for a week would show last week's colours on a page whose every other
+colour had moved on.
 
 ## 7. Server behaviour
 
@@ -1924,6 +1954,11 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.4.56 | this document brought back in step with the code: the four releases below it, the `converted` table and the `progress` trigger in the schema, the day in the cover marker, the convert routes, and every line count |
+| 2.4.48 | the progress bars stand in the day's own colours: they fill from the glow on the left of the page into the one on the right, and turn with it at midnight |
+| 2.4.40 | Settings lists every series with a volume missing, widest hole first, a row opening that series — the same count as the line under a series head, over the whole collection |
+| 2.4.32 | the player bar goes away when there is nothing to listen to: a book that runs out takes it with it, and a ✕ puts it away by hand |
+| 2.4.24 | a series head says which volume is missing, read from the numbers the books already carry — and says so where no verdict can be given |
 | 2.4.16 | the book goes on playing when you move between the app's pages: the player is one file all three of them load, the Home Assistant page has one too, and the listening is handed from each page to the next |
 | 2.4.8 | a lookup is one request: the series hunt that cost eight is a button, and a refusal is tried eight short times instead of three long ones |
 | 2.4.0 | a 503 is asked about once more without the key, so "Google is busy" and "Google will not serve this key" stop looking the same |
