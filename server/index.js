@@ -26,7 +26,9 @@ import { toolsWhy, convertible, convertBook, convertProgress,
 import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
   loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
   minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
-  progressOf as absProgress, writeProgressFromWhole as absWriteProgress, LIB as ABS_LIB } from './abs.js';
+  progressOf as absProgress, writeProgressFromWhole as absWriteProgress,
+  socketOpen as absSocketOpen, socketPoll as absSocketPoll, socketSay as absSocketSay,
+  LIB as ABS_LIB } from './abs.js';
 
 const absLibraryId = () => ABS_LIB;
 
@@ -707,6 +709,17 @@ app.post('/login', (req, res) => {
 // the same answer for a client configured with a token instead of a password
 app.post('/api/authorize', forMA, (req, res) => res.json(absLogin(req.listener, VERSION)));
 app.post('/logout', forMA, (req, res) => res.json({}));
+
+// The socket its client opens at setup, before it asks anything else. Engine.IO
+// speaks in plain text bodies rather than JSON, so this one route reads its own.
+app.get('/socket.io/', (req, res) => {
+  if (!absEnabled()) return res.status(404).end();
+  return req.query.sid ? absSocketPoll(req, res) : absSocketOpen(res);
+});
+app.post('/socket.io/', express.text({ type: () => true, limit: '64kb' }), (req, res) => {
+  if (!absEnabled()) return res.status(404).end();
+  return absSocketSay(req, res);
+});
 
 app.get('/api/libraries', forMA, (req, res) => res.json({ libraries: absLibraries() }));
 app.get('/api/libraries/:id', forMA, (req, res) => {

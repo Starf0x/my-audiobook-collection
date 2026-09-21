@@ -337,6 +337,90 @@ export const loginResponse = (name, version) => ({
   Source: 'my-audiobook-collection',
 });
 
+// --- the socket Music Assistant insists on -------------------------------
+// Not a nicety: the provider's `handle_async_init` calls `init_client()`, which
+// is `socketio.AsyncClient.connect(url)`, and the only exception it catches
+// around that is a login error. Nothing listening at /socket.io/ means a
+// ConnectionError out of setup, and the provider never connects at all — so the
+// handshake below is what makes every answer above reachable.
+//
+// It is Engine.IO v4 over long polling and nothing else. The client offers to
+// upgrade to a WebSocket; Node hands an upgrade request to a listener this app
+// does not register, the socket is dropped, and python-engineio goes on polling,
+// which is a supported way to be connected. Writing an actual WebSocket server
+// by hand — framing, masking, ping — to send events nothing sends yet would be
+// the larger and less honest change.
+//
+// The packet alphabet used here: 0 open, 2 ping, 3 pong, 4 message; and inside a
+// message, 40 connect, 42 an event. Several packets in one answer are joined
+// with a record separator.
+const SEP = '\x1e';
+const OPEN = 0;
+const sockets = new Map();
+
+// A poll is held rather than answered empty, the way engine.io does it, or the
+// client would come straight back and the two of them would spin.
+const HOLD = 25000;
+
+const socketSend = (s, text) => {
+  if (!s.waiting) { s.queue.push(text); return; }
+  const res = s.waiting;
+  s.waiting = null;
+  clearTimeout(s.timer);
+  res.type('text/plain; charset=UTF-8').send(text);
+};
+
+export function socketOpen(res) {
+  const sid = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  sockets.set(sid, { queue: [], waiting: null, timer: null, at: Date.now() });
+  // forget sessions nobody came back for, so a restarting Music Assistant does
+  // not leave one behind on every attempt
+  for (const [id, s] of sockets) if (Date.now() - s.at > 300000 && !s.waiting) sockets.delete(id);
+  return res.type('text/plain; charset=UTF-8').send(
+    `${OPEN}${JSON.stringify({
+      sid,
+      upgrades: [],
+      pingInterval: HOLD,
+      pingTimeout: 20000,
+      maxPayload: 1000000,
+    })}`);
+}
+
+export function socketPoll(req, res) {
+  const s = sockets.get(String(req.query.sid || ''));
+  if (!s) return res.status(400).json({ code: 1, message: 'Session ID unknown' });
+  s.at = Date.now();
+  if (s.queue.length) {
+    const out = s.queue.join(SEP);
+    s.queue = [];
+    return res.type('text/plain; charset=UTF-8').send(out);
+  }
+  // hold it open, and let go on every way out: a poll whose reader has gone must
+  // not keep a timer and a response alive behind it
+  s.waiting = res;
+  s.timer = setTimeout(() => {
+    if (s.waiting === res) { s.waiting = null; res.type('text/plain; charset=UTF-8').send('2'); }
+  }, HOLD);
+  const done = () => {
+    if (s.waiting === res) { s.waiting = null; clearTimeout(s.timer); }
+  };
+  res.on('close', done);
+  res.on('finish', done);
+  return undefined;
+}
+
+export function socketSay(req, res) {
+  const s = sockets.get(String(req.query.sid || ''));
+  if (!s) return res.status(400).json({ code: 1, message: 'Session ID unknown' });
+  s.at = Date.now();
+  for (const packet of String(req.body || '').split(SEP)) {
+    // the client asking to join the one namespace there is
+    if (packet.startsWith('40')) socketSend(s, '40' + JSON.stringify({ sid: `s-${Date.now().toString(36)}` }));
+    // 3 is its answer to our ping, and an event is the token it announces
+    // itself with; there is nothing to do with either but read it
+  }
+  return res.type('text/html').send('ok');
+}
 export const libraries = () => [library()];
 export const books = () => db.prepare(`${BOOK} ORDER BY b.author, series, b.series_no, b.title`).all();
 export const book = (id) => db.prepare(`${BOOK} WHERE b.id = ?`).get(Number(id));

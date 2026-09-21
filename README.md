@@ -649,8 +649,9 @@ no changes and no extra parts.
 Two honest limits. It is an imitation of another product's API, so an update to
 either side can break it — if Music Assistant stops connecting after an update,
 that is the first place to look. And a change you make here reaches Music
-Assistant on its next sync rather than the instant you make it; the live channel
-Audiobookshelf has for that is not built yet.
+Assistant on its next sync rather than the instant you make it: the live channel
+between them is open, because Music Assistant will not start without one, but
+this app sends nothing down it yet.
 
 **Leave `MA_TOKEN` empty and none of this exists**: every address it would use
 answers "not found", so an install that does not want this grows no new surface.
