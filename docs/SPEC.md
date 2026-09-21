@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.56.** This document describes what the app is, how every
+**Version described: 2.5.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1429,6 +1429,17 @@ which: what is missing **between your own books** is counted here and exact;
 what **Wikidata knows and you do not have** was asked of the world. A series it
 could not place is listed with its reason, never folded into either.
 
+**Both halves are drawn the same way**: a series head carrying the sentence and
+the two buttons, then **one card per missing volume, one under the other**. The
+local half has no title to put on a card — nothing in the collection knows what
+book 3 of *Wide Gap* is called — so the number is the name, `Book 3`, and that
+card's copy button searches `author - series N` instead of `author - title`. The
+caveat about books with no volume number sits on the series head, where it
+qualifies the whole group, and is repeated on each card as the reason it is
+there: *your own books in this series run up to book 4, with nothing on 3.* A
+dense one-line list was what this replaced; a hole in a series is a book to go
+and find, and it reads as one only when it is drawn as one.
+
 It is a job with a progress object, like a scan: network work over every series
 is minutes, the page can be closed while it runs, and it is never started by a
 page loading. `POST /api/series-online` begins it, `GET /api/series-online/status`
@@ -2199,6 +2210,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.64 | a hole in your own numbering is drawn as a book too: a series head and one card per missing volume, one under the other, instead of a dense line |
 | 2.5.56 | one place for incomplete series: the Settings table is gone, and Series to complete under Maintenance holds both answers — with the Open in library button the table used to have |
 | 2.5.48 | Series to complete is browsed like the library — authors in their column, a missing volume drawn as the card it would be — and every one carries a copy button to search with |
 | 2.5.40 | Series to complete, under Maintenance: what is missing between the books you have, and — asked of Wikidata — which volumes exist that you do not have |

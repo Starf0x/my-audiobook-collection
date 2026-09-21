@@ -1035,27 +1035,30 @@ function onlineWords(s) {
 // any other — cover, title, author, series and number — because that is what a
 // reader is looking for: the thing to go and find. What it does not get is a
 // Play button, and its cover is drawn rather than a hole in the shelf.
-const missingCard = (r, v) => {
-  const search = [r.author, v.title].filter(Boolean).join(' - ');
+// It is one card whether the title is known or not. Wikidata gives a title; the
+// collection's own numbering gives only a number, and *Book 9* with the series
+// under it is still the thing to go and look for.
+const missingCard = ({ name, author, genre, no, title, why, extra = '' }) => {
+  const shown = title || `Book ${no}`;
+  const search = [author, title || `${name} ${no}`].filter(Boolean).join(' - ');
   return `<div class="card missing-book">
     <div class="cover">
-      <img src="/api/drawn-cover?title=${encodeURIComponent(v.title)}&author=${encodeURIComponent(r.author)}"
+      <img src="/api/drawn-cover?title=${encodeURIComponent(shown)}&author=${encodeURIComponent(author || '')}"
         alt="" loading="lazy" decoding="async">
     </div>
     <div>
-      <h3>${esc(v.title)}</h3>
-      <div class="sub">${esc(r.author) || 'author unknown'}</div>
-      <div class="sub series-of">Series · ${esc(r.name)} · book ${v.no}</div>
+      <h3>${esc(shown)}</h3>
+      <div class="sub">${esc(author) || 'author unknown'}</div>
+      <div class="sub series-of">Series · ${esc(name)} · book ${no}</div>
       <div class="sub" style="margin-top:6px">
         <span class="badge untagged">Not in your collection</span>
-        <span class="badge">${esc(r.genre)}</span>
+        <span class="badge">${esc(genre)}</span>
       </div>
-      <div class="desc">Wikidata lists this as book ${v.no} of
-        ${esc(r.label)}${r.description ? ` (${esc(r.description)})` : ''}.</div>
+      <div class="desc">${esc(why)}</div>
     </div>
     <div class="actions">
       <button class="copy-search" data-copy-text="${esc(search)}">⧉ Copy to search</button>
-      <a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">On Wikidata</a>
+      ${extra}
     </div>
   </div>`;
 };
@@ -1067,7 +1070,26 @@ const missingSeries = (r) => `<div class="series-head">Series · ${esc(r.name)}
       title="Copy “author - series” to search for it">⧉ copy</button></div>
   <div class="series-gap missing">${r.missing.length} of ${r.volumes.length} volume(s) not here${r.byTitle
   ? ' — your books in it carry no numbers, so this was matched by title' : ''}</div>
-  ${r.titles.filter((v) => v.no && r.missing.includes(v.no)).map((v) => missingCard(r, v)).join('')}`;
+  ${r.titles.filter((v) => v.no && r.missing.includes(v.no)).map((v) => missingCard({
+  name: r.name, author: r.author, genre: r.genre, no: v.no, title: v.title,
+  why: `Wikidata lists this as book ${v.no} of ${r.label}${r.description ? ` (${r.description})` : ''}.`,
+  extra: `<a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">On Wikidata</a>`,
+})).join('')}`;
+
+// The same, for a hole in the collection's own numbering. There is no title to
+// show — nothing here knows what book 9 is called — so the number is the name,
+// and the series head carries the sentence that qualifies the whole group.
+const ownGapSeries = (g) => `<div class="series-head">Series · ${esc(g.name)}
+    <button class="copy-search linkish" data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}"
+      title="Copy “author - series” to search for it">⧉ copy</button>
+    <button class="open-series linkish" data-genre="${esc(g.genre)}"
+      data-series="${esc(g.name)}">open in library</button></div>
+  <div class="series-gap missing">${esc(g.says)}</div>
+  ${g.missing.map((no) => missingCard({
+  name: g.name, author: g.author, genre: g.genre, no, title: '',
+  why: `Your own books in this series run up to book ${g.highest}, with nothing on ${no}.`
+    + (g.unnumbered ? ` ${g.unnumbered} book(s) here carry no volume number, so this may be one of them.` : ''),
+})).join('')}`;
 
 // The pane, browsed the way the library is: this author's missing volumes, or
 // everybody's when no author is picked.
@@ -1091,20 +1113,9 @@ function drawSeriesPane(gaps, online, author = null) {
   // you own, counted here, not asked of anybody.
   const mineGaps = gaps.gaps.filter((g) => !author || g.author === author);
   const own = mineGaps.length
-    ? '<div class="series-head">Missing between the books you have</div>'
-      + mineGaps.map((g) => `<div class="fix"><div>
-          <strong>${esc(g.name)}</strong>
-          <div class="sub">${esc(g.genre)}${g.author ? ` · ${esc(g.author)}` : ''} ·
-            ${g.books} book(s) here, up to book ${g.highest}</div>
-          <div class="sub missing">${esc(g.says)}</div>
-        </div>
-        <div class="actions">
-          <button class="open-series" data-genre="${esc(g.genre)}"
-            data-series="${esc(g.name)}">Open in library</button>
-          <button class="ghost copy-search"
-            data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}">⧉ Copy to search</button>
-        </div>
-      </div>`).join('')
+    ? `<div class="series-head">Missing between the books you have —
+        ${mineGaps.reduce((n, g) => n + g.missing.length, 0)} book(s)</div>`
+      + mineGaps.map(ownGapSeries).join('')
     : '';
 
   // said even where nothing is missing: "no gaps" and "nothing numbered to
