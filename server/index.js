@@ -748,20 +748,30 @@ app.get('/api/libraries/:id', forMA, (req, res) => {
 
 // One page of the collection. The client pages through with limit and page, and
 // asks for the minified shape unless it says otherwise.
-app.get('/api/libraries/:id/items', forMA, (req, res) => {
-  const all = absFiltered(req.query.filter);
+// Every paged listing goes through this, and the reason is worth stating: the
+// client's pager is a `while True` that only stops when a page comes back with
+// no results in it. A listing that ignores `page` and answers with everything
+// each time is an infinite loop inside Music Assistant, not a wrong answer — it
+// spins, and the reader sees a folder that never opens. So a page past the end
+// must be empty, and a request with no limit is still one page of everything
+// followed by nothing.
+const paged = (req, all, shape) => {
   const limit = Math.max(0, Number(req.query.limit) || 0);
   const page = Math.max(0, Number(req.query.page) || 0);
-  const slice = limit ? all.slice(page * limit, page * limit + limit) : all;
-  res.json({ total: all.length, limit, page, results: slice.map(absMinified) });
-});
+  const from = limit ? page * limit : 0;
+  const slice = limit ? all.slice(from, from + limit) : (page ? [] : all);
+  return { total: all.length, limit, page, results: slice.map(shape) };
+};
+
+app.get('/api/libraries/:id/items', forMA, (req, res) =>
+  res.json(paged(req, absFiltered(req.query.filter), absMinified)));
 
 // Series are the one grouping this app keeps besides the folders, and they are
 // what Music Assistant turns into collapsible collections.
 app.get('/api/libraries/:id/series', forMA, (req, res) => {
   const all = absBooks().filter((b) => b.series);
   const names = [...new Set(all.map((b) => b.series))];
-  const results = names.map((name) => {
+  res.json(paged(req, names, (name) => {
     const mine = all.filter((b) => b.series === name);
     return {
       id: `se-${Buffer.from(name).toString('base64url')}`,
@@ -773,8 +783,7 @@ app.get('/api/libraries/:id/series', forMA, (req, res) => {
       updatedAt: Date.now(),
       books: mine.map(absMinified),
     };
-  });
-  res.json({ total: results.length, limit: 0, page: 0, results });
+  }));
 });
 
 app.get('/api/libraries/:id/authors', forMA, (req, res) => {
@@ -802,10 +811,8 @@ app.get('/api/libraries/:id/narrators', forMA, (req, res) => {
 // This app has no collections, playlists or shelves of Audiobookshelf's kind.
 // An empty answer of the right shape is the honest one: the provider reads it,
 // finds nothing, and moves on — where a 404 would read as a broken server.
-app.get('/api/libraries/:id/collections', forMA, (req, res) =>
-  res.json({ total: 0, limit: 0, page: 0, results: [] }));
-app.get('/api/libraries/:id/playlists', forMA, (req, res) =>
-  res.json({ total: 0, limit: 0, page: 0, results: [] }));
+app.get('/api/libraries/:id/collections', forMA, (req, res) => res.json(paged(req, [], (x) => x)));
+app.get('/api/libraries/:id/playlists', forMA, (req, res) => res.json(paged(req, [], (x) => x)));
 app.get('/api/libraries/:id/personalized', forMA, (req, res) => res.json([]));
 
 // Browsing into an author or a series asks for it by id. These are the two the
