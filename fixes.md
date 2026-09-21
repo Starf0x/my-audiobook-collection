@@ -417,3 +417,8 @@ here:
 * **The wiki is a second repository**, cloned into `fixtures\wiki`. It commits
   under its own identity, which has to be set on the clone, and the project's
   `git status` will never mention that its pages are still uncommitted.
+* **Two runs cannot share a moving tag.** The publish workflow ran on `main` and
+  on `v*`, and `metadata-action` counts a tag as the default branch, so a release
+  fired twice and both runs pushed `:latest`. The images were the same source but
+  not the same digest — v2.5.64 built `29a69492…` and `e896a8ed…` — and the tag
+  went to whichever finished last, three seconds apart. It runs on tags only now.

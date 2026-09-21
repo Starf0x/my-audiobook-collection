@@ -1,8 +1,13 @@
 name: Publish Docker image
 
+# Tags only, deliberately. A tag on main used to fire this twice — once for the
+# branch, once for the tag — and both runs pushed :latest. The two images were
+# built from one commit but were not byte-for-byte equal, so whichever finished
+# last won the tag: on v2.5.64 that was the tag run by three seconds. Every
+# shipped change is tagged here anyway, so one run per release settles it and
+# :latest is always the same digest as its vX.Y.Z.
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -30,9 +35,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      # keeps the Docker Hub page the same text as the README
+      # keeps the Docker Hub page the same text as the README; on the release
+      # itself, since that is the only run there is now
       - uses: peter-evans/dockerhub-description@v4
-        if: github.ref == 'refs/heads/main'
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
