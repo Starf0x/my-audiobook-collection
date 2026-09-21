@@ -678,9 +678,14 @@ async function writeMany(books) {
 let tagWatch = null;
 
 function tagAllWords(s) {
+  // A run that failed on books says how many and what the last one said. "Thirty
+  // failed" on its own sends the reader through thirty books by hand.
+  const wrong = s.failed
+    ? ` ${s.failed} book(s) could not be written${s.lastFailure ? ` — the last was ${s.lastFailure}` : ''}.`
+    : '';
   if (s.state === 'running') return `Writing tags: ${s.done} of ${s.total} book(s) done, ${s.left} to go. Now: ${s.current}`;
-  if (s.state === 'paused') return `Stopped at ${s.done} of ${s.total} book(s) — ${s.left} still to go. Start again to carry on.`;
-  if (s.state === 'done') return `Last run: ${s.written} file(s) tagged in ${s.done} book(s).`;
+  if (s.state === 'paused') return `Stopped at ${s.done} of ${s.total} book(s) — ${s.left} still to go. Start again to carry on.${wrong}`;
+  if (s.state === 'done') return `Last run: ${s.written} file(s) tagged in ${s.done} book(s).${wrong}`;
   return 'Not started.';
 }
 

@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.24.** This document describes what the app is, how every
+**Version described: 2.5.32.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.24` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.32` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,32 +101,32 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1097 | Express app: every route, and nothing else |
+| `server/index.js` | 1105 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 518 | walking the library, reading tags, filing books |
+| `server/scan.js` | 522 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
 | `server/google.js` | 688 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
-| `server/tagall.js` | 120 | the resumable whole-collection tag run |
+| `server/tagall.js` | 131 | the resumable whole-collection tag run |
 | `server/import.js` | 427 | import candidates, quality comparison, filing |
 | `server/trash.js` | 180 | move, delete to trash, restore, purge |
-| `server/validate.js` | 116 | checking every book against the disk |
-| `server/covers.js` | 118 | tidying unused cover files, zipping them |
+| `server/validate.js` | 119 | checking every book against the disk |
+| `server/covers.js` | 67 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
-| `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/ha.js` | 408 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/abs.js` | 631 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/index.html` | 317 | the admin page: columns, dialogs |
-| `public/app.js` | 2153 | the admin page's behaviour |
+| `public/app.js` | 2158 | the admin page's behaviour |
 | `public/listen.html` | 89 | the listening page |
 | `public/listen.js` | 528 | the listening page's behaviour |
 | `public/style.css` | 630 | the whole look, every page, phone included |
@@ -1310,6 +1310,18 @@ walked back over the tracks into the track and position this app keeps. The tick
 is set when MA says the book is finished, and `MAX(progress.done, …)` on the
 upsert means a book already ticked here is not un-ticked by a stale report.
 
+**Three smaller rules this face holds to.** No size is read off the disk for a
+book: `expandedItem` runs for every part Music Assistant fetches while playing,
+so a book of forty files was forty `statSync` calls per part over a share — and
+the client needs no size, while the minified shape was already answering 0. The
+**tick is only moved by something that says so**: `writeProgressFromWhole` takes
+`true`, `false` or `undefined`, because the client sends `isFinished` and the
+position in *separate* calls and a session sync says nothing about either — so a
+position with no word about finishing leaves the tick exactly as it was, and
+`isFinished: false` genuinely takes it off. And the **handshake has a ceiling**:
+it is the one address here that cannot ask for the token, so eight sessions is
+all it will hold and the ninth is refused rather than allocated.
+
 **The socket is not optional, which is worth knowing before anyone trims it.**
 The provider's `handle_async_init` calls `init_client()` — `socketio.AsyncClient
 .connect(url)` — and the only exception caught around it is a login error. With
@@ -1988,6 +2000,7 @@ Server suites:
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
+| `covers-zip` | the duplicates archive after the second zip writer here was dropped for the streaming one: every loose cover in, the loose copies gone, the size it reported matching the file, and **Windows' own Expand-Archive** unpacking all three byte for byte — an archive is either readable by the tools people have or it is rubbish, and nothing in the app can tell the difference |
 | `abs-contract` | the Audiobookshelf face against what Music Assistant will parse: every required field of every model `aioaudiobookshelf` reads — login, user, permissions, server settings, library, folder, item, book, metadata, track, audio file, chapter, progress, series, author, narrator — plus the enums it refuses anything else for, the Engine.IO handshake its client opens at setup and will not start without, the doubled slash it sends, a token in the query for the audio and none without, a position from MA landing on the right track, finishing there ticking the book here, and every address answering 404 when MA_TOKEN is unset |
 | `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen. Then the same count over the whole collection: only the series with a hole listed, the two-volume hole above the one-volume ones, a whole series and a single book both absent from it, and the unnumbered series named apart with the genre a row needs to open it |
 | `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
@@ -2111,6 +2124,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.32 | a read of every file: ten things the review found, from a socket handshake anyone could open by the hundred to a zip writer whose comment promised what its last line undid |
 | 2.5.24 | an update to the container no longer stops a book playing: a session id carries the book, so one opened before the restart still answers |
 | 2.5.16 | audio plays: a listener signed in with a password fetches every part through Music Assistant, which looks the session up here first, and that address was missing |
 | 2.5.8 | the versioning rule in §2 says what the tags actually did: there is no ceiling at 75, and four lines ran to .80 |

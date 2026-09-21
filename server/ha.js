@@ -14,6 +14,7 @@
 // playlist starts at the track the listener is on and runs to the end of the book;
 // the seconds into that track come back in the JSON, for HA to pass to
 // `media_player.media_seek` once playback has started.
+import crypto from 'node:crypto';
 import { db, getSetting, setSetting } from './db.js';
 
 // Where this app is reachable from, which is not always where the request came
@@ -31,12 +32,23 @@ export function baseUrl(req) {
 // listening page already is on the same network; with it, HA has to say it.
 export const inboundToken = () => (process.env.HA_TOKEN || '').trim();
 
+// Comparing a secret with === answers faster the sooner it differs. On a home
+// network that is a theoretical attack rather than a real one, but the admin
+// password is already compared in constant time and there is no reason for the
+// tokens to be the odd ones out. Hashing both sides first also settles the
+// length difference `timingSafeEqual` would throw over.
+export function sameSecret(said, want) {
+  if (!said || !want) return false;
+  const digest = (s) => crypto.createHash('sha256').update(String(s)).digest();
+  return crypto.timingSafeEqual(digest(said), digest(want));
+}
+
 export function tokenOk(req) {
   const want = inboundToken();
   if (!want) return true;
   const said = req.query.token
     || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  return said === want;
+  return sameSecret(said, want);
 }
 
 const hours = (seconds) => Math.round((seconds / 3600) * 10) / 10;
