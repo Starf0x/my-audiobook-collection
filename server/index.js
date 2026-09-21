@@ -527,6 +527,12 @@ app.post('/api/series-online', requireAdmin, (req, res) => {
       genre: s.genre,
       name: s.name,
       titles,
+      // whose shelf this is: the check is browsed by author, the way the library
+      // is, so every series has to say which author it belongs to
+      author: db.prepare(`SELECT b.author, COUNT(*) AS n FROM books b
+                          WHERE b.genre = ? AND ${SERIES} = ?
+                          GROUP BY b.author ORDER BY n DESC LIMIT 1`)
+        .get(s.genre, s.name)?.author || '',
       highest: state.highest,
       have: db.prepare(`SELECT DISTINCT b.series_no AS no FROM books b
                         WHERE b.genre = ? AND ${SERIES} = ? AND b.series_no > 0`)
@@ -582,7 +588,11 @@ const seriesState = (genre, name) => {
   const highest = numbered.length ? numbered[numbered.length - 1] : 0;
   const missing = [];
   for (let n = 1; n <= highest; n++) if (!numbered.includes(n)) missing.push(n);
-  return { name, books: nos.length, highest, missing, unnumbered,
+  // whose series this is, for the column that browses these by author
+  const author = db.prepare(`SELECT b.author, COUNT(*) AS n FROM books b
+                             WHERE b.genre = ? AND ${SERIES} = ?
+                             GROUP BY b.author ORDER BY n DESC LIMIT 1`).get(genre, name)?.author || '';
+  return { name, author, books: nos.length, highest, missing, unnumbered,
            says: saysOf(nos.length, highest, missing, unnumbered) };
 };
 
@@ -682,6 +692,18 @@ app.get('/api/cover/:id', (req, res) => {
   // with the marker the URL names one picture, so it need not be asked for again
   res.sendFile(file, req.query.v ? { maxAge: '7d', immutable: true } : {});
 });
+
+// A cover for a book that is not here: the volumes Wikidata says are missing are
+// shown as cards, and a card with a hole where the picture goes reads as a
+// broken shelf rather than a book you do not own. Drawn from the title the same
+// way a coverless book's is, so the two sit together without pretending the
+// missing one is in the library.
+app.get('/api/drawn-cover', (req, res) => res.type('image/svg+xml')
+  .set('Cache-Control', `public, max-age=${untilTomorrow()}`)
+  .send(placeholderCover({
+    title: String(req.query.title || '').slice(0, 300),
+    author: String(req.query.author || '').slice(0, 200),
+  })));
 
 // --- playback ----------------------------------------------------------
 // --- Home Assistant ----------------------------------------------------

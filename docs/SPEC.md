@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.40.** This document describes what the app is, how every
+**Version described: 2.5.48.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.40` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.48` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,7 +101,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1142 | Express app: every route, and nothing else |
+| `server/index.js` | 1164 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -127,10 +127,10 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/index.html` | 322 | the admin page: columns, dialogs |
-| `public/app.js` | 2280 | the admin page's behaviour |
+| `public/app.js` | 2351 | the admin page's behaviour |
 | `public/listen.html` | 89 | the listening page |
 | `public/listen.js` | 528 | the listening page's behaviour |
-| `public/style.css` | 630 | the whole look, every page, phone included |
+| `public/style.css` | 640 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -399,6 +399,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
+| `GET /api/drawn-cover?title=&author=` | — | a drawn cover for a book that is **not** in the library: the volumes Wikidata says are missing are shown as cards |
 | `GET/POST /api/ha/config` | admin | the address, whether a token is saved, how often to send, which listener; the token itself is write-only |
 | `POST /api/ha/test` | admin | ask Home Assistant who it is, with the saved token |
 | `GET /api/ha/players` | admin | every `media_player.*` HA knows, by friendly name |
@@ -1410,6 +1411,24 @@ timeout is waited out once, for as long as `Retry-After` asks, before it is
 reported. The User-Agent names the app and its repository, because a tool that
 hides behind a browser string is one Wikimedia may rightly block.
 
+**Browsed the way the library is.** *Series to complete* sits in the left column
+under Maintenance, and the pane behind it is not a report: the **authors column**
+fills with whoever is short of something, with a count, and a missing volume is
+drawn as the **card it would be** — cover, title, author, `Series · name · book
+N` — because what a reader wants is the thing to go and find. The card has no
+Play button, its cover is drawn by `/api/drawn-cover` from the title, and it is
+dashed and dimmed so a shelf of them never reads as part of the collection.
+Every card and every series head carries a **copy button** that puts
+`author - title` (or `author - series`) on the clipboard, through the same two
+paths as the copy buttons in Edit metadata — with one change: the fallback
+textarea goes inside whichever dialog is open and into the body when none is,
+since a closed dialog is not rendered and nothing inside it can be selected.
+
+The two kinds of answer stay apart in that pane, and the order says which is
+which: what is missing **between your own books** is counted here and exact;
+what **Wikidata knows and you do not have** was asked of the world. A series it
+could not place is listed with its reason, never folded into either.
+
 It is a job with a progress object, like a scan: network work over every series
 is minutes, the page can be closed while it runs, and it is never started by a
 page loading. `POST /api/series-online` begins it, `GET /api/series-online/status`
@@ -2180,6 +2199,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.48 | Series to complete is browsed like the library — authors in their column, a missing volume drawn as the card it would be — and every one carries a copy button to search with |
 | 2.5.40 | Series to complete, under Maintenance: what is missing between the books you have, and — asked of Wikidata — which volumes exist that you do not have |
 | 2.5.32 | a read of every file: ten things the review found, from a socket handshake anyone could open by the hundred to a zip writer whose comment promised what its last line undid |
 | 2.5.24 | an update to the container no longer stops a book playing: a session id carries the book, so one opened before the restart still answers |
