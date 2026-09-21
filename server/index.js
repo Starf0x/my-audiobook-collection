@@ -23,6 +23,7 @@ import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from 
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 import { toolsWhy, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
+import { checkSeriesOnline, onlineProgress, lastOnlineAt, ONLINE_KEY } from './wikidata.js';
 import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
   loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
   minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
@@ -504,6 +505,42 @@ app.get('/api/series-gaps', requireAdmin, (req, res) => {
       .sort((a, b) => a.genre.localeCompare(b.genre) || a.name.localeCompare(b.name)),
   });
 });
+
+// The same question asked of the world instead of the shelf: which volumes does
+// this series actually have? Only Wikidata can answer it (§7.10b), it is network
+// work over every series, and it is therefore a job with a bar rather than a
+// request that would sit there for minutes.
+app.post('/api/series-online', requireAdmin, (req, res) => {
+  if (onlineProgress.running) return res.status(409).json({ error: 'That check is already running.' });
+  const all = db.prepare(`SELECT b.genre, ${SERIES} AS name FROM books b
+                          WHERE ${SERIES} IS NOT NULL
+                          GROUP BY b.genre, name
+                          ORDER BY b.genre, name`).all();
+  // the titles go with each series: they are how the right Wikidata entry is
+  // told from the film of the same name
+  const asking = all.map((s) => {
+    const state = seriesState(s.genre, s.name);
+    const titles = db.prepare(`SELECT b.title FROM books b
+                               WHERE b.genre = ? AND ${SERIES} = ?`).all(s.genre, s.name)
+      .map((b) => b.title);
+    return {
+      genre: s.genre,
+      name: s.name,
+      titles,
+      highest: state.highest,
+      have: db.prepare(`SELECT DISTINCT b.series_no AS no FROM books b
+                        WHERE b.genre = ? AND ${SERIES} = ? AND b.series_no > 0`)
+        .all(s.genre, s.name).map((r) => r.no),
+    };
+  });
+  checkSeriesOnline(asking)
+    .then(() => setSetting(ONLINE_KEY, new Date().toISOString()))
+    .catch(() => { /* onlineProgress.error already says what happened */ });
+  res.json({ started: asking.length });
+});
+
+app.get('/api/series-online/status', requireAdmin, (req, res) =>
+  res.json({ ...onlineProgress, lastAt: lastOnlineAt() }));
 
 app.get('/api/authors', (req, res) => res.json(
   db.prepare('SELECT author AS name, COUNT(*) AS books FROM books WHERE genre = ? GROUP BY author ORDER BY author')

@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.32.** This document describes what the app is, how every
+**Version described: 2.5.40.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.32` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.40` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,7 +101,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1105 | Express app: every route, and nothing else |
+| `server/index.js` | 1142 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
@@ -120,13 +120,14 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 408 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/wikidata.js` | 269 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 631 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 317 | the admin page: columns, dialogs |
-| `public/app.js` | 2158 | the admin page's behaviour |
+| `public/index.html` | 322 | the admin page: columns, dialogs |
+| `public/app.js` | 2280 | the admin page's behaviour |
 | `public/listen.html` | 89 | the listening page |
 | `public/listen.js` | 528 | the listening page's behaviour |
 | `public/style.css` | 630 | the whole look, every page, phone included |
@@ -391,6 +392,8 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `GET /api/authors?genre=` | — | `[{name, books}]` |
 | `GET /api/books?genre=&author=|series=&user=` | — | `{books, series}` — the cards, and for each series among them `{name, books, highest, missing, unnumbered, says}` |
 | `GET /api/series-gaps` | admin | `{looked, gaps, unnumbered}` — every series in the collection with a volume missing, biggest hole first |
+| `POST /api/series-online` | admin | starts the Wikidata check over every series (§7.10b) |
+| `GET /api/series-online/status` | admin | how far it is, and what each series came back with |
 | `GET /api/search?q=&user=` | — | cards, across everything |
 | `GET /api/listened?user=` | — | every book that listener has finished, the Listened section's own list |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
@@ -751,7 +754,15 @@ an answer contain a field Google did not put in it, and for many records
 `seriesInfo` is simply absent. Everything above widens the search for a record
 that *does* carry it; where none does, the honest answer is the reason line and
 *Edit metadata*. **Do not add a second service to fill the gap** — that was tried
-and rejected: this app talks to Google Books and to nothing else.
+and rejected: for a book's metadata, this app talks to Google Books and to
+nothing else.
+
+That rule is about *metadata*, and it still stands. It is not about every
+question: §7.10b asks Wikidata **which volumes a series has**, which is a
+different question, which Google cannot answer at all — its Books API has
+`isComplete` on a series but no endpoint that lists the volumes of one — and
+which nothing on the owner's disk can answer either. One service per question,
+and the question has to be one that service can actually answer.
 
 **Seeing what Google actually answered.** The key is on the owner's container, so
 the only place this question can be asked is their server. `lookup(book, search,
@@ -1360,6 +1371,50 @@ At most 6 words; fewer than two characters in total returns nothing. `COALESCE`
 on every column matters — concatenating a NULL in SQLite yields NULL and the book
 would never match. Results carry the same fields as an ordinary book list, so
 both pages render them with the code they already have.
+
+### 7.10b Which volumes a series actually has (`wikidata.js`)
+
+§7.10a counts the numbers the collection carries, so it can say a volume is
+missing *between* them and never that a later one exists. Nothing on the disk
+knows that, and Google cannot say either. **Wikidata** can, and structurally
+rather than in prose: a work is `part of the series` (P179) with a `series
+ordinal` (P1545). Two requests, no key, no quota.
+
+**A name is not an identifier**, which is the whole difficulty. Searching *The
+Dark Tower* answers with a novel series, an album, a film and a video game — all
+four, measured. So the candidates are narrowed to the ones describing themselves
+as a series (and not a film, game or album), their volumes are fetched in **one**
+query with `VALUES ?series { … }`, and the right candidate is then chosen by the
+shelf: whichever one's volumes look most like the titles already here. Where none
+of them matches anything on the shelf, the answer is *"probably a different
+series"* with the one it found named — never that series' volumes reported as
+yours.
+
+**A volume is yours if you have its number or its title.** The number alone was
+not enough and the first real run said so: a series whose books carry no volume
+numbers had every volume reported missing, when they were on the shelf
+unnumbered. Where the shelf has no numbers at all the comparison is by title
+only, and the page says so rather than letting the reader assume otherwise.
+
+**What is cached is what Wikidata said, never the conclusion.** Which entry is
+right depends on the books asked about, and two series can share a name inside
+one collection; caching the verdict handed the second one the first one's. A
+refusal or a timeout is not cached at all, or pressing the button again would
+report the same failure without asking.
+
+**Their pace, not ours.** Measured against the live service: at 350 ms between
+calls, two of seven series came back **429**; at that rate a collection of fifty
+would mostly fail. Searching keeps 350 ms, the query service gets 1200 ms and a
+30-second timeout — a dozen seconds lost three series in one run — and a 429 or a
+timeout is waited out once, for as long as `Retry-After` asks, before it is
+reported. The User-Agent names the app and its repository, because a tool that
+hides behind a browser string is one Wikimedia may rightly block.
+
+It is a job with a progress object, like a scan: network work over every series
+is minutes, the page can be closed while it runs, and it is never started by a
+page loading. `POST /api/series-online` begins it, `GET /api/series-online/status`
+follows it, and the answer per series says which Wikidata entry was taken, with a
+link, so the reader can check the machine's guess.
 
 ### 7.10a Whether a series is all there
 
@@ -2000,6 +2055,7 @@ Server suites:
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
+| `series-online` | choosing the right Wikidata entry and refusing to guess: the novel series taken over the album, the film and the game of the same name; a shelf whose books match none of them told it is probably a different series; a name that is a book and not a series; a name Wikidata never heard of; an endpoint that will not answer reported rather than read as 'complete'; one name asked of Wikidata once but judged for each shelf on its own |
 | `covers-zip` | the duplicates archive after the second zip writer here was dropped for the streaming one: every loose cover in, the loose copies gone, the size it reported matching the file, and **Windows' own Expand-Archive** unpacking all three byte for byte — an archive is either readable by the tools people have or it is rubbish, and nothing in the app can tell the difference |
 | `abs-contract` | the Audiobookshelf face against what Music Assistant will parse: every required field of every model `aioaudiobookshelf` reads — login, user, permissions, server settings, library, folder, item, book, metadata, track, audio file, chapter, progress, series, author, narrator — plus the enums it refuses anything else for, the Engine.IO handshake its client opens at setup and will not start without, the doubled slash it sends, a token in the query for the audio and none without, a position from MA landing on the right track, finishing there ticking the book here, and every address answering 404 when MA_TOKEN is unset |
 | `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen. Then the same count over the whole collection: only the series with a hole listed, the two-volume hole above the one-volume ones, a whole series and a single book both absent from it, and the unnumbered series named apart with the genre a row needs to open it |
@@ -2124,6 +2180,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.40 | Series to complete, under Maintenance: what is missing between the books you have, and — asked of Wikidata — which volumes exist that you do not have |
 | 2.5.32 | a read of every file: ten things the review found, from a socket handshake anyone could open by the hundred to a zip writer whose comment promised what its last line undid |
 | 2.5.24 | an update to the container no longer stops a book playing: a session id carries the book, so one opened before the restart still answers |
 | 2.5.16 | audio plays: a listener signed in with a password fetches every part through Music Assistant, which looks the session up here first, and that address was missing |

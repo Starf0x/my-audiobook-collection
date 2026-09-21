@@ -1057,6 +1057,127 @@ $('#seriesGaps').onclick = async () => {
   });
 };
 
+// --- Series to complete -------------------------------------------------
+// Two questions in one list, and they are answered by different things. What is
+// missing *between* the volumes you have is counted from your own numbers, free
+// and certain. Whether a volume exists that you do not have is nothing this app
+// can know, so Wikidata is asked — one series at a time, on the server, with a
+// bar, because it is network work over the whole collection.
+function onlineWords(s) {
+  if (s.running) return `Asking Wikidata: ${s.done} of ${s.total} series. Now: ${s.current}`;
+  if (s.error) return `The check stopped: ${s.error}`;
+  if (!s.total) return 'Not asked yet.';
+  return `Asked about ${s.total} series; Wikidata knew ${s.found}.`;
+}
+
+const onlineRow = (r) => `<div class="fix">
+    <div>
+      <strong>${esc(r.name)}</strong>
+      <div class="sub">${esc(r.genre)} · ${r.byTitle
+        ? 'your books here carry no numbers, so this was matched by title'
+        : `you have ${r.have.length} numbered book(s)`}</div>
+      <div class="sub missing">Not here: ${r.missing.map((n) => `book ${n}`).join(', ')}</div>
+      <div class="sub">${esc(r.label)} — ${esc(r.description)} ·
+        <a href="${esc(r.url)}" target="_blank" rel="noopener">on Wikidata</a>:
+        ${r.titles.filter((t) => r.missing.includes(t.no))
+    .map((t) => `${t.no}. ${esc(t.title)}`).join(', ')}</div>
+    </div>
+  </div>`;
+
+function drawSeriesPane(gaps, online) {
+  const short = (online.series || []).filter((r) => r.found && r.missing && r.missing.length)
+    .sort((a, b) => b.missing.length - a.missing.length);
+  const whole = (online.series || []).filter((r) => r.found && !(r.missing || []).length);
+  const silent = (online.series || []).filter((r) => !r.found);
+
+  const header = `<div class="row pager">
+      <span class="hint">${online.lastAt
+    ? `Wikidata last asked ${new Date(online.lastAt).toLocaleString()}`
+    : 'Wikidata has not been asked yet'}</span>
+      <div class="spacer"></div>
+      <button id="askWikidata" class="ghost">Check every series against Wikidata</button>
+    </div>`;
+
+  // First, what is certain: the holes between the numbers already on the shelf.
+  const own = gaps.gaps.length
+    ? `<div class="series-head">Missing between the books you have</div>`
+      + gaps.gaps.map((g) => `<div class="fix"><div>
+          <strong>${esc(g.name)}</strong>
+          <div class="sub">${esc(g.genre)} · ${g.books} book(s) here, up to book ${g.highest}</div>
+          <div class="sub missing">${esc(g.says)}</div>
+        </div></div>`).join('')
+    : `<div class="series-head">Missing between the books you have</div>
+       <div class="empty">No gaps in the numbering of ${gaps.looked} series.</div>`;
+
+  // Then, what was asked of the world, kept apart from it on purpose.
+  const found = `<div class="series-head">Volumes Wikidata knows and you do not have</div>`
+    + (short.length ? short.map(onlineRow).join('')
+      : `<div class="empty">${online.total ? 'Nothing Wikidata knows of is missing.'
+        : 'Not asked yet — press the button above.'}</div>`);
+
+  const rest = (whole.length ? `<p class="hint">${whole.length} series are complete as far as
+        Wikidata knows: ${whole.map((r) => esc(r.name)).join(', ')}.</p>` : '')
+    // a series it could not place is not a series that is whole, and saying so
+    // is the difference between a check and a reassurance
+    + (silent.length ? `<div class="series-head">It could not say</div>`
+      + silent.map((r) => `<div class="fix"><div><strong>${esc(r.name)}</strong>
+          <div class="sub">${esc(r.genre)}</div>
+          <div class="sub">${esc(r.why)}</div></div></div>`).join('') : '');
+
+  $('#books .list').innerHTML = header + own + found + rest;
+  $('#books #askWikidata').onclick = askWikidata;
+}
+
+let onlineWatch = null;
+let lastGaps = { gaps: [], looked: 0 };
+
+async function askWikidata() {
+  try { await post('/api/series-online', {}); } catch (e) { return toast(e.message); }
+  const bar = newBar('Checking series');
+  clearInterval(onlineWatch);
+  onlineWatch = setInterval(async () => {
+    const s = await api('/api/series-online/status').catch(() => null);
+    if (!s) return;
+    if (s.total) bar.at((s.done / s.total) * 100);
+    bar.say(onlineWords(s), !!s.error);
+    if ($('#seriesList').classList.contains('active')) drawSeriesPane(lastGaps, s);
+    if (!s.running) {
+      clearInterval(onlineWatch);
+      onlineWatch = null;
+      bar.done(s.error ? 15000 : 4000);
+      loadSeriesCount();
+    }
+  }, 1000);
+  return undefined;
+}
+
+// The count beside the row: the series with a hole in them, from both kinds of
+// answer, because a reader does not care which of the two found it.
+async function loadSeriesCount() {
+  const [gaps, online] = await Promise.all([
+    api('/api/series-gaps').catch(() => ({ gaps: [], looked: 0 })),
+    api('/api/series-online/status').catch(() => ({ series: [] })),
+  ]);
+  lastGaps = gaps;
+  const names = new Set(gaps.gaps.map((g) => `${g.genre}/${g.name}`));
+  for (const r of (online.series || [])) {
+    if (r.found && (r.missing || []).length) names.add(`${r.genre}/${r.name}`);
+  }
+  $('#seriesCount').textContent = String(names.size);
+  return { gaps, online };
+}
+
+$('#seriesList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
+  $('#seriesList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  $('#books .list').innerHTML = '<div class="empty">Counting…</div>';
+  show('books');
+  const { gaps, online } = await loadSeriesCount();
+  drawSeriesPane(gaps, online);
+};
+
 // What Google answered for a stretch of books, as a table to read and to send on.
 // Its own request count per book is the part worth seeing: a series in the title
 // is free, and everything else is not.
@@ -1464,7 +1585,7 @@ async function backToView() {
 async function refreshLibrary() {
   await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(),
     loadReplaced(), loadBroken(), loadSkipped(), loadListened(), loadConvertible(),
-    loadConverted(), importCountOnly()]);
+    loadConverted(), loadSeriesCount(), importCountOnly()]);
   await backToView();
 }
 
@@ -2144,7 +2265,8 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
   const users = await loadUsers();
   await loadGenres();
   await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
-    loadReplaced(), loadBroken(), loadSkipped(), loadConvertible(), loadConverted()]);
+    loadReplaced(), loadBroken(), loadSkipped(), loadConvertible(), loadConverted(),
+    loadSeriesCount()]);
   await loadHome();
   if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
   // a scan another browser started is still running: follow it instead of

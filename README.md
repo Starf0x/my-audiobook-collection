@@ -54,6 +54,7 @@ The full manual, with screenshots of every part of it, is in the
 * One search box for the lot: title, author, genre, series, narrator or a few words from the description
 * Each genre lists its series underneath it, from a series folder, from sibling volume names, or from the tags
 * Says under a series which volume you are missing, from the numbers it already has — no requests, no key
+* And asks **Wikidata** which volumes a series actually has, so a book you never owned is one you can be told about
 * Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
 * Scans one or more library folders on the server (with a built-in folder browser)
 * Draws a cover for a book that has none, so a shelf is never a row of empty rectangles
@@ -189,6 +190,35 @@ same counting as the line under a series head, so it asks Google nothing and
 costs no quota. Series that carry no volume numbers at all are named under the
 table rather than left out of it: they are the ones no verdict could be given
 about, and an empty table would otherwise read as *nothing missing*.
+
+### Does a volume exist that I do not have?
+
+That is a different question, and nothing in your own files can answer it: your
+numbers say a book is missing *between* the ones you have, never that a ninth
+was ever written. **Series to complete**, in the left column under *Maintenance*,
+asks **Wikidata** — which records the volumes of a series and their order, needs
+no key and costs no quota, and is sent nothing but the series name.
+
+It goes through every series, slowly and one at a time, because that is
+somebody's free service; on a large collection it runs for a few minutes, on the
+server, and you may close the page. The pane keeps the two kinds of answer
+apart, because they are not equally certain: what is missing **between your own
+books** is counted here and exact, and what **Wikidata knows and you do not
+have** is a question asked of the world.
+
+Three things it will tell you rather than hide:
+
+* **Which entry it took**, with a link. A name is not an identifier — *The Dark
+  Tower* is also an album, a film and a video game — so it picks the one whose
+  volumes look like the books you already have, and says which that was.
+* **When it could not tell.** A series it cannot place is listed with the reason,
+  never quietly counted as complete.
+* **When it matched by title.** If your books in a series carry no volume
+  numbers, it compares titles instead and says so.
+
+Their numbering is not always yours: Wikidata has *The Wind Through the Keyhole*
+as book 8 of The Dark Tower, where it reads fourth-and-a-half. Treat what it
+finds as worth looking at, not as a verdict.
 
 ## Run it on Unraid
 
