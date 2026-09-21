@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.0.** This document describes what the app is, how every
+**Version described: 2.5.8.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.8` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -68,9 +68,12 @@ any feature does.
   layer, no ORM, no state-management library, no build step and no framework.
 * **The interface is English.** Code comments are English, and they explain *why*,
   never *what* — a comment that restates the line is deleted.
-* **Version numbers**: the third digit rises in steps of eight up to 75, then the
-  second digit increments and the third resets. `1.8.40 → 1.8.48 → … → 1.8.72 →
-  1.9.0`. Every shipped change gets a bump, a commit, a tag `vX.Y.Z`, and a push.
+* **Version numbers**: the third digit rises in steps of eight — 0, 8, 16, … —
+  and the second increments when it has gone far enough, the third resetting to
+  nought. Far enough has been `.72` in most lines (`1.8.72 → 1.9.0`) and `.80`
+  in four of them (`2.3.80 → 2.4.0`), which the tags are the record of; `.80` is
+  the furthest it has ever gone. Every shipped change gets a bump, a commit, a
+  tag `vX.Y.Z`, and a push.
 * **The real collection is read-only during development.** Test against generated
   fixtures. Never import, move, delete or write tags against the owner's share.
 * **Secrets are never typed by the assistant.** API keys, tokens and passwords are
@@ -2081,6 +2084,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.8 | the versioning rule in §2 says what the tags actually did: there is no ceiling at 75, and four lines ran to .80 |
 | 2.5.0 | pressing play in Music Assistant works: the playback session was the one answer invented rather than transcribed, and it went out missing seven required fields |
 | 2.4.80 | the series listing ends: it ignored its paging, and the client that reads it pages with a loop that only stops on an empty page |
 | 2.4.72 | browsing into an author or a series in Music Assistant works: the two addresses it asks for were missing, and a missing one reads there as a wordless NotFoundError |
