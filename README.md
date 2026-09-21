@@ -226,6 +226,12 @@ and every series heading carries a **⧉ copy** button that puts
 `author - title` (or `author - series`) on the clipboard, ready to paste into a
 search.
 
+Under that, each card has **Wikipedia ↗**, which opens in a new tab: the book's
+page where it has one, and Wikipedia's search for it where it has not, so it
+never lands on nothing. A card that is only a number — *Book 3* — asks about the
+series instead, which is the page that lists the volumes. Cards Wikidata found
+also keep *On Wikidata*, so you can check the entry it picked.
+
 Three things it will tell you rather than hide:
 
 * **Which entry it took**, with a link. A name is not an identifier — *The Dark
