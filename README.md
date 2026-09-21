@@ -184,13 +184,17 @@ It reads the **volume numbers**, so it can only say as much as those do:
 
 And when you would rather ask than come across them: **Series to complete**, in
 the left column under *Maintenance*, goes through every series in the collection
-and lists the ones with a hole — genre, author, series, which volumes are gone,
-and how far the run gets. *Open in library* on a row goes to that series, which
-is where the missing book would land. It is the same counting as the line under a
-series head, so it asks Google nothing and costs no quota. Series that carry no
-volume numbers at all are named there rather than left out: they are the ones no
-verdict could be given about, and an empty list would otherwise read as *nothing
-missing*.
+and shows the ones with a hole. Each gets a series heading — its name, the
+sentence saying what is gone, a **⧉ copy** button and *Open in library*, which
+goes to that series where the missing book would land — and under it **one card
+per missing volume, one under the other**, the way the rest of the library is
+drawn. There is no title to put on such a card, since nothing in your files
+knows what book 3 is called, so it reads *Book 3* and says why it is there: your
+own books run up to book 4, with nothing on 3. It is the same counting as the
+line under a series head, so it asks Google nothing and costs no quota. Series
+that carry no volume numbers at all are named there rather than left out: they
+are the ones no verdict could be given about, and an empty list would otherwise
+read as *nothing missing*.
 
 ### Does a volume exist that I do not have?
 

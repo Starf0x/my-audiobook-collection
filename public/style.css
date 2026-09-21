@@ -290,7 +290,8 @@ table.cmp td.better { color: #7ee2a8; font-weight: 600; }
 .card.missing-book img { opacity: .55; }
 .card.missing-book .actions button,
 .card.missing-book .actions a { white-space: nowrap; }
-.series-head .copy-search { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+.series-head .copy-search,
+.series-head .open-series { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
 
 /* the gap list: each row leads to that series in the library */
 #gapsOut tr[data-series] { cursor: pointer; }
