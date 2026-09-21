@@ -18,6 +18,9 @@ services:
       # Home Assistant: a token to require on /api/ha*, and the address other
       # machines reach this app on when that is not the one they asked at
       HA_TOKEN: ""
+      # Music Assistant: the password it logs in with. Empty means the
+      # Audiobookshelf face is not there at all
+      MA_TOKEN: ""
       BASE_URL: ""
     volumes:
       - ./data:/data
