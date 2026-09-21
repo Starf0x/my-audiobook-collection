@@ -23,7 +23,7 @@
 //   Keyhole* as book 8 of The Dark Tower; it was published eighth and reads
 //   fourth-and-a-half. Novellas and companion volumes often have no ordinal at
 //   all. So a number this reports as missing is worth looking at, not obeying.
-import { getSetting } from './db.js';
+import { getSetting, setSetting } from './db.js';
 
 const SEARCH = 'https://www.wikidata.org/w/api.php';
 const SPARQL = 'https://query.wikidata.org/sparql';
@@ -225,6 +225,25 @@ export const onlineProgress = {
 };
 
 export const ONLINE_KEY = 'seriesOnlineAt';
+export const ONLINE_ROWS = 'seriesOnlineRows';
+
+// What it learned outlives the process. Only the timestamp used to be kept, so a
+// restart left the pane saying "Wikidata last asked 15:21" with nothing to show
+// and an authors column that had quietly lost everybody Wikidata had found — a
+// remembered question without its answer is worse than never having asked.
+(() => {
+  try {
+    const rows = JSON.parse(getSetting(ONLINE_ROWS, '[]'));
+    if (!Array.isArray(rows) || !rows.length) return;
+    Object.assign(onlineProgress, {
+      series: rows,
+      total: rows.length,
+      done: rows.length,
+      found: rows.filter((r) => r && r.found).length,
+      at: getSetting(ONLINE_KEY, ''),
+    });
+  } catch { /* a setting that will not parse is one run's answer, not a fault */ }
+})();
 
 export async function checkSeriesOnline(all, { ask = defaultAsk } = {}) {
   Object.assign(onlineProgress, {
@@ -234,7 +253,8 @@ export async function checkSeriesOnline(all, { ask = defaultAsk } = {}) {
     for (const s of all) {
       onlineProgress.current = s.name;
       // eslint-disable-next-line no-await-in-loop -- one at a time is the point
-      const said = await volumesOf(s.name, s.titles);
+      // the stub goes all the way down, or the option is one a check cannot use
+      const said = await volumesOf(s.name, s.titles, { ask });
       const row = { genre: s.genre, name: s.name, author: s.author || '',
         have: s.have, highest: s.highest, ...said };
       if (said.found) {
@@ -258,6 +278,11 @@ export async function checkSeriesOnline(all, { ask = defaultAsk } = {}) {
       onlineProgress.done++;
     }
     onlineProgress.at = new Date().toISOString();
+    // The module that learned it is the one that remembers it: the timestamp was
+    // written by the route and the rows by nobody, which is how a restart came
+    // to leave a date with no answer under it.
+    setSetting(ONLINE_ROWS, JSON.stringify(onlineProgress.series));
+    setSetting(ONLINE_KEY, onlineProgress.at);
     return onlineProgress.series;
   } catch (e) {
     onlineProgress.error = e.message;

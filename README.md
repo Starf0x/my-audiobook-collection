@@ -206,14 +206,19 @@ no key and costs no quota, and is sent nothing but the series name.
 
 It goes through every series, slowly and one at a time, because that is
 somebody's free service; on a large collection it runs for a few minutes, on the
-server, and you may close the page. The pane keeps the two kinds of answer
+server, and you may close the page. **What it found is kept**, so restarting or
+updating the container does not throw it away and ask you to spend those minutes
+again — the pane tells you when it was last asked. The pane keeps the two kinds of answer
 apart, because they are not equally certain: what is missing **between your own
 books** is counted here and exact, and what **Wikidata knows and you do not
 have** is a question asked of the world.
 
-**It is browsed the way the library is.** The authors column fills with whoever
-is short of something, with a count each, and clicking a name narrows the pane
-to their series. A volume you do not have is drawn as **the card it would be** —
+**It is browsed the way the library is**, in three columns like the rest of the
+app. The authors column fills with whoever is short of something, with a count
+each, and clicking a name narrows the pane to their series; it fills as the check
+runs, so an author Wikidata has just found appears while you watch, and the name
+you were reading stays chosen. A volume you do not have is drawn as **the card it
+would be** —
 cover, title, author, *Series · name · book 3* — because what you want is the
 thing to go and find. Those cards are dashed and dimmed, and have no Play
 button, so a shelf of them never reads as part of your collection. Every card
