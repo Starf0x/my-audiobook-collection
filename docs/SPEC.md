@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.80.** This document describes what the app is, how every
+**Version described: 2.6.0.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.80` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.0` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -1429,6 +1429,17 @@ drawn as the **card it would be** — cover, title, author, `Series · name · b
 N` — because what a reader wants is the thing to go and find. The card has no
 Play button, its cover is drawn by `/api/drawn-cover` from the title, and it is
 dashed and dimmed so a shelf of them never reads as part of the collection.
+Under that button the card carries **Wikipedia ↗**, in a new tab, and — where
+Wikidata answered — *On Wikidata* under it. They are `<a>` elements styled as
+buttons, not buttons that navigate, so a middle click opens a tab and the address
+can be copied. The Wikipedia address is that site's **own search**,
+`index.php?search=<name>`, rather than a guessed article path: measured, it
+answers 302 straight to the article when the name is a page — *The Dark Tower
+III: The Waste Lands* and *Dragonriders of Pern* both land on theirs — and where
+there is no article it shows the search instead of a red link. A card from the
+collection's own numbering has no title to look up, so it asks about the
+**series**, which is the page that lists the volumes anyway.
+
 Every card and every series head carries a **copy button** that puts
 `author - title` (or `author - series`) on the clipboard, through the same two
 paths as the copy buttons in Edit metadata — with one change: the fallback
@@ -2250,6 +2261,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.0 | a Wikipedia button under Copy to search on every missing volume, opening in a new tab |
 | 2.5.80 | the authors column of Series to complete is actually on screen, grows while the check runs, and what Wikidata said survives a restart |
 | 2.5.72 | one build per release: the workflow runs on tags only, so two runs can no longer race for `:latest` |
 | 2.5.64 | a hole in your own numbering is drawn as a book too: a series head and one card per missing volume, one under the other, instead of a dense line |
