@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.5.16.** This document describes what the app is, how every
+**Version described: 2.5.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.5.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -120,7 +120,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 396 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `server/abs.js` | 615 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 631 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
@@ -1249,6 +1249,17 @@ whether it was half finished or never started. So sessions are kept in memory,
 answered again under the id MA is holding, and `sync` and `close` write the
 position through the same walk-back over the tracks a progress `PATCH` uses.
 
+**And the id carries the book, so a restart costs nothing.** Memory is emptied
+by every update to this container, while Music Assistant goes on asking for the
+id it holds — and its part-fetching route does *not* recover from a session it
+cannot find the way opening one does: it answers its own 404 and ffmpeg stops
+with *Server returned 404 Not Found*. Reading the book back out of `pl-<id>-…`
+means a session this process never opened still answers, with the tracks a part
+request needs, and a closed one keeps working for whatever is still in flight.
+The map is then only a memory of **which listener** opened it; a session
+rebuilt from its id belongs to whoever is asking, which is the same person,
+since the token says so.
+
 **A playback session is described, not opened.** Pressing play calls
 `POST /api/items/<id>/play`, and this app streams the files straight out, so
 there is nothing to open and nothing to keep: the answer says what *would* have
@@ -2100,6 +2111,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.5.24 | an update to the container no longer stops a book playing: a session id carries the book, so one opened before the restart still answers |
 | 2.5.16 | audio plays: a listener signed in with a password fetches every part through Music Assistant, which looks the session up here first, and that address was missing |
 | 2.5.8 | the versioning rule in §2 says what the tags actually did: there is no ceiling at 75, and four lines ran to .80 |
 | 2.5.0 | pressing play in Music Assistant works: the playback session was the one answer invented rather than transcribed, and it went out missing seven required fields |

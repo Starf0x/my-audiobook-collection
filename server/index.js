@@ -871,16 +871,16 @@ app.post('/api/items/:id/play', forMA, (req, res) => {
 // through an address of its own, and that address looks the session up here
 // before redirecting to the file.
 app.get('/api/session/:id', forMA, (req, res) => {
-  const s = absOpenSession(req.params.id, req, VERSION);
+  const s = absOpenSession(req.params.id, req, VERSION, req.listener);
   if (!s) return res.status(404).end();
   res.json(s);
 });
 
 app.post('/api/session/:id/sync', forMA, (req, res) =>
-  (absSyncSession(req.params.id, req.body) ? res.json({}) : res.status(404).end()));
+  (absSyncSession(req.params.id, req.body, req.listener) ? res.json({}) : res.status(404).end()));
 
 app.post('/api/session/:id/close', forMA, (req, res) =>
-  (absCloseSession(req.params.id, req.body) ? res.json({}) : res.json({})));
+  (absCloseSession(req.params.id, req.body, req.listener) ? res.json({}) : res.json({})));
 
 // Sessions a player kept while it was offline. This app has nothing to reconcile
 // — the position it is told is the position — so they are taken and answered.
