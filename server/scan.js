@@ -113,11 +113,15 @@ function firstFileMeta(tags) {
 }
 
 // cover.jpg, folder.png and their kind, beside the audio
+// The last catch in this file that threw its reason away. A folder that cannot
+// be listed is not "a book with no cover": it is a share that has gone, or
+// permissions that changed, and the scan has somewhere to say so.
 const localCover = (bookPath) => {
   try {
     const local = fs.readdirSync(bookPath).find((n) => COVER.test(n));
     return local ? 'file:' + path.join(bookPath, local) : null;
-  } catch {
+  } catch (e) {
+    console.log(`Could not look for a cover in ${bookPath}: ${e.code || e.message}`);
     return null;
   }
 };

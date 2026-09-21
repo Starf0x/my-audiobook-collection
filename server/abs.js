@@ -20,9 +20,8 @@
 //
 // The whole surface is off unless MA_TOKEN is set on the container, the way the
 // Home Assistant answers are gated by HA_TOKEN.
-import fs from 'node:fs';
 import { db } from './db.js';
-import { baseUrl } from './ha.js';
+import { baseUrl, sameSecret } from './ha.js';
 
 export const inboundToken = () => (process.env.MA_TOKEN || '').trim();
 export const enabled = () => !!inboundToken();
@@ -44,9 +43,9 @@ export function listener(req) {
   const said = String(req.query.token || '')
     || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!said) return null;
-  if (said === want) return '';
+  if (sameSecret(said, want)) return '';
   const cut = said.indexOf('.');
-  if (cut < 0 || said.slice(cut + 1) !== want) return null;
+  if (cut < 0 || !sameSecret(said.slice(cut + 1), want)) return null;
   try { return unb64(said.slice(0, cut)); } catch { return null; }
 }
 
@@ -84,16 +83,20 @@ const BOOK = `SELECT b.id, b.title, b.author, b.narrator, b.year, b.description,
 const tracksOf = (id) => db.prepare(
   'SELECT id, idx, path, title, duration FROM tracks WHERE book_id = ? ORDER BY idx').all(id);
 
+// No size is read from the disk here, and that is the point. This runs for every
+// file of a book, and Music Assistant asks for the expanded book again on every
+// part it fetches while playing: a book of forty files was forty `statSync` calls
+// per part, over a share. The client wants a size nowhere — `FileMetadata.size`
+// has a default — and the minified shape already answered 0, so the two now agree
+// instead of contradicting each other about the same book.
 const fileMeta = (t) => {
-  let size = 0;
-  try { size = fs.statSync(t.path).size; } catch { /* the disk check reports these */ }
   const name = t.path.split(/[\\/]/).pop() || `${t.idx + 1}.mp3`;
   return {
     filename: name,
     ext: (name.match(/\.[^.]+$/) || ['.mp3'])[0],
     path: t.path,
     relPath: name,
-    size,
+    size: 0,
     mtimeMs: 0,
     ctimeMs: 0,
     birthtimeMs: 0,
@@ -259,6 +262,13 @@ export const progressOf = (user, b) => {
 
 // The seconds MA reports are seconds into the whole book; this app keeps a track
 // and a position inside it, so the number is walked back over the tracks.
+//
+// `finished` has three states, because the callers know three different things.
+// `true` and `false` are Music Assistant saying so — a progress PATCH carries
+// `isFinished` and means it, so a book begun again there comes un-ticked here.
+// `undefined` is a session sync, which reports a position and says nothing about
+// whether the book is done: that must leave the tick exactly as it was, or every
+// report while playing would rub out a book already finished.
 export function writeProgressFromWhole(user, bookId, seconds, finished) {
   const tracks = tracksOf(bookId);
   if (!tracks.length) return;
@@ -269,12 +279,15 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
     if (left < d || t === tracks[tracks.length - 1]) { idx = t.idx; break; }
     left -= d;
   }
+  const said = finished === undefined ? null : (finished ? 1 : 0);
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, done)
-              VALUES (?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, COALESCE(?, 0))
               ON CONFLICT(user, book_id) DO UPDATE SET
                 track_idx = excluded.track_idx, position = excluded.position,
-                updated = excluded.updated, done = MAX(progress.done, excluded.done)`)
-    .run(user || '', bookId, idx, left, new Date().toISOString(), finished ? 1 : 0);
+                updated = excluded.updated,
+                -- said nothing: leave the tick alone. Said something: it decides.
+                done = COALESCE(?, progress.done)`)
+    .run(user || '', bookId, idx, left, new Date().toISOString(), said, said);
 }
 
 export const user = (name) => ({
@@ -370,12 +383,26 @@ const socketSend = (s, text) => {
   res.type('text/plain; charset=UTF-8').send(text);
 };
 
+// The handshake cannot ask for the token — the client connects first and says
+// who it is afterwards — so this is the one address here that answers anybody on
+// the network, and it hands out memory and holds a response for 25 seconds. That
+// wants a ceiling. One Music Assistant needs one session; a few spare allow for
+// a restart or a second instance, and past that the answer is the one engine.io
+// gives for a server that cannot take the connection.
+const MOST = 8;
+const STALE = 300000;
+
+const forget = () => {
+  for (const [id, s] of sockets) if (Date.now() - s.at > STALE && !s.waiting) sockets.delete(id);
+};
+
 export function socketOpen(res) {
+  forget();
+  if (sockets.size >= MOST) {
+    return res.status(503).json({ code: 3, message: 'Too many open connections' });
+  }
   const sid = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
   sockets.set(sid, { queue: [], waiting: null, timer: null, at: Date.now() });
-  // forget sessions nobody came back for, so a restarting Music Assistant does
-  // not leave one behind on every attempt
-  for (const [id, s] of sockets) if (Date.now() - s.at > 300000 && !s.waiting) sockets.delete(id);
   return res.type('text/plain; charset=UTF-8').send(
     `${OPEN}${JSON.stringify({
       sid,
@@ -445,16 +472,16 @@ const KEEP = 12 * 60 * 60 * 1000;
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-export function playbackSession(b, user, req, version) {
+export function playbackSession(b, who, req, version) {
   const item = expandedItem(b, req);
   const when = new Date();
-  const place = progressOf(user, b);
+  const place = progressOf(who, b);
   const id = `pl-${b.id}-${when.getTime().toString(36)}`;
   for (const [old, s] of sessions) if (when.getTime() - s.at > KEEP) sessions.delete(old);
-  sessions.set(id, { book: b.id, user: user || '', at: when.getTime() });
+  sessions.set(id, { book: b.id, user: who || '', at: when.getTime() });
   return {
     id,
-    userId: `us-${b64(user || '')}`,
+    userId: `us-${b64(who || '')}`,
     libraryId: LIB,
     libraryItemId: String(b.id),
     episodeId: null,
@@ -508,13 +535,13 @@ const aboutBook = (id) => {
 
 // The session again, by its id. The answer is rebuilt rather than stored: what
 // matters in it is `audioTracks`, and those are the files as they are now.
-export function openSession(id, req, version, listener) {
+export function openSession(id, req, version, asking) {
   const said = aboutBook(id);
   if (!said) return null;
   const b = book(said.book);
   if (!b) return null;
   // a session this process never opened belongs to whoever is asking
-  const user = said.user === null ? (listener || '') : said.user;
+  const user = said.user === null ? (asking || '') : said.user;
   const out = playbackSession(b, user, req, version);
   // the same session, not a new one: the id MA is holding has to keep working
   sessions.delete(out.id);
@@ -526,18 +553,19 @@ export function openSession(id, req, version, listener) {
 // What MA reports while a book plays, and once more when it stops: seconds into
 // the whole book. The same walk back over the tracks as a progress PATCH, so
 // there is one rule for where a second belongs, not two.
-export function syncSession(id, body, listener) {
+export function syncSession(id, body, asking) {
   const said = aboutBook(id);
   if (!said || !book(said.book)) return false;
-  const user = said.user === null ? (listener || '') : said.user;
+  const user = said.user === null ? (asking || '') : said.user;
   sessions.set(String(id), { book: said.book, user, at: Date.now() });
   const seconds = Number((body || {}).currentTime);
-  if (Number.isFinite(seconds)) writeProgressFromWhole(user, said.book, seconds, false);
+  // a sync says where the listener is, never whether they are done
+  if (Number.isFinite(seconds)) writeProgressFromWhole(user, said.book, seconds, undefined);
   return true;
 }
 
-export function closeSession(id, body, listener) {
-  const ok = syncSession(id, body, listener);
+export function closeSession(id, body, asking) {
+  const ok = syncSession(id, body, asking);
   sessions.delete(String(id));
   return ok;
 }
@@ -548,7 +576,7 @@ export function syncFromLocal(user, said) {
   const bookId = Number((said || {}).libraryItemId);
   const seconds = Number((said || {}).currentTime);
   if (!bookId || !Number.isFinite(seconds) || !book(bookId)) return false;
-  writeProgressFromWhole(user, bookId, seconds, false);
+  writeProgressFromWhole(user, bookId, seconds, undefined);
   return true;
 }
 
@@ -614,7 +642,9 @@ export const filteredBooks = (filter) => {
   const all = books();
   const said = String(filter || '');
   if (!said) return all;
-  const [group, value] = [said.slice(0, said.indexOf('.')), said.slice(said.indexOf('.') + 1)];
+  const dot = said.indexOf('.');
+  if (dot < 0) return all;
+  const [group, value] = [said.slice(0, dot), said.slice(dot + 1)];
   const name = nameIn(decodeURIComponent(value));
   if (group === 'narrators') return all.filter((b) => b.narrator === name);
   if (group === 'authors') return all.filter((b) => b.author === name);

@@ -27,6 +27,7 @@ const q = {
 };
 
 let working = false;   // is the loop running in this process
+let lastFailure = '';  // the most recent book that could not be written, and why
 let stopping = false;
 // its own count, so the bar of a single book's write never mixes with this one
 const mine = newTagProgress();
@@ -38,8 +39,8 @@ const now = () => new Date().toISOString();
 export function tagStatus() {
   const run = q.run.get();
   const left = q.left.get().n;
-  if (!run) return { state: 'idle', total: 0, done: 0, written: 0, failed: 0, left: 0, current: '', running: false };
-  return { ...run, left, running: working };
+  if (!run) return { state: 'idle', total: 0, done: 0, written: 0, failed: 0, left: 0, current: '', running: false, lastFailure: '' };
+  return { ...run, left, running: working, lastFailure };
 }
 
 async function loop() {
@@ -65,8 +66,13 @@ async function loop() {
       let failed = 0;
       try {
         ({ written } = await applyMetadata(book, {}, true, mine));
-      } catch {
-        failed = 1; // one unreadable book must not stop the rest of the run
+      } catch (e) {
+        // one unreadable book must not stop the rest of the run — but a run that
+        // can only say "thirty failed" sends its owner looking through thirty
+        // books by hand. The reason is kept, with the book it belongs to.
+        failed = 1;
+        lastFailure = `${book.title}: ${e.message}`;
+        console.log(`Tagging failed for ${book.path}: ${e.message}`);
       }
       // Both together, or a container stopped between them leaves a book off the
       // queue that the count never counted: done + left would no longer be the
@@ -96,7 +102,12 @@ export function startTagAll() {
     q.fill.run();
     q.put.run(q.left.get().n, 0, 0, 0, 'running', 'Starting…', now(), null);
   }
-  loop().catch(() => {});
+  // the loop catches a book that will not write; anything escaping it is this
+  // app's own fault and must not vanish
+  loop().catch((e) => {
+    lastFailure = `The run stopped: ${e.message}`;
+    console.log(`The whole-collection tag run stopped: ${e.stack || e.message}`);
+  });
   return tagStatus();
 }
 

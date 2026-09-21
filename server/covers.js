@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import zlib from 'node:zlib';
 import { db, DATA_DIR } from './db.js';
+import { writeZipTo } from './zip.js';
 
 // Cover files are named after the image itself, so a book that gets new artwork
 // leaves its old file behind. Nothing reads those any more, but they are not
@@ -46,73 +46,22 @@ export function deleteDuplicates() {
 
 // Keeping them, but as one file: everything loose goes into a zip beside them and
 // the loose copies go. Any zip made earlier is left alone.
-export function zipDuplicates(stamp) {
+//
+// The archive is written by `zip.js`, which a book download already uses. There
+// used to be a second implementation here, with its own CRC table, whose comment
+// promised it held one file at a time and whose last line concatenated every one
+// of them. One zip writer, and it is the one that streams.
+export async function zipDuplicates(stamp) {
   const names = loose();
   if (!names.length) throw new Error('There is nothing in the duplicates folder to zip');
   const zip = path.join(dupesDir(), `covers-${stamp}.zip`);
-  writeZip(zip, names, (name) => fs.readFileSync(path.join(dupesDir(), name)));
+  const entries = names.map((name) => {
+    const from = path.join(dupesDir(), name);
+    return { name, path: from, size: fs.statSync(from).size };
+  });
+  const out = fs.createWriteStream(zip);
+  await writeZipTo(out, entries);
+  await new Promise((ok, no) => { out.on('close', ok); out.on('error', no); });
   for (const name of names) fs.rmSync(path.join(dupesDir(), name), { force: true });
   return { zip, zipped: names.length, bytes: fs.statSync(zip).size };
-}
-
-// --- a zip file, written by hand ----------------------------------------
-// One archive of small images does not justify a dependency, and the format is
-// three structures: a header per file, a directory of those, and an end record.
-const CRC = Array.from({ length: 256 }, (_, n) => {
-  let c = n;
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
-  return c >>> 0;
-});
-const crc32 = (buf) => {
-  let c = 0xFFFFFFFF;
-  for (const b of buf) c = CRC[(c ^ b) & 0xFF] ^ (c >>> 8);
-  return (c ^ 0xFFFFFFFF) >>> 0;
-};
-
-// bodyOf is called one file at a time: a thousand covers held in memory at once
-// is a lot to ask of a small container for no reason.
-function writeZip(out, names, bodyOf) {
-  const parts = [];
-  const dir = [];
-  let offset = 0;
-  for (const fileName of names) {
-    const body = bodyOf(fileName);
-    const data = zlib.deflateRawSync(body);
-    const crc = crc32(body);
-    const name = Buffer.from(fileName, 'utf8');
-
-    const local = Buffer.alloc(30);
-    local.writeUInt32LE(0x04034b50, 0);
-    local.writeUInt16LE(20, 4);          // version needed
-    local.writeUInt16LE(8, 8);           // deflate
-    local.writeUInt16LE(0x0021, 12);     // 1 Jan 1980, the format's zero date
-    local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(data.length, 18);
-    local.writeUInt32LE(body.length, 22);
-    local.writeUInt16LE(name.length, 26);
-    parts.push(local, name, data);
-
-    const entry = Buffer.alloc(46);
-    entry.writeUInt32LE(0x02014b50, 0);
-    entry.writeUInt16LE(20, 4);
-    entry.writeUInt16LE(20, 6);
-    entry.writeUInt16LE(8, 10);
-    entry.writeUInt16LE(0x0021, 14);
-    entry.writeUInt32LE(crc, 16);
-    entry.writeUInt32LE(data.length, 20);
-    entry.writeUInt32LE(body.length, 24);
-    entry.writeUInt16LE(name.length, 28);
-    entry.writeUInt32LE(offset, 42);
-    dir.push(entry, name);
-
-    offset += local.length + name.length + data.length;
-  }
-  const central = Buffer.concat(dir);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(names.length, 8);
-  end.writeUInt16LE(names.length, 10);
-  end.writeUInt32LE(central.length, 12);
-  end.writeUInt32LE(offset, 16);
-  fs.writeFileSync(out, Buffer.concat([...parts, central, end]));
 }

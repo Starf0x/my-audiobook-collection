@@ -27,7 +27,10 @@ async function checkBook(book) {
   }
   let files = [];
   try {
-    files = audioFiles(book.path).length ? audioFiles(book.path) : (discFiles(book.path) || []);
+    // once, not twice: this runs for every book of the collection and each call
+    // is a directory read over the share
+    const here = audioFiles(book.path);
+    files = here.length ? here : (discFiles(book.path) || []);
   } catch (e) {
     return { reason: 'unreadable', detail: `The folder cannot be read: ${e.message}` };
   }
