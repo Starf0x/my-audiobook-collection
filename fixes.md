@@ -446,3 +446,12 @@ here:
   on showing yesterday's drawing: cover in the database, file on disk, and the
   browser still holding the placeholder. The one dialog that exists to change the
   picture asks for it afresh, `?t=<now>`.
+* **A file name can be what a proxy refuses.** Behind Zoraxy (with Cloudflare in
+  front) `/listen.js` came back 403 while `/app.js`, `/player.js`, `/day.js` and
+  every API route passed — so the listening page loaded its shell and died on
+  `$ is not defined`. Nothing in the app: the same path answered 200 straight off
+  the container. Zoraxy's own source rules out its exploit blocker (that one
+  reads only the query string and answers in plain text) and its access control
+  (per IP, not per path), so the culprit is still unfound; the file is `shelf.js`
+  now. When one asset 404s or 403s and its neighbours do not, compare the paths
+  before reading a line of application code.

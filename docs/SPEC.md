@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.8.** This document describes what the app is, how every
+**Version described: 2.6.16.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.8` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.16` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -129,7 +129,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/index.html` | 315 | the admin page: columns, dialogs |
 | `public/app.js` | 2340 | the admin page's behaviour |
 | `public/listen.html` | 89 | the listening page |
-| `public/listen.js` | 528 | the listening page's behaviour |
+| `public/shelf.js` | 528 | the listening page’s behaviour |
 | `public/style.css` | 640 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -2302,6 +2302,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.16 | the listening page's script is `shelf.js`: a reverse proxy in front of one install refused `/listen.js` outright |
 | 2.6.8 | a cover can be pasted into Edit metadata — or dropped, or chosen — and is written into the MP3s with the rest |
 | 2.6.0 | a Wikipedia button under Copy to search on every missing volume, opening in a new tab |
 | 2.5.80 | the authors column of Series to complete is actually on screen, grows while the check runs, and what Wikidata said survives a restart |
