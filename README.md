@@ -565,6 +565,17 @@ else — and it works over plain http, where the browser's own clipboard API is 
 available. The line at the foot of that dialog is the folder the book sits in and
 how many files it holds, for when two books share a title.
 
+**A cover is the one thing you cannot type**, so under the description there is a
+box for it. Right-click a picture anywhere — a shop page, a wiki, wherever the
+art actually is — choose *Copy image*, and press **Ctrl+V** in that dialog: it
+does not matter which field has the cursor, a clipboard with a picture on it
+means the picture. You can also drop a file on the box or pick one. JPEG and PNG
+only, since those are the two an MP3 tag can carry; anything else says so rather
+than quietly failing later. The new art shows straight away, but nothing is
+changed until you press **Save** — cancel and the book keeps the cover it had.
+*Save + write into MP3s* puts the picture into the files as well, so it travels
+with them.
+
 *Move…* on a book card shifts its folder to where a new genre, author, series and
 title say it belongs. The book keeps its row, so the listened state and playback
 position travel with it. Taking the last book out of an author or series folder

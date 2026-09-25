@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.0.** This document describes what the app is, how every
+**Version described: 2.6.8.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.8` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -410,6 +410,7 @@ Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
+| `POST /api/cover` | admin | raw image bytes in, `{cover, bytes, what}` out — a pasted cover, written to `covers/` and adopted by the next Save |
 | `GET /api/drawn-cover?title=&author=` | — | a drawn cover for a book that is **not** in the library: the volumes Wikidata says are missing are shown as cards |
 | `GET/POST /api/ha/config` | admin | the address, whether a token is saved, how often to send, which listener; the token itself is write-only |
 | `POST /api/ha/test` | admin | ask Home Assistant who it is, with the saved token |
@@ -967,6 +968,45 @@ Covers are named after the image, so new artwork leaves the old file behind.
 files it says so and asks: decline the delete and they are zipped (a
 hand-written, dependency-free store-only ZIP with a CRC-32 table, reading one
 file at a time) and the loose files removed.
+
+### 7.8b Pasting a cover (`POST /api/cover`)
+
+A cover is the one thing about a book that cannot be typed, and the way somebody
+already has one in hand is the clipboard: right-click an image anywhere, *Copy
+image*, `Ctrl`+`V`. *Edit metadata* has a **Cover** box that takes a paste, a
+dropped file or a chosen one, all through `takeCover(file)`.
+
+**The bytes decide what it is, not the header.** The route parses with
+`express.raw({ type: () => true })`, because a clipboard image arrives as
+`image/png` and a dropped file sometimes with no type at all, and then sniffs the
+magic bytes. JPEG and PNG are written to `covers/<md5><ext>`; **WebP and GIF are
+refused by name** — `covers.js` only keeps `.jpg` and `.png`, so a WebP would be
+invisible to the tidy-up, and it is not a picture an MP3 tag carries. The refusal
+says which of the two it wanted and why, because "that does not look like a
+picture" about a picture is a lie.
+
+**The paste is taken wherever it lands in the dialog.** The listener is on
+`#edit`, so the field with focus does not matter — a clipboard carrying a picture
+means the picture. A paste with no image item returns at once and does nothing,
+which is what leaves text pasted into Description alone.
+
+**Nothing is written to the book until Save.** The upload answers with a name and
+the dialog holds it in `pastedCover`, which `save()` puts into the pick as
+`cover`; `apply_` takes `pick.cover` over `pick.thumbnail`, so art pasted onto a
+looked-up result wins. Cancel, Escape and Save all reach the dialog's `close`
+event, which lets the name go and revokes the preview's object URL. That leaves
+an unadopted file in `covers/`, which is exactly what §7.8's tidy-up is for —
+measured: three staged, one adopted, `{ moved: 3, kept: 1 }`.
+
+**And the dialog asks for the current cover afresh, `?t=<now>`.** A book with no
+art gets one drawn, and that answer is cached until midnight (§7.9), so the plain
+address went on showing yesterday's drawing after art had been pasted — in the
+one dialog whose whole job is changing the picture. Seen happening: cover saved,
+file on disk, `/api/cover/1` still answering `image/svg+xml`.
+
+Proved end to end against the demo: a 1588-byte JPEG pasted into the dialog,
+*Save + write into MP3s*, and the `APIC` frame in the file is those same bytes —
+`md5 4cb02297…` in the tag, `4cb02297….jpg` in `covers/`.
 
 ### 7.8a Converting to MP3 (`convert.js`)
 
@@ -1824,7 +1864,8 @@ metadata* (five results, a search box, the author choice when two are credited,
 the series it read out of the title or subtitle as a tick beside its name and
 volume number, and category-as-genre buttons); *Edit metadata* (title, author, series, the book's number in that
 series, narrator, year, description — each in a `.field` row with a **⧉** button that
-copies it, and the book's folder and file count at the foot, above the buttons); *Move…*.
+copies it, then a **Cover** box that takes a pasted, dropped or chosen picture
+(§7.8b), and the book's folder and file count at the foot, above the buttons); *Move…*.
 
 **On a phone** (`@media (max-width: 720px)`): the three columns become one, and
 `document.body.dataset.col` — `genres` / `authors` / `books` — says which is on
@@ -2261,6 +2302,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.8 | a cover can be pasted into Edit metadata — or dropped, or chosen — and is written into the MP3s with the rest |
 | 2.6.0 | a Wikipedia button under Copy to search on every missing volume, opening in a new tab |
 | 2.5.80 | the authors column of Series to complete is actually on screen, grows while the check runs, and what Wikidata said survives a restart |
 | 2.5.72 | one build per release: the workflow runs on tags only, so two runs can no longer race for `:latest` |

@@ -440,3 +440,9 @@ here:
   pane and not the authors column, so Wikidata found volumes under authors the
   column had never heard of. Draw both from one pair of answers, and keep the
   chosen row across redraws or a per-second refresh throws the reader out of it.
+* **A drawn cover is cached until midnight.** `/api/cover/:id` answers with a
+  drawn SVG when a book has no art, and that answer carries a day's
+  `Cache-Control` — so after a cover was pasted and saved, the edit dialog went
+  on showing yesterday's drawing: cover in the database, file on disk, and the
+  browser still holding the placeholder. The one dialog that exists to change the
+  picture asks for it afresh, `?t=<now>`.

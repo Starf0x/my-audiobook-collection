@@ -597,7 +597,12 @@ export async function applyMetadata(book, pick, writeTags, sink = null) {
 
 async function apply_(book, pick, writeTags, progress) {
   let cover = book.cover;
-  if (pick.thumbnail) {
+  // A cover pasted into the dialog is a decision already taken; a thumbnail is
+  // only what a lookup offered. So the paste wins, and it wins silently: the
+  // owner who pastes art over a looked-up result means the art they pasted.
+  if (pick.cover) {
+    cover = pick.cover;
+  } else if (pick.thumbnail) {
     // a cover that will not download must not stop the metadata being applied
     try {
       const res = await fetch(pick.thumbnail.replace('http://', 'https://'));

@@ -288,6 +288,18 @@
   <div class="field"><input id="eYear"><button class="ghost copy" data-copy="eYear" title="Copy to the clipboard">⧉</button></div>
   <label>Description</label>
   <div class="field"><textarea id="eDescription" rows="4"></textarea><button class="ghost copy" data-copy="eDescription" title="Copy to the clipboard">⧉</button></div>
+  <label>Cover</label>
+  <div class="cover-edit" id="eCoverBox">
+    <img id="eCover" alt="">
+    <div class="cover-say">
+      <p class="hint" id="eCoverSay">Copy a picture anywhere — right-click an image,
+        <em>Copy image</em> — then press <kbd>Ctrl</kbd>+<kbd>V</kbd> here. You can also drop
+        a file on this box, or <button type="button" class="linkish" id="eCoverPick">choose one</button>.
+        It is kept when you save, and forgotten if you cancel.</p>
+      <button type="button" class="ghost" id="eCoverUndo" hidden>Put the old cover back</button>
+    </div>
+    <input type="file" id="eCoverFile" accept="image/jpeg,image/png" hidden>
+  </div>
   <p class="hint path" id="ePath"></p>
   <div class="row end">
     <button id="closeEdit" class="ghost">Cancel</button>
