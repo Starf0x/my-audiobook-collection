@@ -678,6 +678,46 @@ app.get('/api/books/:id', (req, res) => {
   res.json(book);
 });
 
+// What a cover file may be. covers.js keeps `.jpg` and `.png` and nothing else,
+// and those are the two an MP3 tag takes without argument, so anything else is
+// refused by name — a WebP written into covers/ would be ignored by the tidy-up
+// and shrug its way into a tag no player would draw.
+const pictureKind = (b) => {
+  const starts = (n, ...bytes) => b.length > n && bytes.every((v, i) => b[i] === v);
+  if (starts(3, 0xff, 0xd8, 0xff)) return { ext: '.jpg', what: 'JPEG' };
+  if (starts(8, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return { ext: '.png', what: 'PNG' };
+  if (b.length > 12 && b.subarray(0, 4).toString('latin1') === 'RIFF'
+    && b.subarray(8, 12).toString('latin1') === 'WEBP') return { what: 'WebP' };
+  if (b.length > 4 && b.subarray(0, 3).toString('latin1') === 'GIF') return { what: 'GIF' };
+  return null;
+};
+
+// A picture pasted into Edit metadata. It is written into covers/ and its name
+// handed back, and no book is touched: the dialog's Save is what adopts it, so
+// Cancel leaves the book with the cover it had. A file nobody adopts is exactly
+// what "Tidy up unused covers" was written to sweep up.
+//
+// `type: () => true` takes the body whatever it calls itself — a clipboard image
+// arrives as image/png, a dropped file sometimes with no type at all — because
+// the bytes are what decides here, not a header the browser guessed.
+app.post('/api/cover', requireAdmin, express.raw({ type: () => true, limit: '12mb' }),
+  wrap(async (req, res) => {
+    const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (!buf.length) throw new Error('There was no picture in that.');
+    const kind = pictureKind(buf);
+    if (!kind) throw new Error('That does not look like a picture.');
+    if (!kind.ext) {
+      throw new Error(`That is a ${kind.what} picture, and a cover has to be a JPEG or a PNG`
+        + ' — those are the two an MP3 tag can carry.');
+    }
+    // named after the image, like every other cover here, so the same picture
+    // pasted onto two books is one file and the address changes when the art does
+    const name = crypto.createHash('md5').update(buf).digest('hex') + kind.ext;
+    fs.mkdirSync(path.join(DATA_DIR, 'covers'), { recursive: true });
+    fs.writeFileSync(path.join(DATA_DIR, 'covers', name), buf);
+    res.json({ cover: name, bytes: buf.length, what: kind.what });
+  }));
+
 app.get('/api/cover/:id', (req, res) => {
   const book = db.prepare('SELECT cover, title, author FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).end();
