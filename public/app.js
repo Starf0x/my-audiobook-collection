@@ -1882,6 +1882,87 @@ $('#needsTags').onclick = async () => {
 // Google offered is read and corrected before anything is saved. It also carries
 // what this dialog has no field for — the cover and the series number — so those
 // are not lost on the way through. `genre` is the one picked in the lookup.
+// --- the cover in the edit dialog ---------------------------------------
+// A cover is the one field of a book that cannot be typed, and the way people
+// already have one in hand is the clipboard: right-click an image anywhere,
+// *Copy image*, Ctrl+V. The paste is taken wherever it lands in the dialog —
+// a clipboard carrying a picture means the picture, whichever field has focus —
+// and a text paste into a field is left alone, which is what the `file` test is.
+//
+// The bytes go up at once and come back as a name in covers/, but nothing is
+// written to the book until Save: this dialog's Cancel has always meant cancel,
+// and a cover that changes the moment it is pasted would quietly break that.
+const MOST_COVER = 12 * 1024 * 1024;
+let pastedCover = null;
+let pastedShown = '';
+
+const showCover = (src) => { $('#eCover').src = src; };
+
+function forgetPastedCover() {
+  if (pastedShown) URL.revokeObjectURL(pastedShown);
+  pastedShown = '';
+  pastedCover = null;
+  $('#eCoverUndo').hidden = true;
+}
+
+async function takeCover(file) {
+  if (!file) return;
+  if (file.size > MOST_COVER) {
+    return toast(`That picture is ${kb(file.size)} — a cover has to be under ${kb(MOST_COVER)}.`);
+  }
+  let said;
+  try {
+    const r = await fetch('/api/cover', {
+      method: 'POST',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    // the same care as api(): a refusal is not always JSON, and reading it as
+    // JSON turns a sentence the owner could act on into a parse error
+    const text = await r.text();
+    said = text ? JSON.parse(text) : {};
+    if (!r.ok) throw new Error(said.error || `The server answered ${r.status}.`);
+  } catch (e) {
+    return toast(e.message);
+  }
+  forgetPastedCover();
+  pastedCover = said.cover;
+  pastedShown = URL.createObjectURL(file);
+  showCover(pastedShown);
+  $('#eCoverUndo').hidden = false;
+  return toast(`${said.what} cover ready, ${kb(said.bytes)}. It is kept when you save.`);
+}
+
+const pictureIn = (data) => {
+  const item = [...(data?.items || [])].find((i) => i.kind === 'file' && /^image\//.test(i.type));
+  return item ? item.getAsFile() : null;
+};
+
+$('#edit').addEventListener('paste', (e) => {
+  const file = pictureIn(e.clipboardData);
+  // no picture on the clipboard: this is somebody pasting text into a field
+  if (!file) return;
+  e.preventDefault();
+  takeCover(file);
+});
+
+$('#eCoverBox').addEventListener('dragover', (e) => {
+  e.preventDefault();
+  $('#eCoverBox').classList.add('over');
+});
+$('#eCoverBox').addEventListener('dragleave', () => $('#eCoverBox').classList.remove('over'));
+$('#eCoverBox').addEventListener('drop', (e) => {
+  e.preventDefault();
+  $('#eCoverBox').classList.remove('over');
+  takeCover(pictureIn(e.dataTransfer) || (e.dataTransfer.files || [])[0]);
+});
+
+$('#eCoverPick').onclick = () => $('#eCoverFile').click();
+$('#eCoverFile').onchange = (e) => {
+  takeCover(e.target.files[0]);
+  e.target.value = ''; // or choosing the same file twice would not fire again
+};
+
 window.editMeta = async function (id, over, genre) {
   const b = await api(`/api/books/${id}`);
   const v = { ...b, ...(over || {}) };
@@ -1899,6 +1980,15 @@ window.editMeta = async function (id, over, genre) {
   $('#eNarrator').value = v.narrator || '';
   $('#eYear').value = v.year || '';
   $('#eDescription').value = v.description || '';
+  // The cover it has now, asked for afresh every time this opens. A book with no
+  // art gets one drawn, and that answer is cached until midnight — so the plain
+  // address would go on showing yesterday's drawing after art was pasted onto
+  // the book, in the one dialog whose whole job is changing the picture. Seen
+  // happening: cover saved, file on disk, and the dialog still drawing.
+  const ownCover = `/api/cover/${id}?t=${Date.now()}`;
+  forgetPastedCover();
+  showCover(ownCover);
+  $('#eCoverUndo').onclick = () => { forgetPastedCover(); showCover(ownCover); };
   const wasSeries = b.folderSeries || b.series || '';
   const save = async (writeTags) => {
     const pick = {
@@ -1910,6 +2000,9 @@ window.editMeta = async function (id, over, genre) {
       // number below it has a series to belong to
       series: $('#eSeries').value.trim(),
       seriesNo: Number($('#eSeriesNo').value) || 0,
+      // only when one was pasted: an absent key leaves the book's own art alone,
+      // and an empty string would read as "no cover" on the way through
+      ...(pastedCover ? { cover: pastedCover } : {}),
     };
     $('#edit').close();
     // The series is a folder level, so a change to it has to move the book, or
@@ -1937,6 +2030,10 @@ window.editMeta = async function (id, over, genre) {
   $('#edit').showModal();
 };
 $('#closeEdit').onclick = () => $('#edit').close();
+// Cancel, Escape and Save all end here. Save has already read the pasted name
+// into its pick by now, so letting go of it is safe wherever the dialog closes
+// from — and the picture being previewed is a blob this page has to release.
+$('#edit').addEventListener('close', forgetPastedCover);
 
 // The copy button beside every field. `navigator.clipboard` only exists in a
 // secure context, and this app is normally reached over plain http on a LAN, so
