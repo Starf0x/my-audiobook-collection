@@ -4,6 +4,7 @@ import { parseFile } from 'music-metadata';
 import { db, getSetting, getLibraries } from './db.js';
 import { dirs, audioFiles, discFiles, DISC, addOne, NOT_IMPORTED, REPLACED } from './scan.js';
 import { lane, pool } from './pool.js';
+import { inside } from './safepath.js';
 
 // One progress object for every operation that shifts files about: importing,
 // moving a book and emptying it into the trash all report through it.
@@ -257,7 +258,14 @@ export function genreFolders() {
   return out;
 }
 
-export const clean = (s) => String(s || '').trim().replace(/[\\/:*?"<>|]/g, '-');
+// A name that is going to be one level of a path. The separators and the
+// characters Windows refuses go; so do `.` and `..`, which are not names at all —
+// an author of `..` would have built a destination one level above the genre
+// folder, and `destinationFor` would have handed it to a move without blinking.
+export const clean = (s) => {
+  const said = String(s || '').trim().replace(/[\\/:*?"<>|]/g, '-');
+  return /^\.+$/.test(said) ? said.replace(/\./g, '-') : said;
+};
 
 // Where a book with this genre, author, series and title belongs on disk.
 export function destinationFor({ genre, author, series, title }) {
@@ -315,8 +323,20 @@ const prefixed = (dir, prefix) => {
   return target;
 };
 
-export function skipImport(source) {
+// A source is a folder the *import folder* holds. Both routes below move or
+// rename what they are given, and neither used to ask where it came from: the
+// admin page never sends anything else, but "the page never sends that" is not a
+// check, and the body of a request is not the page.
+function fromImportFolder(source) {
   if (!source || !fs.existsSync(source)) throw new Error('That import folder is no longer there');
+  const root = getSetting('importPath');
+  if (!root || !inside(root, source)) {
+    throw new Error('That folder is not inside the import folder, so this app will not move it.');
+  }
+}
+
+export function skipImport(source) {
+  fromImportFolder(source);
   const target = prefixed(source, NOT_IMPORTED);
   fs.renameSync(source, target);
   forgetCandidate(source);
@@ -325,7 +345,7 @@ export function skipImport(source) {
 
 export async function importBook({ source, genre, author, series, title, replace }) {
   const dest = destinationFor({ genre, author, series, title });
-  if (!source || !fs.existsSync(source)) throw new Error('That import folder is no longer there');
+  fromImportFolder(source);
   if (fs.existsSync(dest) && !replace) throw new Error(`There is already a folder at ${dest}`);
 
   beginFileWork();

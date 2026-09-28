@@ -455,3 +455,16 @@ here:
   (per IP, not per path), so the culprit is still unfound; the file is `shelf.js`
   now. When one asset 404s or 403s and its neighbours do not, compare the paths
   before reading a line of application code.
+* **A walk that read nothing must remove nothing.** The scan drops books it did
+  not see, and `walked` was `!only || …` — true for every book on an ordinary
+  scan. So an unparseable `libraries` setting (which answers `[]` by design) or a
+  share that is mounted but unreadable emptied the entire books table, and the
+  `progress_follows_books` trigger deleted everybody's place in every book with
+  it. The files survive that; the listening history does not.
+* **An admin-only write that a public route reads is a public write.**
+  `books.cover` is set by `POST /api/apply/:id` (admin) and served by
+  `GET /api/cover/:id` (nobody). A cover of `../../etc/passwd` crossed that gap.
+  When two routes share a column, the weaker one's audience is the column's.
+* **A source path the page always gets right is still a path from a request.**
+  Import and filing moved whatever folder the body named, anywhere on the host.
+  The admin page never sends anything else — and the page is not what arrives.

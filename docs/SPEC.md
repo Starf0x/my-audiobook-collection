@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.24.** This document describes what the app is, how every
+**Version described: 2.6.32.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.24` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.32` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,23 +101,24 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1205 | Express app: every route, and nothing else |
+| `server/index.js` | 1209 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 522 | walking the library, reading tags, filing books |
+| `server/scan.js` | 565 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 693 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 699 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 131 | the resumable whole-collection tag run |
-| `server/import.js` | 427 | import candidates, quality comparison, filing |
+| `server/import.js` | 447 | import candidates, quality comparison, filing |
 | `server/trash.js` | 180 | move, delete to trash, restore, purge |
 | `server/validate.js` | 119 | checking every book against the disk |
 | `server/covers.js` | 67 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
-| `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
+| `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
+| `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 408 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
@@ -1007,6 +1008,33 @@ file on disk, `/api/cover/1` still answering `image/svg+xml`.
 Proved end to end against the demo: a 1588-byte JPEG pasted into the dialog,
 *Save + write into MP3s*, and the `APIC` frame in the file is those same bytes —
 `md5 4cb02297…` in the tag, `4cb02297….jpg` in `covers/`.
+
+### 7.8c Where a path may point (`safepath.js`)
+
+Three routes take a path from outside and hand it to the disk, and each of them
+used to take it as given.
+
+**A cover column.** `GET /api/cover/:id` asks for no password — the listening
+page is open, and covers are part of it — while `books.cover` is written by
+`POST /api/apply/:id`, which is admin-only. A `pick.cover` of `../../etc/passwd`
+therefore turned one admin's save into a file anyone on the network could fetch,
+and the same string was handed to `NodeID3` as the picture to embed. Now
+`storedCover()` guards the write (only a name `POST /api/cover` handed out) and
+`coverFile()` resolves the read: the stored kind must be a bare name under
+`covers/`, the `file:` kind must be a real file inside a library folder, and
+symlinks are followed before the comparison so a link out of the collection is
+caught rather than measured as a string.
+
+**An import source, and a filing source.** `POST /api/import`,
+`/api/import/skip` and `/api/skipped/file` move or rename the folder they are
+given. Neither asked where it came from, so any folder on the host could be
+moved into the collection. An import source must now sit inside `importPath`, a
+filing source inside a library folder, and neither may *be* the root itself.
+`clean()` refuses `.` and `..` for the same family of reasons: an author of `..`
+built a destination one level above its genre folder.
+
+All of it is one module because the rule is one rule, and a rule with two
+readers drifts (§7.10a says the same about the series sentence).
 
 ### 7.8a Converting to MP3 (`convert.js`)
 
@@ -2108,6 +2136,20 @@ skips them will reproduce the bugs.
 43. **`player.js` is parsed after the page's own script**, because it uses what
     that declares. Nothing in it may run before the page has drawn: the only
     thing it does at load is pick up a carried book.
+44. **A path that came from outside is resolved and contained before it reaches
+    the disk** (`safepath.js`, §7.8c). Three routes took one and did not: a cover
+    column that `GET /api/cover/:id` serves without asking for a password, and
+    the source folder of an import and of a filing, both of which get moved. "The
+    page never sends anything else" is not a check — the body of a request is not
+    the page.
+45. **A walk that read nothing must remove nothing.** The scan's reconciliation
+    drops books it did not see, and what it sees is empty when it could not read
+    a thing: a `libraries` setting that will not parse answers `[]`, and a share
+    that is mounted but unreadable lists nothing. Both emptied the whole library,
+    and the `progress_follows_books` trigger took every listener's place with it.
+    Reconcile only under roots that were listed without error, and only where the
+    folder really is gone — a folder that exists but cannot be read is not
+    evidence of anything.
 
 
 ## 10. Measured performance
@@ -2305,6 +2347,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.32 | a path from outside is resolved and contained before it reaches the disk — covers, import sources, filing sources — and a scan that could read no library removes nothing |
 | 2.6.24 | housekeeping: the file table counts what the files hold, two comments back beside what they explain, and the last of the removed series table swept out of the stylesheet |
 | 2.6.16 | the listening page's script is `shelf.js`: a reverse proxy in front of one install refused `/listen.js` outright |
 | 2.6.8 | a cover can be pasted into Edit metadata — or dropped, or chosen — and is written into the MP3s with the rest |
