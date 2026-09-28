@@ -493,3 +493,11 @@ here:
 * **`scryptSync` on an open route is a way to stop the server.** It is slow by
   design and it blocks the only thread there is. Hash off-thread, work the stored
   side out once, and make a wrong password cost the asker a growing wait.
+* **A suite that is not in the repository is not a suite.** The spec named
+  seventy-four checks and a clone had none of them: they lived in one untracked
+  folder on one machine. `tests/` is committed now, `npm test` runs the portable
+  ones, and a workflow runs that on every push — "not shipped" is `.dockerignore`
+  and has nothing to do with "not kept".
+* **A refused PUID drop that carries on as root is the bug PUID exists to stop.**
+  It logged one line and went on creating root-owned folders on somebody's share.
+  It stops now, unless `ALLOW_ROOT=1` says otherwise.

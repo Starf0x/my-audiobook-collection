@@ -71,8 +71,20 @@ if (uid !== null && gid !== null && typeof process.setuid === 'function') {
     process.setuid(uid);
     console.log(`Running as ${uid}:${gid}` + (process.env.UMASK ? `, umask ${process.env.UMASK}` : ''));
   } catch (e) {
-    console.log(`Could not run as ${uid}:${gid} (${e.message}) — carrying on as `
-      + `${typeof process.getuid === 'function' ? process.getuid() : 'is'}`);
+    const now = typeof process.getuid === 'function' ? process.getuid() : null;
+    // Being asked to write as somebody and carrying on as root is the worst of
+    // the three outcomes: every folder this then creates on the share belongs to
+    // root with mode 755, which is the exact problem PUID exists to prevent, and
+    // it used to happen with one line in a log nobody reads. So it stops — unless
+    // the owner says otherwise, because a container that will not start is its
+    // own kind of bad morning.
+    const shout = `Could not run as ${uid}:${gid} (${e.message}), and this process is root.`;
+    if (now === 0 && !/^(1|yes|true|on)$/i.test((process.env.ALLOW_ROOT || '').trim())) {
+      console.error(`${shout}\nEverything it creates on your share would belong to root and you `
+        + 'could not write in it. Fix PUID/PGID, or set ALLOW_ROOT=1 to start anyway.');
+      process.exit(1);
+    }
+    console.log(`Could not run as ${uid}:${gid} (${e.message}) — carrying on as ${now ?? 'is'}`);
   }
 }
 

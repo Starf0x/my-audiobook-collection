@@ -20,11 +20,24 @@ import { db, getSetting, setSetting } from './db.js';
 // Where this app is reachable from, which is not always where the request came
 // from: HA may talk to a hostname the browser never uses, and a media player has
 // to be able to fetch the audio itself. BASE_URL settles it when set.
+// Whether a header may say where this app is reached. `X-Forwarded-*` is written
+// by a reverse proxy, and it is also written by anybody who can reach this
+// container directly — so on a machine where both are possible it is a way to
+// put another address into the playlists this app hands to media players.
+//
+// It stays on by default, and deliberately: this app is normally behind exactly
+// such a proxy, and turning it off by default would break every install that
+// works today for a risk that is only real where the container is reachable past
+// the proxy. `TRUST_PROXY=0` turns it off; `BASE_URL` settles it outright and
+// needs neither.
+export const trustProxy = () => !/^(0|no|false|off)$/i.test((process.env.TRUST_PROXY || '').trim());
+
 export function baseUrl(req) {
   const set = (process.env.BASE_URL || '').trim().replace(/\/+$/, '');
   if (set) return set;
-  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
-  const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const forwarded = trustProxy();
+  const proto = ((forwarded && req.headers['x-forwarded-proto']) || req.protocol || 'http').split(',')[0].trim();
+  const host = ((forwarded && req.headers['x-forwarded-host']) || req.headers.host || '').split(',')[0].trim();
   return `${proto}://${host}`;
 }
 
