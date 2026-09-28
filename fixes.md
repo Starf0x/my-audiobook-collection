@@ -476,3 +476,13 @@ here:
   for a file it cannot open. Nothing counted those, so a book whose every file
   was unwritable reported `written: 0` with no error, the run called it done, and
   `books.tagged` claimed tags the files did not carry.
+* **An address in a request is a request to this network.** The cover thumbnail
+  was fetched with a bare `fetch` — no timeout, redirects followed, no ceiling,
+  no check that it was even a picture. This server can reach the router, the
+  other containers and `169.254.169.254`; `outbound.js` is what it goes through
+  now.
+* **U+2028 and U+2029 are line terminators in JavaScript source.** A regex
+  literal written with them in it is a literal broken across two lines, and
+  `node --check` says "missing /" about the line above. Build that class with
+  `new RegExp('[\r\n\u2028\u2029]+')` instead — which is also the thing the
+  regex was for: those characters end a line in an M3U too.

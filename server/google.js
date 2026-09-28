@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { writeTag } from './tagpool.js';
 import { db, googleKey, googleCountry, DATA_DIR } from './db.js';
 import { coverFile, storedCover } from './safepath.js';
+import { picture } from './outbound.js';
 
 // Google Books answers 503 when it will not serve a request, and on some keys it
 // does that to three requests out of four, at random, whatever the spacing. Short
@@ -610,15 +611,18 @@ async function apply_(book, pick, writeTags, progress) {
     if (!storedCover(pick.cover)) throw new Error('That is not a cover this app stored.');
     cover = pick.cover;
   } else if (pick.thumbnail) {
-    // a cover that will not download must not stop the metadata being applied
-    try {
-      const res = await fetch(pick.thumbnail.replace('http://', 'https://'));
-      if (res.ok) {
-        const buf = Buffer.from(await res.arrayBuffer());
-        cover = crypto.createHash('md5').update(buf).digest('hex') + '.jpg';
-        fs.writeFileSync(path.join(DATA_DIR, 'covers', cover), buf);
-      }
-    } catch { /* keep the cover the book already had */ }
+    // A cover that will not download must not stop the metadata being applied —
+    // and the address came in a request, so it is fetched the careful way
+    // (`outbound.js`): https only, nothing on this network, no redirects, a
+    // timeout and a ceiling. This was the one outbound call in the app with no
+    // timeout at all.
+    const got = await picture(pick.thumbnail.replace('http://', 'https://'));
+    if (got.bytes) {
+      cover = crypto.createHash('md5').update(got.bytes).digest('hex')
+        + (got.kind === 'image/png' ? '.png' : '.jpg');
+      fs.writeFileSync(path.join(DATA_DIR, 'covers', cover), got.bytes);
+    }
+    // `got.error` is not raised: the metadata is worth saving without the picture
   }
 
   // author and genre stay as the folder tree named them: they are the navigation
