@@ -1878,10 +1878,6 @@ $('#needsTags').onclick = async () => {
   drawFix(list);
 };
 
-// `over` is a chosen lookup result: the fields open filled with it, so what
-// Google offered is read and corrected before anything is saved. It also carries
-// what this dialog has no field for — the cover and the series number — so those
-// are not lost on the way through. `genre` is the one picked in the lookup.
 // --- the cover in the edit dialog ---------------------------------------
 // A cover is the one field of a book that cannot be typed, and the way people
 // already have one in hand is the clipboard: right-click an image anywhere,
@@ -1963,6 +1959,10 @@ $('#eCoverFile').onchange = (e) => {
   e.target.value = ''; // or choosing the same file twice would not fire again
 };
 
+// `over` is a chosen lookup result: the fields open filled with it, so what
+// Google offered is read and corrected before anything is saved. It also carries
+// what this dialog has no field for — the cover and the series number — so those
+// are not lost on the way through. `genre` is the one picked in the lookup.
 window.editMeta = async function (id, over, genre) {
   const b = await api(`/api/books/${id}`);
   const v = { ...b, ...(over || {}) };

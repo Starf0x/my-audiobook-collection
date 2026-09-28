@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.16.** This document describes what the app is, how every
+**Version described: 2.6.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,13 +101,13 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1164 | Express app: every route, and nothing else |
+| `server/index.js` | 1205 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 522 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 688 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 693 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 131 | the resumable whole-collection tag run |
@@ -120,17 +120,17 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 180 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 408 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `server/wikidata.js` | 269 | which volumes a series has, asked of Wikidata |
-| `server/abs.js` | 631 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
+| `server/abs.js` | 661 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 315 | the admin page: columns, dialogs |
-| `public/app.js` | 2340 | the admin page's behaviour |
-| `public/listen.html` | 89 | the listening page |
+| `public/index.html` | 327 | the admin page: columns, dialogs |
+| `public/app.js` | 2483 | the admin page's behaviour |
+| `public/listen.html` | 92 | the listening page |
 | `public/shelf.js` | 528 | the listening page’s behaviour |
-| `public/style.css` | 640 | the whole look, every page, phone included |
+| `public/style.css` | 673 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2270,7 +2270,10 @@ to insert order and looks broken when the app is right.
    `validate-test` and `covers-test` pass.
 10. `work()`, the per-job bars and the greying; make `greyed-button` pass.
 11. README (which is also the Docker Hub page), the wiki, the workflow. Bump,
-    commit, tag, push, and check the build the tag starts.
+    commit, tag, push, and check the build the tag starts. The file table in §4
+    counts lines, so it goes stale at every change: put the real counts back with
+    the bump, or the table stops being something a reproduction can be checked
+    against — eight of its rows had drifted by 2.6.16, one of them by 143 lines.
 
 ## 13. Where this version stands
 
@@ -2302,6 +2305,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.24 | housekeeping: the file table counts what the files hold, two comments back beside what they explain, and the last of the removed series table swept out of the stylesheet |
 | 2.6.16 | the listening page's script is `shelf.js`: a reverse proxy in front of one install refused `/listen.js` outright |
 | 2.6.8 | a cover can be pasted into Edit metadata — or dropped, or chosen — and is written into the MP3s with the rest |
 | 2.6.0 | a Wikipedia button under Copy to search on every missing volume, opening in a new tab |
