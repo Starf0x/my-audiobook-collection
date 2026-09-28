@@ -1188,7 +1188,7 @@ settleTagAll();
 purgeExpired(Date.now());
 setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
 
-// a container that was already set up keeps pushing to Home Assistant on its own// Places that were already at the end of a last track before the tick was set
+// Places that were already at the end of a last track before the tick was set
 // for them: those books have been listened to, and every count and list reads the
 // tick, so it has to say so.
 for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position, p.done,
@@ -1198,6 +1198,7 @@ for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position,
   if (isFinished(row)) tickIt.run(row.user, row.book_id);
 }
 
+// a container that was already set up keeps pushing to Home Assistant on its own
 scheduleHaPush(VERSION);
 
 const port = process.env.PORT || 8523;
