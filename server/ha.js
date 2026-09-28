@@ -51,6 +51,11 @@ export function tokenOk(req) {
   return sameSecret(said, want);
 }
 
+// Every line terminator, written through the constructor rather than as a regex
+// literal: U+2028 and U+2029 *are* line terminators in JavaScript source, so a
+// literal holding them is a literal broken across two lines.
+const BREAKS = new RegExp('[\\r\\n\\u2028\\u2029]+', 'g');
+
 const hours = (seconds) => Math.round((seconds / 3600) * 10) / 10;
 
 // How much of the collection has been listened to. A book marked listened counts
@@ -165,8 +170,34 @@ export const haSettings = () => ({
   listener: getSetting(KEY.listener),
 });
 
+// The address the token is sent to, so it is checked before it is kept: an
+// http(s) address with a host and nothing else. A path on the end is the mistake
+// everyone makes here, and it is already explained by `explainHA`.
+function asHaAddress(said) {
+  const raw = String(said || '').trim().replace(/\/+$/, '');
+  if (!raw) return '';
+  let at;
+  try {
+    at = new URL(raw);
+  } catch {
+    throw new Error(`That is not an address: ${raw}. It looks like http://192.168.2.200:8123`);
+  }
+  if (at.protocol !== 'http:' && at.protocol !== 'https:') {
+    throw new Error('A Home Assistant address is http:// or https://.');
+  }
+  if (!at.hostname) throw new Error('That address has no host in it.');
+  return `${at.protocol}//${at.host}`;
+}
+
 export function saveHaSettings(body = {}) {
-  if (body.url !== undefined) setSetting(KEY.url, String(body.url).trim().replace(/\/+$/, ''));
+  if (body.url !== undefined) {
+    const now = asHaAddress(body.url);
+    // The token belongs to the Home Assistant it was made in. Pointing this at
+    // another address and keeping the token means the next call hands it to
+    // whatever is there — a typo is enough — so changing the address forgets it.
+    if (now !== getSetting(KEY.url) && !body.token) setSetting(KEY.token, '');
+    setSetting(KEY.url, now);
+  }
   // an empty token leaves the one that is there; "-" forgets it
   if (body.token) setSetting(KEY.token, body.token === '-' ? '' : String(body.token).trim());
   if (body.every !== undefined) setSetting(KEY.every, String(Math.max(0, Number(body.every) || 0)));
@@ -199,6 +230,8 @@ async function call(path, { method = 'GET', body } = {}) {
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
+      // a redirect is another address, and this request carries the token
+      redirect: 'error',
       signal: AbortSignal.timeout(10000),
     });
   } catch (e) {
@@ -396,12 +429,16 @@ export function bookPlaylist(req, id, from = 0) {
     .all(id).filter((t) => t.idx >= from);
   if (!tracks.length) return null;
   const base = baseUrl(req);
-
+  // A line of an M3U ends at the newline, so a title that carries one writes the
+  // rest of the playlist. Titles come from folder names and from tags — neither
+  // is this app's to trust — and `#EXTINF` is one line by definition, so anything
+  // that would break it is folded into a space.
+  const oneLine = (s) => String(s || '').replace(BREAKS, ' ').trim();
   return [
     '#EXTM3U',
-    `#PLAYLIST:${book.title}${book.author ? ` — ${book.author}` : ''}`,
+    `#PLAYLIST:${oneLine(book.title)}${book.author ? ` — ${oneLine(book.author)}` : ''}`,
     ...tracks.flatMap((t) => [
-      `#EXTINF:${Math.round(t.duration || 0)},${book.title} — ${t.title}`,
+      `#EXTINF:${Math.round(t.duration || 0)},${oneLine(book.title)} — ${oneLine(t.title)}`,
       `${base}/api/stream/${t.id}`,
     ]),
   ].join('\n') + '\n';
