@@ -65,7 +65,17 @@ async function loop() {
       let written = 0;
       let failed = 0;
       try {
-        ({ written } = await applyMetadata(book, {}, true, mine));
+        // `why` is set when files would not be written but nothing threw — an
+        // unwritable file answers false rather than raising, and counting only
+        // the throws is how a run of books that wrote nothing at all reported
+        // itself finished with nothing wrong
+        const done = await applyMetadata(book, {}, true, mine);
+        written = done.written;
+        if (done.why) {
+          failed = 1;
+          lastFailure = `${book.title}: ${done.why}`;
+          console.log(`Tagging incomplete for ${book.path}: ${done.why}`);
+        }
       } catch (e) {
         // one unreadable book must not stop the rest of the run — but a run that
         // can only say "thirty failed" sends its owner looking through thirty

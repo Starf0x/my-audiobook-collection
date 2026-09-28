@@ -638,7 +638,10 @@ async function write_(id, pick, genre, title) {
   const p = await trackProgress(`/api/apply/status?book=${id}`,
     title ? `Writing tags · ${title}` : 'Writing tags…', until);
   const r = await request;
-  const failure = r.error || p.error;
+  // `why` is the case where nothing threw and the files still were not written:
+  // the answer carries it, because the bar may have stopped polling before the
+  // progress object learned of it
+  const failure = r.error || p.error || r.why;
   p.bar.say(failure ? `Writing tags failed${title ? ' · ' + title : ''}: ${failure}`
     : `${title ? title + ': ' : ''}${r.written} MP3 file(s) tagged.`, !!failure);
   p.bar.done(failure ? 15000 : 3000);
