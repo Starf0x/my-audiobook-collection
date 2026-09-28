@@ -127,5 +127,12 @@ export const signedIn = (name) => say(`🔑 **${plain(name, 40)}** signed in.`);
 export const startedListening = (name, title, author) =>
   say(`▶️ **${plain(name, 40)}** started *${plain(title)}*${author ? ` by ${plain(author, 60)}` : ''}.`);
 
+export const tookTheBook = (name, title, author) =>
+  say(`⤓ **${plain(name, 40)}** downloaded *${plain(title)}*${author ? ` by ${plain(author, 60)}` : ''}.`);
+
+export const reachedALevel = (name, level) =>
+  say(`${level.icon} **${plain(name, 40)}** reached **${plain(level.name, 60)}** — `
+    + `${level.finished} books finished.`);
+
 export const stoppedListening = (name, title, how) =>
   say(`⏹️ **${plain(name, 40)}** ${how === 'finished' ? 'finished' : 'stopped'} *${plain(title)}*.`);

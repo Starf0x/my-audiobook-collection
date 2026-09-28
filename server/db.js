@@ -50,6 +50,22 @@ db.exec(`
   );
   CREATE TRIGGER IF NOT EXISTS favourites_follow_books AFTER DELETE ON books
   BEGIN DELETE FROM favourites WHERE book_id = OLD.id; END;
+  -- Books somebody played to the end. Deliberately not worked out from progress:
+  -- clearing your place in a book, unticking it or starting it again says what
+  -- you are listening to now and nothing about what you have finished, and a
+  -- tally that fell when somebody tidied up would not be worth having. It is
+  -- also deliberately not dropped when a book is: finishing it happened.
+  CREATE TABLE IF NOT EXISTS completions (
+    user TEXT, book_id INTEGER, title TEXT, at TEXT,
+    PRIMARY KEY (user, book_id)
+  );
+  -- Whole books taken away, and by whom. The admin's statistics say which, so
+  -- the title is kept here too — a download of a book that is later deleted is
+  -- still a download that happened.
+  CREATE TABLE IF NOT EXISTS downloads (
+    id INTEGER PRIMARY KEY, user TEXT, book_id INTEGER, title TEXT, at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS downloads_user ON downloads (user, at);
   -- a whole-collection tag write, and what is left of it: the queue is what
   -- makes the run resumable after a stop or a restart
   CREATE TABLE IF NOT EXISTS tagrun (
@@ -109,6 +125,8 @@ for (const [column, kind] of [
   ['reason', "TEXT DEFAULT ''"], ['knows_admin', 'INTEGER DEFAULT 0'],
   ['requested_at', "TEXT DEFAULT ''"], ['decided_at', "TEXT DEFAULT ''"],
   ['last_seen', "TEXT DEFAULT ''"], ['first_seen', "TEXT DEFAULT ''"],
+  // the admin may hand out downloading below the top level
+  ['may_download', 'INTEGER DEFAULT 0'],
 ]) {
   try { db.exec(`ALTER TABLE users ADD COLUMN ${column} ${kind}`); } catch { /* already there */ }
 }

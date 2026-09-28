@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.7.0.** This document describes what the app is, how every
+**Version described: 2.7.8.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.0` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.8` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,9 +101,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1421 | Express app: every route, and nothing else |
+| `server/index.js` | 1460 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 179 | schema, migrations, settings, library list |
+| `server/db.js` | 197 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 565 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
@@ -119,25 +119,26 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
-| `server/listeners.js` | 233 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
+| `server/listeners.js` | 289 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
-| `server/notify.js` | 131 | telling Discord: the three things worth saying, and cleaning what a person wrote |
+| `server/notify.js` | 138 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 151 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 163 | signing in and the hearts, on both pages, one copy |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 309 | the player, and carrying the book from one page to the next |
-| `public/ha.html` | 108 | the Home Assistant page |
+| `public/player.js` | 320 | the player, and carrying the book from one page to the next |
+| `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 378 | the admin page: columns, dialogs |
-| `public/app.js` | 2566 | the admin page's behaviour |
-| `public/listen.html` | 117 | the listening page |
+| `public/index.html` | 379 | the admin page: columns, dialogs |
+| `public/app.js` | 2584 | the admin page's behaviour |
+| `public/listen.html` | 118 | the listening page |
 | `public/shelf.js` | 495 | the listening page’s behaviour |
-| `public/style.css` | 703 | the whole look, every page, phone included |
+| `public/style.css` | 716 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1706,6 +1707,38 @@ disagree. Pressing it colours it at once and asks afterwards: if the server
 refuses, it goes back. **Favourites** appears in the left column only while there
 is something in it, the way *Listened* does.
 
+### 7.12b What somebody has finished (`levels.js`)
+
+Ten levels, named by the owner, over the number of books somebody has **played to
+the end**: 10 Rookie, 20 Listener, 30 Book Hunter, 40 Story Seeker, 50 Book
+Master, 60 Story Master, 70 Audio Expert, 80 Audio Master, 90 Grand Master, 100
+Audio Legend Ultimate. Nought to nine has no name and shows nothing at all beside
+a listener's name — a level everybody starts at is not an accomplishment, and a
+badge saying so is noise. Each level carries an icon; the page draws it beside
+the name with the level's name under it.
+
+**The count is its own record, and that is the point.** `completions` is written
+when a book runs out and never rewritten: clearing your place in a book,
+unticking it or starting it again says what somebody is listening to *now* and
+nothing about what they have finished, and a tally that fell when somebody tidied
+up would not be worth having. It survives the book being deleted too — the
+reading happened — so the title is kept beside the id.
+
+**Ticking a book by hand does not count.** It is a useful thing to be able to say,
+and it is a statement; this counts what the app watched happen. So the two ways a
+completion is recorded are the player reporting that the last track ran out
+(`played: true` on `/api/listened`) and a position arriving at the end of the
+last track (`/api/progress`, the same `isFinished` the shelves use). Reaching a
+level is announced to Discord and toasted to the person who reached it, once —
+finishing the eleventh book is not news.
+
+**Downloading a whole book is the top level, or the admin's say-so.** The page
+hides the ⤓ below that, and hiding is not what enforces it: `/api/download/:id`
+refuses with a sentence saying how many books are still to go. The admin's grant
+sits *beside* the level rather than instead of it — somebody at the top who was
+then refused by a switch would be a puzzle. Every download is written down with
+the title and announced, and the Accounts page lists what each person has taken.
+
 ### 7.13 Telling Discord (`notify.js`)
 
 A webhook address saved by the admin, and three things worth saying: somebody
@@ -2304,6 +2337,19 @@ skips them will reproduce the bugs.
 60. **"No such name" and "wrong password" are one sentence**, or the sign-in
     route answers the question "who has an account here?" for anybody who asks.
 
+61. **What somebody has finished is kept apart from what they are listening to.**
+    A level counts books the app watched run out, in a record of its own that is
+    never rewritten — because clearing a place in a book, unticking it or
+    starting it again says nothing about what has been finished, and a tally
+    that fell when somebody tidied up would not be worth having.
+62. **A tick by hand is a statement, not a completion.** Only the player
+    reporting that the last track ran out, or a position arriving at the end of
+    it, adds to the count.
+63. **Hiding a button is not enforcing a rule.** Downloading is refused by the
+    route for anybody below the top level without the admin's grant; the page
+    hides the control so that a button which would only be refused is not
+    offered.
+
 ## 10. Measured performance
 
 Numbers from the machine this was built on (20 CPUs; the share is SMB on a NAS).
@@ -2518,6 +2564,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.8 | ten levels over the books somebody has played to the end, with the icon and its name beside theirs; the author under the title in the player; downloading earned at the top level or handed over by the admin, listed per person and announced |
 | 2.7.0 | listeners are accounts: asked for with a reason, approved by the admin, signed in with a password and remembered for seven days — plus a heart on every book, an Accounts page with what each person has listened to, and a line to Discord when somebody asks, signs in, or starts and stops a book |
 | 2.6.64 | the checks are in the repository and run on every push, the dependency advisory is cleared, and the smaller things the read turned up |
 | 2.6.56 | one job at a time on the server rather than only in the page, a password that costs the guesser, and what the open routes will take |
