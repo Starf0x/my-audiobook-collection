@@ -14,7 +14,7 @@
   <input id="q" type="search" class="search" placeholder="Search books, authors, series…"
     autocomplete="off" spellcheck="false">
   <div class="spacer"></div>
-  <span id="whoAmI" class="ver" title="Signed in as"></span>
+  <div id="whoAmI" title="Signed in as"></div>
   <button id="signOut" class="ghost" hidden>Sign out</button>
   <button id="adminBtn" class="ghost">Admin</button>
 </header>
@@ -39,6 +39,7 @@
   <img id="pCover" alt="">
   <div class="meta">
     <strong id="pTitle"></strong>
+    <span id="pAuthor" class="by"></span>
     <span id="pTrack"></span>
   </div>
   <!-- the audio element is the engine; the transport below is ours, because a

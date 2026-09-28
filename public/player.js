@@ -40,6 +40,9 @@ window.playBook = async function (id, carried) {
   // audiobook means; the name comes from the server, so it is the book's
   $('#pGet').href = `/api/download/${id}`;
   $('#pTitle').textContent = book.title;
+  // who wrote it, under the title: the player is where somebody listens for
+  // hours, and the title alone does not say where the book came from
+  $('#pAuthor').textContent = book.author || '';
   $('#trackSelect').innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join('');
   // a saved track index can outlive the files it pointed at
   const said = carried ? carried.track : (book.progress ? book.progress.track_idx : 0);
@@ -211,7 +214,15 @@ async function finishedListening() {
   // named does not leave a dead bar standing.
   closePlayer();
   if (!state.user) return;
-  try { await post('/api/listened', { user: state.user, bookId: id, done: true }); } catch { return; }
+  // played: the last track ran out, which is what counts towards a level — a
+  // tick pressed by hand does not
+  let said;
+  try { said = await post('/api/listened', { user: state.user, bookId: id, done: true, played: true }); } catch { return; }
+  // reaching a level is worth saying to the person who reached it
+  if (said && said.level && said.level.name) {
+    toast(`${said.level.icon} ${said.level.name} — ${said.level.finished} books finished.`);
+    if (typeof whoAmI === 'function') whoAmI();
+  }
   // the card of that book, if it happens to be on screen, without a redraw
   const tick = document.querySelector(`.card .listened input[onchange*="setListened(${id},"]`);
   if (tick) {

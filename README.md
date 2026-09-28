@@ -1174,6 +1174,38 @@ If you had listeners before 2.7.0, they are all approved and carry no password
 yet; the first sign-in with such a name chooses one, and the Accounts page marks
 those names so an unclaimed one is easy to spot.
 
+## What you have finished, and what it is called
+
+Every book you play to the end counts, and the count has ten names:
+
+| Finished | Level |
+| --- | --- |
+| 0–9 | nothing at all |
+| 10 | 🌱 Rookie Level |
+| 20 | 🎧 Listener Level |
+| 30 | 🔍 Book Hunter Level |
+| 40 | 🧭 Story Seeker Level |
+| 50 | 📚 Book Master Level |
+| 60 | 📖 Story Master Level |
+| 70 | 🎖️ Audio Expert Level |
+| 80 | 🏆 Audio Master Level |
+| 90 | 👑 Grand Master Level |
+| 100 | ⭐ Audio Legend Ultimate Level |
+
+The icon sits beside your name at the top of the page with the level's name under
+it. Below ten there is nothing there — a level everybody starts at is not an
+accomplishment.
+
+**It counts books the app watched run out.** Ticking one as listened by hand is a
+useful thing to say and does not count. And it is a record of its own: clearing
+your place in a book, unticking it or starting it again never takes a finished
+book off your tally.
+
+**Downloading a whole book is the top level.** Below that the ⤓ is not offered —
+and if something asks for it anyway, the server refuses and says how many books
+are still to go. You can hand downloading to anybody from *Accounts*, whatever
+level they are at.
+
 ## The ♥ on a book
 
 Every book has a small heart — on its card and on the shelves. Press it and it
@@ -1189,7 +1221,9 @@ Webhooks*). With one saved, this app posts a line when:
 1. somebody asks for an account — with their reason and whether they say they
    know you;
 2. a book starts or stops, saying which book and who;
-3. somebody signs in — your own sign-ins are not announced.
+3. somebody signs in — your own sign-ins are not announced;
+4. somebody downloads a whole book, saying who and which;
+5. somebody reaches a new level.
 
 Only a Discord webhook address is accepted, nothing is ever sent anywhere else,
 and the address is never shown back to the page. Names and titles are cleaned

@@ -13,9 +13,11 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats, adminName,
-  asName, WEEK } from './listeners.js';
-import { askedForAnAccount, signedIn, startedListening, stoppedListening,
-  saveWebhook, webhookSet, lastSaid } from './notify.js';
+  asName, WEEK, finishedABook, finishedCount, tookABook, downloadsOf, grantDownload,
+  find as findListener } from './listeners.js';
+import { levelOf, mayDownload, LEVELS, TOP } from './levels.js';
+import { askedForAnAccount, signedIn, startedListening, stoppedListening, tookTheBook,
+  reachedALevel, saveWebhook, webhookSet, lastSaid } from './notify.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
@@ -214,6 +216,11 @@ app.get('/api/account/me', (req, res) => {
     // that is still what a private install looks like
     required: adminRequired(),
     signedIn: !!listener || (isAdmin(req) && adminRequired()),
+    // what the page needs to draw the badge beside a name and to know whether to
+    // offer a download at all — the server refuses it either way
+    level: levelOf(listener ? finishedCount(listener) : 0),
+    mayDownload: !adminRequired() || isAdmin(req)
+      || mayDownload(finishedCount(listener), findListener(listener)?.may_download),
   });
 });
 
@@ -255,6 +262,9 @@ app.get('/api/accounts', requireAdmin, (req, res) => res.json({
 
 app.post('/api/accounts/:name/state', requireAdmin, wrap(async (req, res) =>
   res.json(decide(req.params.name, (req.body || {}).state))));
+
+app.post('/api/accounts/:name/download', requireAdmin, wrap(async (req, res) =>
+  res.json(grantDownload(req.params.name, (req.body || {}).may))));
 
 app.post('/api/accounts/:name/remove', requireAdmin, wrap(async (req, res) =>
   res.json(remove(req.params.name))));
@@ -772,7 +782,14 @@ app.post('/api/listened', (req, res) => {
     VALUES (?, ?, 0, 0, 1, datetime('now'))
     ON CONFLICT(user, book_id) DO UPDATE SET done = 1, updated = excluded.updated`)
     .run(user, bookId);
-  res.json({ ok: true });
+  // `played` is the player saying the last track ran out. A tick pressed by hand
+  // is a statement — a useful one — and this counts what the app watched happen,
+  // so only the first of those two adds to somebody's finished books.
+  const earned = req.body.played === true && finishedABook(user, bookId);
+  const level = earned ? levelOf(finishedCount(user)) : null;
+  // reaching one is worth saying; finishing the eleventh book is not
+  if (level && level.at && level.finished === level.at) reachedALevel(user, level);
+  res.json({ ok: true, ...(earned ? { level } : {}) });
 });
 
 // --- the hearts ----------------------------------------------------------
@@ -1279,6 +1296,23 @@ app.post('/api/ha/play', adminOrHA, wrap(async (req, res) => {
 app.get('/api/download/:id', wrap(async (req, res) => {
   const book = db.prepare('SELECT id, title, author FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) return res.status(404).json({ error: 'Book not found' });
+  // Taking a whole book away is the one thing here that has to be earned: the
+  // top level, or the admin handing it over. The page hides the button below
+  // that, and hiding is not what protects it — this is.
+  const who = req.listener || '';
+  if (adminRequired() && !req.isAdmin) {
+    const row = who ? findListener(who) : null;
+    if (!mayDownload(finishedCount(who), row && row.may_download)) {
+      const level = levelOf(finishedCount(who));
+      return res.status(403).json({
+        error: `Downloading a whole book is ${LEVELS[0].name}${level.next
+          ? `, and you are ${level.next.at - level.finished} book(s) from ${level.next.name}`
+          : ''}. Ask the administrator if you would like it sooner.`,
+      });
+    }
+    tookABook(who, book.id, book.title);
+    tookTheBook(who, book.title, book.author);
+  }
   const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
     .map((t) => t.path)
     .filter((f) => fs.existsSync(f));
@@ -1339,7 +1373,12 @@ app.post('/api/progress', (req, res) => {
   // only ever set here: taking it off again is unticking it, or starting the book
   // over, both of which say so outright.
   const kept = keptOne.get(user, Number(bookId));
-  if (kept && !kept.done && isFinished(kept)) tickIt.run(user, Number(bookId));
+  if (kept && !kept.done && isFinished(kept)) {
+    tickIt.run(user, Number(bookId));
+    // the place arrived at the end of the last track: the app watched this book
+    // finish, which is what a level is made of
+    finishedABook(user, Number(bookId));
+  }
   res.json({ ok: true, done: !!(kept && (kept.done || isFinished(kept))) });
 });
 

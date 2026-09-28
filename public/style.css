@@ -701,3 +701,16 @@ dialog label.pick input {
 
 /* a maintenance row with something waiting on it says so without being read */
 #genres li.wants .count { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 7px; }
+
+/* --- who is signed in, and what they have earned -------------------------
+   The name with its badge on one line and the level under it, small: it is a
+   thing to notice once and then stop noticing. */
+#whoAmI { display: flex; flex-direction: column; line-height: 1.15; margin-right: 4px; }
+#whoAmI .me { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 13px; }
+#whoAmI .badge-icon { font-size: 15px; }
+#whoAmI .level { color: var(--dim); font-size: 10.5px; letter-spacing: .04em; }
+
+/* Downloading is earned. The server refuses it either way; this is so a button
+   that would only be refused is not offered. */
+body:not(.may-download) #pGet,
+body:not(.may-download) .cmenu [data-act="download"] { display: none; }
