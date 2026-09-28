@@ -4,3 +4,4 @@ data
 *.md
 docs
 fixtures
+tests

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>A</title></head>
+<body style="font:16px system-ui;padding:40px">
+<h1>Page A</h1>
+<p><button id="play" style="font-size:20px;padding:12px 20px">Play here</button></p>
+<p><button id="go" style="font-size:20px;padding:12px 20px">Go to B (location.assign)</button></p>
+<p><button id="rep" style="font-size:20px;padding:12px 20px">Go to B (location.replace)</button></p>
+<p><a id="link" href="/b.html" style="font-size:20px">Go to B (a plain link)</a></p>
+<audio id="a" src="/tone.wav" preload="auto"></audio>
+<script>
+window.__a = { played: false, error: null };
+const a = document.getElementById('a');
+document.getElementById('play').onclick = () => {
+  a.play().then(() => { window.__a.played = true; })
+          .catch((e) => { window.__a.error = e.name + ': ' + e.message; });
+};
+document.getElementById('go').onclick = () => location.assign('/b.html');
+document.getElementById('rep').onclick = () => location.replace('/b.html');
+</script>
+</body>
+</html>

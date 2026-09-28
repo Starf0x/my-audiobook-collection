@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.56.** This document describes what the app is, how every
+**Version described: 2.6.64.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.56` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.64` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,8 +101,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1255 | Express app: every route, and nothing else |
-| `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
+| `server/index.js` | 1266 | Express app: every route, and nothing else |
+| `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 565 | walking the library, reading tags, filing books |
@@ -122,15 +122,15 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
-| `server/ha.js` | 445 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
-| `server/abs.js` | 672 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/index.html` | 327 | the admin page: columns, dialogs |
-| `public/app.js` | 2486 | the admin page's behaviour |
+| `public/app.js` | 2488 | the admin page's behaviour |
 | `public/listen.html` | 92 | the listening page |
 | `public/shelf.js` | 528 | the listening page’s behaviour |
 | `public/style.css` | 673 | the whole look, every page, phone included |
@@ -324,6 +324,13 @@ checkout → `docker/setup-buildx-action@v3` → `docker/login-action@v3` →
 `type=raw,value=latest,enable={{is_default_branch}}`) →
 `docker/build-push-action@v6` for `linux/amd64,linux/arm64` →
 `peter-evans/dockerhub-description@v4` (on the tag, the only run there is).
+
+`.github/workflows/test.yml` is the other one: **Checks**, on every push to
+`main`, every `v*` tag and every pull request. `npm ci --omit=dev` then
+`npm test`, on the same node major the image is built with — a check that passes
+on another version and fails in the container has told nobody anything. It does
+not gate the image build; the two run beside each other, and a red Checks run on
+a tag is a reason to look before pulling.
 
 Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`.
 
@@ -2254,7 +2261,25 @@ own fixture library of real (silent) MPEG frames, starting the server on its own
 port with its own `DATA_DIR`, asserting with a one-line `check(label, got, want)`,
 and printing `all checks passed`. UI suites drive headless Edge over CDP
 (`--headless=new --remote-debugging-port=9222`) and evaluate expressions in the
-page. They live outside the image and are not shipped.
+page. `.dockerignore` keeps them out of the image; they are not shipped, which is
+not the same as not kept.
+
+**What is in the repository, and what is only described here.** Until 2.6.64 the
+suites lived on one machine and nothing in `tests/` was committed at all: this
+table named seventy-four of them and a clone had none, so the checks the spec
+leans on could not be run by anybody who had only the spec. These nine are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the seven that run
+anywhere:
+
+| In the repository | |
+| --- | --- |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows |
+| `plays-on` | drives headless Edge, so it is run by hand |
+
+The rest of the table below is a record of what was checked while the app was
+built, kept because it says what each rule is *for* — but those scripts are not
+here, and a row in it is not a check anybody can run.
 
 Server suites:
 
@@ -2369,7 +2394,8 @@ to insert order and looks broken when the app is right.
 9. `trash.js`, `validate.js`, `covers.js` and their maintenance lists; make
    `validate-test` and `covers-test` pass.
 10. `work()`, the per-job bars and the greying; make `greyed-button` pass.
-11. README (which is also the Docker Hub page), the wiki, the workflow. Bump,
+11. README (which is also the Docker Hub page), the wiki, the workflow. `npm
+    test` before the commit, not after the push. Bump,
     commit, tag, push, and check the build the tag starts. The file table in §4
     counts lines, so it goes stale at every change: put the real counts back with
     the bump, or the table stops being something a reproduction can be checked
@@ -2405,6 +2431,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.64 | the checks are in the repository and run on every push, the dependency advisory is cleared, and the smaller things the read turned up |
 | 2.6.56 | one job at a time on the server rather than only in the page, a password that costs the guesser, and what the open routes will take |
 | 2.6.48 | what this app fetches when it is told an address, what it writes into a playlist, and which Home Assistant its token belongs to |
 | 2.6.40 | three jobs that could finish without having done the work: a swept-up half-copy, tag writes that answer `false` counted as the failures they are, and a conversion lock taken before the first await |

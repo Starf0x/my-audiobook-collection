@@ -89,6 +89,25 @@ const tracksOf = (id) => db.prepare(
 // per part, over a share. The client wants a size nowhere — `FileMetadata.size`
 // has a default — and the minified shape already answered 0, so the two now agree
 // instead of contradicting each other about the same book.
+// What a file really is, from its name. This app plays .m4b, .ogg, .flac and
+// .opus as well as MP3 — *Needs converting* exists because of it — and telling
+// Music Assistant that every one of them is audio/mpeg is a lie its player then
+// acts on. The extension is what this app has: nothing here re-reads the header
+// per request, and the scan already refused anything it could not read.
+const KINDS = {
+  '.mp3': ['mp3', 'audio/mpeg'],
+  '.m4a': ['aac', 'audio/mp4'],
+  '.m4b': ['aac', 'audio/mp4'],
+  '.ogg': ['vorbis', 'audio/ogg'],
+  '.opus': ['opus', 'audio/ogg'],
+  '.flac': ['flac', 'audio/flac'],
+};
+const kindOf = (name) => {
+  const ext = (String(name).match(/\.[^.]+$/) || ['.mp3'])[0].toLowerCase();
+  const [codec, mime] = KINDS[ext] || KINDS['.mp3'];
+  return { ext, format: ext.slice(1), codec, mime };
+};
+
 const fileMeta = (t) => {
   const name = t.path.split(/[\\/]/).pop() || `${t.idx + 1}.mp3`;
   return {
@@ -138,6 +157,7 @@ const audio = (b, base) => {
   const list = [];
   for (const t of tracks) {
     const meta = fileMeta(t);
+    const kind = kindOf(meta.filename);
     const seconds = t.duration || 0;
     files.push({
       index: t.idx + 1,
@@ -148,11 +168,11 @@ const audio = (b, base) => {
       manuallyVerified: false,
       exclude: false,
       error: null,
-      format: 'mp3',
+      format: kind.format,
       duration: seconds,
-      codec: 'mp3',
+      codec: kind.codec,
       timeBase: '1/1000',
-      mimeType: 'audio/mpeg',
+      mimeType: kind.mime,
     });
     list.push({
       index: t.idx + 1,
@@ -164,7 +184,7 @@ const audio = (b, base) => {
       // token in the query
       contentUrl: `/api/items/${b.id}/file/${t.id}`,
       metadata: meta,
-      mimeType: 'audio/mpeg',
+      mimeType: kind.mime,
     });
     at += seconds;
   }

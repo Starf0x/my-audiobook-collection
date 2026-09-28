@@ -17,7 +17,7 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, haSettings, saveHaSettings, haPing, haPlayers,
-  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush, sameSecret } from './ha.js';
+  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush, sameSecret, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
 import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -97,7 +97,8 @@ app.post('/api/admin/unlock', wrap(async (req, res) => {
   // Secure only where it means something: this app is normally reached over plain
   // http on a home network, and a Secure cookie there is a cookie the browser
   // throws away — the password would be asked for again on every page.
-  const https = (req.headers['x-forwarded-proto'] || req.protocol || '').split(',')[0].trim() === 'https';
+  const https = ((trustProxy() && req.headers['x-forwarded-proto']) || req.protocol || '')
+    .split(',')[0].trim() === 'https';
   if (token) {
     res.setHeader('Set-Cookie', `admin=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
       + (https ? '; Secure' : ''));
@@ -703,6 +704,16 @@ app.get('/api/books/:id', (req, res) => {
   const rel = gf ? path.relative(path.resolve(gf.path), here).split(path.sep) : [];
   book.folderSeries = rel.length >= 3 ? rel[1] : '';
   book.coverV = coverV(book);
+  // Where the book sits on disk is the admin's business: the edit dialog shows
+  // it and Move… prefills from it, and neither of those exists on the listening
+  // page — which is the page this route answers to anybody on the network.
+  // (With no password set everybody is the admin, so a private install is
+  // unchanged.)
+  if (!isAdmin(req)) {
+    delete book.path;
+    delete book.folderSeries;
+    delete book.cover;
+  }
   // the same question for the player: a finished book starts at the top
   const on = book.progress ? book.tracks[book.progress.track_idx] : null;
   book.finished = !!book.progress && isFinished({

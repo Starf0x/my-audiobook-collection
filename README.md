@@ -1139,3 +1139,21 @@ reopening it picks the bar back up. **Stop** leaves it exactly where it is — w
 is left to do is a queue in the database — and the button then reads *Carry on
 writing tags*. A container that restarts mid-run leaves the run paused rather
 than starting it again on its own, with its place kept.
+
+## Checking it yourself
+
+The checks live in `tests/` and run with plain node — no framework, no
+dependency, nothing to install beyond what the app already needs:
+
+```bash
+npm ci
+npm test
+```
+
+Each suite builds its own library of real (silent) MP3 frames in `fixtures/`,
+starts the server on a port of its own, and prints a line per check. Two of them
+are left out of `npm test` and say so when it finishes: one unpacks its archive
+with PowerShell, so it needs Windows, and one drives a headless browser.
+
+The same run happens on GitHub for every push and pull request, on the node
+version the container is built with.
