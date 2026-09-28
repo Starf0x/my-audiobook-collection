@@ -217,7 +217,7 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 .note.new { color: var(--dim); }
 .note.part { color: #ff5f5f; }
 .note.done { color: #35d07f; }
-.card .cover { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.card .cover { display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; }
 .listened { display: flex; align-items: center; gap: 6px; justify-content: center; color: var(--dim); font-size: 12px; cursor: pointer; margin-top: 2px; }
 .listened input { accent-color: #35d07f; padding: 0; width: 15px; height: 15px; cursor: pointer; }
 
@@ -257,7 +257,7 @@ body.maintenance main { grid-template-columns: 230px 1fr; }
 .shelf { margin-bottom: 6px; }
 .shelf-title { color: var(--accent2); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin: 6px 0 10px; }
 .tiles { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
-.tile { flex: 0 0 auto; width: 104px; cursor: pointer; }
+.tile { flex: 0 0 auto; width: 104px; cursor: pointer; position: relative; }
 .tile img { display: block; width: 104px; height: 156px; object-fit: cover; border-radius: 8px;
   background: var(--panel2); border: 1px solid var(--line); }
 .tile:hover img { border-color: var(--accent); }
@@ -671,3 +671,33 @@ dialog label.pick input {
   padding: 10px 10px; border-radius: 8px; font-weight: 500; color: var(--text);
 }
 .cmenu button:hover { background: var(--panel2); filter: none; }
+
+/* --- the heart on a cover ------------------------------------------------
+   It sits on the picture, top right, opposite the Listened tick. Grey until it
+   is pressed and red for good after — the one thing on a card that says
+   something about the person rather than about the book. */
+.card .cover .heart, .tile .heart {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  width: 28px; height: 28px; padding: 0; line-height: 1;
+  border: 0; border-radius: 999px; cursor: pointer;
+  background: rgba(14, 16, 20, .62); color: #ffffff8c;
+  font-size: 15px; backdrop-filter: blur(4px);
+}
+.card .cover .heart:hover, .tile .heart:hover { color: #fff; filter: none; }
+.card .cover .heart.on, .tile .heart.on { color: #ff5f5f; }
+.card .cover .heart.on:hover, .tile .heart.on:hover { color: #ff8c8c; }
+
+/* the way in, when nobody is signed in yet */
+#gate { width: min(440px, 92vw); }
+#gate h2 { margin-bottom: 16px; }
+#gate .row { margin-top: 16px; }
+#gate .hint.missing { min-height: 1.2em; margin: 8px 0 0; }
+#gate button.linkish {
+  background: none; border: 0; padding: 0; color: var(--accent2);
+  text-decoration: underline; cursor: pointer; font: inherit;
+}
+#gate button.linkish:hover { color: #fff; filter: none; }
+#whoAmI { margin-right: 4px; }
+
+/* a maintenance row with something waiting on it says so without being read */
+#genres li.wants .count { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 7px; }

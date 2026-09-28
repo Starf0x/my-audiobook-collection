@@ -233,6 +233,28 @@ async function finishedListening() {
   markPlaying();
 }
 
+// --- what is playing, for whoever is being told about it ------------------
+// Only the changes, and only from here: a position arriving every ten seconds
+// says somebody is listening, never that they just pressed play. The server
+// decides what to do with it — today that is a line in Discord, if one is set up.
+let announced = 0;
+const nowPlaying = (on, how) => {
+  const id = state.book ? state.book.id : announced;
+  if (!id) return;
+  if (on && announced === id) return;
+  if (!on && announced !== id) return;
+  announced = on ? id : 0;
+  post('/api/playing', { bookId: id, playing: on, how }).catch(() => {});
+};
+audio.addEventListener('play', () => nowPlaying(true));
+audio.addEventListener('pause', () => { if (!audio.ended) nowPlaying(false, 'paused'); });
+audio.addEventListener('ended', () => {
+  // the last track running out is the end of the book; any other leads into the
+  // next one and is not a stop
+  if (state.book && state.track >= state.book.tracks.length - 1) nowPlaying(false, 'finished');
+});
+window.addEventListener('pagehide', () => { if (announced) nowPlaying(false, 'left the page'); });
+
 // an event object is the first argument of a handler, and would read as "leaving"
 audio.onpause = () => saveProgress();
 setInterval(() => { if (!audio.paused) saveProgress(); }, 10000);

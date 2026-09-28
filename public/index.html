@@ -14,7 +14,8 @@
   <input id="q" type="search" class="search" placeholder="Search books, authors, series…"
     autocomplete="off" spellcheck="false">
   <div class="spacer"></div>
-  <select id="user"></select>
+  <span id="whoAmI" class="ver" title="Signed in as"></span>
+  <button id="signOut" class="ghost" hidden>Sign out</button>
   <button id="adminBtn" class="ghost" hidden>Lock</button>
   <select id="scanWhich" title="Which library folder to scan"></select>
   <button id="scan" class="ghost">Scan library</button>
@@ -31,6 +32,10 @@
 <main>
   <aside id="genres">
     <div class="col-title">Genres<button class="back linkish" id="toBooks">Books ›</button></div><ul></ul>
+    <div class="col-title" id="favTitle" hidden>Favourites</div>
+    <ul id="favRows" hidden>
+      <li id="favList"><span>Books you&rsquo;ve hearted</span><span class="count" id="favCount">0</span></li>
+    </ul>
     <div class="col-title" id="listenedTitle" hidden>Listened</div>
     <ul id="listenedRows" hidden>
       <li id="listenedList"><span>Books you&rsquo;ve listened to</span><span class="count" id="listenedCount">0</span></li>
@@ -42,6 +47,7 @@
       <li id="convertedList"><span>Converted</span><span class="count" id="convertedCount">…</span></li>
       <li id="brokenList"><span>Broken on disk</span><span class="count" id="brokenCount">…</span></li>
       <li id="seriesList"><span>Series to complete</span><span class="count" id="seriesCount">…</span></li>
+      <li id="accountList"><span>Accounts</span><span class="count" id="accountCount">…</span></li>
       <li id="skippedList" hidden><span>Not counted</span><span class="count" id="skippedCount">0</span></li>
       <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
       <li id="replacedList"><span>Replaced</span><span class="count" id="replacedCount">…</span></li>
@@ -79,6 +85,35 @@
 </footer>
 
 <div id="status"></div>
+
+<!-- The way in. Nothing behind it is drawn until somebody is signed in: the
+     library, the shelves and the player all wait for this. -->
+<dialog id="gate">
+  <h2>🎧 My Audiobook Collection</h2>
+  <div id="gateSignIn">
+    <p class="hint">Sign in to carry on where you were. Where you got to in a book, the books
+      you have finished and the ones you have hearted are kept per person.</p>
+    <label>Name</label><input id="giName" autocomplete="username">
+    <label>Password</label><input id="giPass" type="password" autocomplete="current-password">
+    <p class="hint missing" id="giSaid"></p>
+    <div class="row"><button id="giGo">Sign in</button>
+      <button id="giAsk" class="linkish">I have no account yet</button></div>
+  </div>
+
+  <div id="gateAsk" hidden>
+    <p class="hint">Ask for an account. The administrator sees your request and decides;
+      once it is approved you can sign in with the name and password you choose here.</p>
+    <label>The name you want to listen under</label><input id="gaName" autocomplete="username">
+    <label>A password (at least 8 characters)</label><input id="gaPass" type="password" autocomplete="new-password">
+    <label>Why would you like access?</label>
+    <textarea id="gaWhy" rows="3" placeholder="A sentence is enough."></textarea>
+    <label class="pick"><input type="checkbox" id="gaKnows"> I know the administrator</label>
+    <p class="hint">No email address is asked for and none is kept.</p>
+    <p class="hint missing" id="gaSaid"></p>
+    <div class="row"><button id="gaGo">Ask for an account</button>
+      <button id="gaBack" class="linkish">I do have an account</button></div>
+  </div>
+</dialog>
 
 <dialog id="settings">
   <h2>Settings</h2>
@@ -121,6 +156,20 @@
     <code>chown -R 99:100 /mnt/user/Audiobooks</code>.</p>
   <button id="checkPerms" class="ghost">Check folder permissions</button>
   <div id="permsOut"></div>
+
+  <label>Telling Discord</label>
+  <p class="hint">A webhook address from a Discord channel — <em>Channel settings → Integrations →
+    Webhooks</em>. With one saved, this app posts a line there when somebody asks for an account,
+    when somebody signs in, and when a book starts or stops. Nothing else is sent, and the address
+    is never shown back to this page.</p>
+  <p class="hint" id="hookState"></p>
+  <div class="row">
+    <input id="hookUrl" type="password" placeholder="https://discord.com/api/webhooks/…"
+      autocomplete="off">
+    <button id="hookSave" class="ghost">Save</button>
+    <button id="hookTest" class="ghost">Send a test line</button>
+    <button id="hookForget" class="ghost danger">Forget it</button>
+  </div>
 
   <label>Home Assistant</label>
   <p class="hint">A page of its own: the address of your Home Assistant, one long-lived access token
@@ -321,6 +370,8 @@
 
 <div id="toast"></div>
 <script src="app.js"></script>
+<!-- signing in, and the hearts: both pages, one copy -->
+<script src="account.js"></script>
 <!-- after the page's own script: the player leans on what that declares -->
 <script src="player.js"></script>
 </body>
