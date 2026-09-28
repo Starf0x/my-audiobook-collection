@@ -468,3 +468,11 @@ here:
 * **A source path the page always gets right is still a path from a request.**
   Import and filing moved whatever folder the body named, anywhere on the host.
   The admin page never sends anything else — and the page is not what arrives.
+* **A lock after the first await is not a lock.** Converting set its `running`
+  flag after probing every file of the book, so two requests a moment apart both
+  passed the route's check, both passed the module's, and both converted the same
+  book into the same folder with the same temp names.
+* **`false` is not a failure until somebody counts it.** `writeTag` answers false
+  for a file it cannot open. Nothing counted those, so a book whose every file
+  was unwritable reported `written: 0` with no error, the run called it done, and
+  `books.tagged` claimed tags the files did not carry.

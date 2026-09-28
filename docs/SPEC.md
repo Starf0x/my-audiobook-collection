@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.32.** This document describes what the app is, how every
+**Version described: 2.6.40.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.32` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.40` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,17 +101,17 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1209 | Express app: every route, and nothing else |
+| `server/index.js` | 1210 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
 | `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 565 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 699 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 714 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
-| `server/tagall.js` | 131 | the resumable whole-collection tag run |
-| `server/import.js` | 447 | import candidates, quality comparison, filing |
+| `server/tagall.js` | 141 | the resumable whole-collection tag run |
+| `server/import.js` | 459 | import candidates, quality comparison, filing |
 | `server/trash.js` | 180 | move, delete to trash, restore, purge |
 | `server/validate.js` | 119 | checking every book against the disk |
 | `server/covers.js` | 67 | tidying unused cover files, zipping them |
@@ -119,7 +119,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
-| `server/convert.js` | 287 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
+| `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 408 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 661 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
@@ -128,7 +128,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/index.html` | 327 | the admin page: columns, dialogs |
-| `public/app.js` | 2483 | the admin page's behaviour |
+| `public/app.js` | 2486 | the admin page's behaviour |
 | `public/listen.html` | 92 | the listening page |
 | `public/shelf.js` | 528 | the listening page’s behaviour |
 | `public/style.css` | 673 | the whole look, every page, phone included |
@@ -2152,6 +2152,23 @@ skips them will reproduce the bugs.
     evidence of anything.
 
 
+46. **A lock is taken before the first `await`, not after it.** `convertBook`
+    set `convertProgress.running` after probing every source — several awaits in
+    — so two requests a moment apart both read it as false and both converted
+    the same book into the same folder. A check in the route is not a lock
+    either: two requests can both pass it.
+47. **A write that answers `false` is a failure, and silence is not success.**
+    `writeTag` resolves false for a file it could not open; nobody counted the
+    falses, so a book whose every file was unwritable came back `written: 0` with
+    no error, and the whole-collection run counted it done — *0 file(s) tagged in
+    200 book(s)*. Count them, say which, and let `books.tagged` claim only what
+    every file really carries, since that column is what *Needs tags* reads.
+48. **A half-done copy is swept before it is reported.** `moveFolder` falls back
+    to copying across devices and verifies every size; when that came up short it
+    threw and left the partial destination standing — which made the import's own
+    rollback skip itself, because it only restores when the destination is free.
+    The library then pointed at a broken folder with the good copy renamed
+    `Replaced - …` beside it.
 ## 10. Measured performance
 
 Numbers from the machine this was built on (20 CPUs; the share is SMB on a NAS).
@@ -2347,6 +2364,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.40 | three jobs that could finish without having done the work: a swept-up half-copy, tag writes that answer `false` counted as the failures they are, and a conversion lock taken before the first await |
 | 2.6.32 | a path from outside is resolved and contained before it reaches the disk — covers, import sources, filing sources — and a scan that could read no library removes nothing |
 | 2.6.24 | housekeeping: the file table counts what the files hold, two comments back beside what they explain, and the last of the removed series table swept out of the stylesheet |
 | 2.6.16 | the listening page's script is `shelf.js`: a reverse proxy in front of one install refused `/listen.js` outright |

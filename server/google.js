@@ -671,6 +671,7 @@ async function apply_(book, pick, writeTags, progress) {
     const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
       .map((t) => t.path).filter((p) => p.toLowerCase().endsWith('.mp3'));
     progress.total = files.length;
+    const unwritten = [];
     // renumber in the order the tracks already play, zero padded to at least two digits
     const width = Math.max(2, String(files.length).length);
     const total = String(files.length).padStart(width, '0');
@@ -681,12 +682,26 @@ async function apply_(book, pick, writeTags, progress) {
         const trackNumber = `${String(i + 1).padStart(width, '0')}/${total}`;
         progress.current = path.basename(file);
         if (await writeTag(file, { ...tags, trackNumber })) progress.written++;
+        else unwritten.push(path.basename(file));
         progress.done++;
       }));
     } catch (e) {
       progress.error = e.message;
     }
-    if (progress.written) {
+    // A file that would not be written is a failure, and it used to be silence:
+    // `writeTag` answers false for an unwritable file, nobody counted the falses,
+    // and a book where every single write failed came back as `written: 0` with
+    // no error at all — which the whole-collection run then counted as a book
+    // done. "Finished: 0 file(s) tagged in 200 book(s)" was a true sentence
+    // nobody could act on.
+    if (unwritten.length && !progress.error) {
+      progress.error = `${unwritten.length} of ${files.length} file(s) could not be written`
+        + ` — the first is ${unwritten[0]}`;
+    }
+    // and the row may only claim what the files really carry: it is what Needs
+    // tags counts, so a part-written book that claims everything leaves that list
+    // for good while its files are still missing the tags
+    if (progress.written && !unwritten.length) {
       const present = [
         ['album', tags.album], ['title', tags.title], ['artist', tags.artist], ['album artist', tags.performerInfo],
         ['narrator', tags.composer], ['genre', tags.genre], ['year', tags.year],
@@ -695,5 +710,5 @@ async function apply_(book, pick, writeTags, progress) {
       db.prepare('UPDATE books SET tagged = ? WHERE id = ?').run(present, book.id);
     }
   }
-  return { written: progress.written };
+  return { written: progress.written, failed: progress.error ? 1 : 0, why: progress.error || '' };
 }

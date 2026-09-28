@@ -326,10 +326,11 @@ app.get('/api/convertible', requireAdmin, wrap(async (req, res) => {
   res.json({ tools: !why, why, books: convertible() });
 }));
 app.get('/api/convert/status', (req, res) => res.json(convertProgress));
-app.post('/api/convert/:id', requireAdmin, wrap(async (req, res) => {
-  if (convertProgress.running) throw new Error('A book is being converted already. Wait for it to finish.');
-  res.json(await convertBook(req.params.id));
-}));
+// convertBook takes the lock itself, before its first await, and refuses in the
+// same words. Checking it here as well is not a second guard — two requests can
+// both pass a check in a route — it is only a cheaper way to the same sentence.
+app.post('/api/convert/:id', requireAdmin, wrap(async (req, res) =>
+  res.json(await convertBook(req.params.id))));
 
 app.get('/api/converted', requireAdmin, (req, res) => res.json(listConverted()));
 // before /api/converted/:id, which would otherwise read "all" as an id
