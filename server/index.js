@@ -12,6 +12,10 @@ import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probe
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
+import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats, adminName,
+  asName, WEEK } from './listeners.js';
+import { askedForAnAccount, signedIn, startedListening, stoppedListening,
+  saveWebhook, webhookSet, lastSaid } from './notify.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
@@ -87,6 +91,44 @@ const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
   return res.status(e.status || (e.retryAfter ? 429 : 400)).json({ error: e.message });
 });
 
+// --- who may ask at all -------------------------------------------------
+// The listening page used to answer anybody who could reach it. It does not any
+// more: an account is asked for, the admin approves it, and only then is there
+// anything to see. This is the one gate, put here rather than on fifteen routes
+// because fifteen is fourteen chances to forget one — the routes keep their own
+// stricter guards (`requireAdmin`, `forMA`, `forHA`) on top of it.
+//
+// Four kinds of caller get past: a signed-in listener, the admin, Home Assistant
+// with its token, and Music Assistant with its own. The last two matter because
+// a media player fetches the audio itself and has no cookie of ours.
+const WITHOUT_AN_ACCOUNT = new Set([
+  '/api/admin', '/api/admin/unlock', '/api/admin/lock',
+  '/api/account/me', '/api/account/request', '/api/account/signin', '/api/account/signout',
+]);
+
+const whoIsAsking = (req) => {
+  const listener = listenerOf(req);
+  if (listener) return { listener, admin: isAdmin(req) };
+  if (isAdmin(req)) return { listener: adminName() || '', admin: true };
+  return null;
+};
+
+app.use('/api', (req, res, next) => {
+  // inside a mount, `req.path` is what is left after the mount point: this is
+  // `/account/me`, not `/api/account/me`, and comparing the wrong one shut the
+  // sign-in routes along with everything else
+  if (WITHOUT_AN_ACCOUNT.has(req.baseUrl + req.path)) return next();
+  const who = whoIsAsking(req);
+  if (who) {
+    req.listener = who.listener;
+    req.isAdmin = who.admin;
+    return next();
+  }
+  // the two machines that hold a token of their own rather than a cookie
+  if ((inboundToken() && tokenOk(req)) || (absEnabled() && absListener(req) !== null)) return next();
+  return res.status(401).json({ error: 'Sign in first.' });
+});
+
 // --- who may change things ---------------------------------------------
 app.get('/api/admin', (req, res) => res.json({
   required: adminRequired(), admin: isAdmin(req),
@@ -153,11 +195,80 @@ app.get('/api/permissions', requireAdmin, (req, res) => {
   res.json({ writingAs: writingAs(), places });
 });
 
-// --- users -------------------------------------------------------------
-// A listener has no password, so what keeps one person out of another person's
-// place in a book is that a browser is only ever offered the names it has said
-// itself. A browser that has never been here is offered nothing and has to type
-// a name; the names it has used are kept in a cookie of its own.
+// --- accounts ------------------------------------------------------------
+// Asking for one, signing in, signing out, and "who am I". These four are the
+// only routes under /api that answer somebody with no account, because they are
+// the ones somebody with no account needs.
+const aWeek = (req) => {
+  const https = ((trustProxy() && req.headers['x-forwarded-proto']) || req.protocol || '')
+    .split(',')[0].trim() === 'https';
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(WEEK / 1000)}${https ? '; Secure' : ''}`;
+};
+
+app.get('/api/account/me', (req, res) => {
+  const listener = listenerOf(req);
+  res.json({
+    name: listener || (isAdmin(req) && adminRequired() ? adminName() : ''),
+    admin: isAdmin(req),
+    // with no ADMIN_PASSWORD set nothing is locked and nothing has to sign in:
+    // that is still what a private install looks like
+    required: adminRequired(),
+    signedIn: !!listener || (isAdmin(req) && adminRequired()),
+  });
+});
+
+app.post('/api/account/request', wrap(async (req, res) => {
+  const said = await requestAccount(req.body || {});
+  askedForAnAccount(said);
+  res.json({ asked: true, name: said.name });
+}));
+
+app.post('/api/account/signin', wrap(async (req, res) => {
+  const from = req.ip || req.socket.remoteAddress || '';
+  const name = String((req.body || {}).name || '');
+  // the admin signs in here too, with the name and password from the container
+  if (adminName() && name.trim().toLowerCase() === adminName().toLowerCase()) {
+    const { token } = await unlock((req.body || {}).password, from);
+    if (token) res.setHeader('Set-Cookie', `admin=${token}; ${aWeek(req)}`);
+    return res.json({ name: adminName(), admin: true });
+  }
+  const said = await signIn({ name, password: (req.body || {}).password, from });
+  res.setHeader('Set-Cookie', `listener=${said.token}; ${aWeek(req)}`);
+  signedIn(said.name);
+  return res.json({ name: said.name, admin: false, claimed: said.claimed });
+}));
+
+app.post('/api/account/signout', (req, res) => {
+  signOut(req);
+  lock(tokenOf(req));
+  res.setHeader('Set-Cookie', [
+    'listener=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+    'admin=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0',
+  ]);
+  res.json({ signedOut: true });
+});
+
+// --- the admin's view of them --------------------------------------------
+app.get('/api/accounts', requireAdmin, (req, res) => res.json({
+  admin: adminName(), accounts: withStats(),
+}));
+
+app.post('/api/accounts/:name/state', requireAdmin, wrap(async (req, res) =>
+  res.json(decide(req.params.name, (req.body || {}).state))));
+
+app.post('/api/accounts/:name/remove', requireAdmin, wrap(async (req, res) =>
+  res.json(remove(req.params.name))));
+
+// Who a write belongs to. Once anything is locked it is the signed-in listener
+// and only them: a name in the body would let one account write into another's
+// place in a book, which is the whole thing accounts were added for. With no
+// ADMIN_PASSWORD set there are no sessions and no lock — the private install the
+// app has always supported — and then the name in the request is all there is.
+const whoWrites = (req) => (adminRequired() ? (req.listener || '') : asName(req.body?.user));
+
+// The names this browser has signed in as. It is a convenience, not a door —
+// the door is the session cookie — and it is what fills the name in on a page
+// somebody comes back to.
 const WHO = 'whoami';
 
 const claimed = (req) => {
@@ -175,32 +286,6 @@ const claimed = (req) => {
 const claim = (res, names) => res.setHeader('Set-Cookie',
   `${WHO}=${Buffer.from(JSON.stringify(names)).toString('base64url')}`
   + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=34560000');
-
-app.get('/api/users', (req, res) => {
-  const known = new Set(db.prepare('SELECT name FROM users').all().map((u) => u.name));
-  res.json(claimed(req).filter((n) => known.has(n)).sort());
-});
-
-// A listener has no password by design (§7.12), so these two routes take what
-// anybody on the network sends. That is the model and it stays — what it is not
-// is a reason to write whatever arrives into the database: a name is a name, and
-// a place in a book is two numbers and a book that exists.
-const A_NAME = 60;
-const asName = (said) => String(said ?? '')
-  // control characters would make a nonsense of every list this name appears in
-  .replace(new RegExp('[\\u0000-\\u001f\\u007f]', 'g'), ' ')
-  .trim()
-  .slice(0, A_NAME);
-
-app.post('/api/users', (req, res) => {
-  const name = asName(req.body.name);
-  if (!name) return res.json({ ok: true });
-  db.prepare('INSERT OR IGNORE INTO users (name) VALUES (?)').run(name);
-  const names = claimed(req);
-  if (!names.includes(name)) names.push(name);
-  claim(res, names);
-  res.json({ ok: true });
-});
 
 // --- settings ----------------------------------------------------------
 app.get('/api/settings', requireAdmin, (req, res) => res.json({
@@ -669,7 +754,7 @@ app.get('/api/search', (req, res) => {
 });
 
 app.post('/api/listened', (req, res) => {
-  const user = asName(req.body.user);
+  const user = whoWrites(req);
   const bookId = Number(req.body.bookId);
   const done = !!req.body.done;
   if (!user) return res.status(400).json({ error: 'No user' });
@@ -688,6 +773,64 @@ app.post('/api/listened', (req, res) => {
     ON CONFLICT(user, book_id) DO UPDATE SET done = 1, updated = excluded.updated`)
     .run(user, bookId);
   res.json({ ok: true });
+});
+
+// --- the hearts ----------------------------------------------------------
+// One row per person per book. The left column reads this, every card reads it,
+// and it is written by clicking the heart — so it answers the same shape a book
+// list does and the page needs no second kind of card.
+app.get('/api/favourites', (req, res) => {
+  const user = whoWrites(req) || asName(req.query.user);
+  const rows = db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, b.duration, b.narrator,
+                                  b.year, b.description, b.tagged, ${SERIES} AS series, b.series_no,
+                                  p.position > 0 AS started, ${KEPT}
+                           FROM favourites f JOIN books b ON b.id = f.book_id
+                           LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
+                           WHERE f.user = ?
+                           ORDER BY b.author, series, b.series_no, b.title`).all(user, user);
+  res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+    finished: isFinished({ ...b, trackSeconds }), favourite: true })));
+});
+
+app.post('/api/favourites/:id', wrap(async (req, res) => {
+  const user = whoWrites(req);
+  if (!user) return res.status(400).json({ error: 'Sign in first.' });
+  const id = Number(req.params.id);
+  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(id)) {
+    return res.status(404).json({ error: 'No such book' });
+  }
+  const on = !!(req.body || {}).on;
+  if (on) {
+    db.prepare(`INSERT INTO favourites (user, book_id, at) VALUES (?, ?, ?)
+                ON CONFLICT(user, book_id) DO NOTHING`).run(user, id, new Date().toISOString());
+  } else {
+    db.prepare('DELETE FROM favourites WHERE user = ? AND book_id = ?').run(user, id);
+  }
+  return res.json({ favourite: on, count: db.prepare('SELECT COUNT(*) AS n FROM favourites WHERE user = ?').get(user).n });
+}));
+
+// --- what is playing ------------------------------------------------------
+// The player says when a book starts and when it stops, because nothing else
+// can: a position arriving every ten seconds says somebody is listening, never
+// that they just pressed play. Only the changes are passed on — a page that
+// says "started" twice for one book is a page, not two starts.
+const playing = new Map(); // user -> book id
+app.post('/api/playing', (req, res) => {
+  const user = whoWrites(req);
+  const id = Number((req.body || {}).bookId);
+  const on = !!(req.body || {}).playing;
+  if (!user || !Number.isInteger(id)) return res.json({ ok: true });
+  const book = db.prepare('SELECT title, author FROM books WHERE id = ?').get(id);
+  if (!book) return res.json({ ok: true });
+  const was = playing.get(user);
+  if (on && was !== id) {
+    playing.set(user, id);
+    startedListening(user, book.title, book.author);
+  } else if (!on && was === id) {
+    playing.delete(user);
+    stoppedListening(user, book.title, (req.body || {}).how);
+  }
+  return res.json({ ok: true });
 });
 
 app.get('/api/books/:id', (req, res) => {
@@ -1093,6 +1236,18 @@ app.post('/api/ha/config', requireAdmin, (req, res) => {
   res.json(saved);
 });
 
+// --- telling Discord ------------------------------------------------------
+app.get('/api/notify', requireAdmin, (req, res) => res.json({ set: webhookSet(), last: lastSaid }));
+app.post('/api/notify', requireAdmin, wrap(async (req, res) =>
+  res.json(saveWebhook((req.body || {}).webhook))));
+app.post('/api/notify/test', requireAdmin, wrap(async (req, res) => {
+  if (!webhookSet()) throw new Error('No webhook address saved yet.');
+  const { say } = await import('./notify.js');
+  await say('🔔 My Audiobook Collection is set up to tell this channel about '
+    + 'new account requests, sign-ins, and books starting and stopping.');
+  res.json({ sent: !lastSaid.error, last: lastSaid });
+}));
+
 app.post('/api/ha/test', requireAdmin, wrap(async (req, res) => res.json(await haPing())));
 app.get('/api/ha/players', requireAdmin, wrap(async (req, res) => res.json(await haPlayers())));
 
@@ -1161,7 +1316,7 @@ const keptOne = db.prepare(`SELECT p.done, p.track_idx, p.position,
 const tickIt = db.prepare('UPDATE progress SET done = 1 WHERE user = ? AND book_id = ?');
 
 app.post('/api/progress', (req, res) => {
-  const user = asName(req.body.user);
+  const user = whoWrites(req);
   const bookId = Number(req.body.bookId);
   const trackIdx = Number(req.body.trackIdx);
   const position = Number(req.body.position);

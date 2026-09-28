@@ -1140,6 +1140,62 @@ is left to do is a queue in the database — and the button then reads *Carry on
 writing tags*. A container that restarts mid-run leaves the run paused rather
 than starting it again on its own, with its place kept.
 
+## Who may listen
+
+Two things on the container decide it, and they work together: **`ADMIN_USER`**
+and **`ADMIN_PASSWORD`**.
+
+Leave both empty and nothing is locked — the private install this began as.
+
+Set both and the whole app is shut, the listening page included. A visitor sees a
+sign-in card and nothing behind it. They press *I have no account yet* and give:
+
+* the name they want to listen under,
+* a password of their own choosing, at least eight characters,
+* a sentence saying why they would like access,
+* and a tick for whether they know you.
+
+**No email address is asked for and none is kept.** The request appears under
+**Accounts** in your left column with a number on it, showing their words and
+whether they claim to know you. You approve, refuse or delete. Once approved they
+sign in with the name and password they chose — there is nothing for you to send
+them.
+
+Signing in leaves a cookie good for **seven days that moves with them**: every
+visit pushes it out again, so it is seven days of not listening that ends it.
+
+*Accounts* also shows, per person, when they were last here — in days — how many
+books they have started and finished, how many hours that is, and how many they
+have hearted. **Delete** takes everything that was only about them: their place
+in every book, what they had finished, their hearts, and any browser still signed
+in as them. The books are untouched.
+
+If you had listeners before 2.7.0, they are all approved and carry no password
+yet; the first sign-in with such a name chooses one, and the Accounts page marks
+those names so an unclaimed one is easy to spot.
+
+## The ♥ on a book
+
+Every book has a small heart — on its card and on the shelves. Press it and it
+turns red and stays red, and the book appears under **Favourites** in the left
+column. Press it again and it goes grey and leaves the list. They are per person:
+what you heart is yours.
+
+## Telling Discord
+
+Settings takes a **Discord webhook address** (*Channel settings → Integrations →
+Webhooks*). With one saved, this app posts a line when:
+
+1. somebody asks for an account — with their reason and whether they say they
+   know you;
+2. a book starts or stops, saying which book and who;
+3. somebody signs in — your own sign-ins are not announced.
+
+Only a Discord webhook address is accepted, nothing is ever sent anywhere else,
+and the address is never shown back to the page. Names and titles are cleaned
+before they go out, so a book called `@everyone` cannot ring every phone in your
+server.
+
 ## Checking it yourself
 
 The checks live in `tests/` and run with plain node — no framework, no

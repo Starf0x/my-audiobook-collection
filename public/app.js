@@ -91,43 +91,9 @@ $('#adminBtn').onclick = async () => {
 };
 
 // --- users -------------------------------------------------------------
-async function loadUsers() {
-  const users = await api('/api/users');
-  $('#user').innerHTML = users.map((u) => `<option${u === state.user ? ' selected' : ''}>${esc(u)}</option>`).join('')
-    || '<option value="">(no user)</option>';
-  state.user = $('#user').value || '';
-  localStorage.user = state.user;
-  return users;
-}
-
-// Asked on a first visit, and whenever this browser remembers a name the server
-// does not know: without a name there is nowhere to keep a playback position.
-async function askWho(users, cancellable) {
-  $('#whoList').innerHTML = users.length
-    ? `<label>Pick a name</label><div class="row" style="flex-wrap:wrap">${users
-      .map((u) => `<button data-who="${esc(u)}">${esc(u)}</button>`).join('')}</div>`
-    : '';
-  $('#whoClose').hidden = !cancellable;
-  const pick = async (name) => {
-    state.user = localStorage.user = name;
-    $('#who').close();
-    await loadUsers();
-    $('#user').value = name;
-    await Promise.all([loadStats(), loadHome()]);
-  };
-  $('#whoList').querySelectorAll('button[data-who]').forEach((b) => { b.onclick = () => pick(b.dataset.who); });
-  $('#whoGo').onclick = async () => {
-    const name = $('#whoName').value.trim();
-    if (!name) return toast('Fill in a name first.');
-    try { await post('/api/users', { name }); } catch (e) { return toast(e.message); }
-    $('#whoName').value = '';
-    await pick(name);
-  };
-  $('#whoClose').onclick = () => $('#who').close();
-  $('#who').showModal();
-}
-
-$('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
+// Who is listening is the session now: the picker and the "Who is listening?"
+// dialog went with the open page they belonged to. account.js fills the name
+// in and offers the way out.
 $('#home').onclick = loadHome;
 // --- the books you are done with ---------------------------------------
 // A section of its own in the column beside the genres: the row is not there
@@ -208,6 +174,7 @@ const tile = (b, resumable) => {
   return `<div class="tile" data-id="${b.id}" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
        data-resume="${resumable ? 1 : 0}" title="${esc(b.title)}">
     <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async">
+    ${heart(b.id)}
     <div class="t">${esc(b.title)}</div>
     <div class="a">${esc(b.author)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
@@ -363,6 +330,7 @@ async function drawBooks(books, heading, kind = 'Series', states = []) {
       <div class="cover" data-glyph="▶">
         <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
           onclick="playBook(${b.id})" title="Play or pause">
+        ${heart(b.id)}
         <label class="listened">
           <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
         </label>
@@ -737,6 +705,7 @@ $('#tagAll').onclick = async () => {
 $('#tagAllStop').onclick = async () => {
   await post('/api/tagall/stop', {}).catch((e) => toast(e.message));
   await showTagAll();
+  await loadHook();
 };
 
 // --- import: file a folder from the import path under a genre and author ---
@@ -1020,6 +989,120 @@ $('#checkPerms').onclick = async () => {
 // Home Assistant has a page of its own: an address, a token and media players are
 // more than a dialog section can hold.
 $('#toHa').onclick = () => { location.href = '/ha'; };
+
+// --- accounts -------------------------------------------------------------
+// Who may listen, who has asked to, and what each of them has done with it.
+// A request is the only thing here that needs deciding, so the count beside the
+// row is the number of those and not the number of accounts: a count that never
+// changes is a count nobody reads.
+async function loadAccounts() {
+  const d = await api('/api/accounts').catch(() => ({ accounts: [] }));
+  state.accounts = d.accounts;
+  state.adminName = d.admin;
+  const waiting = d.accounts.filter((a) => a.state === 'pending').length;
+  $('#accountCount').textContent = String(waiting);
+  $('#accountList').classList.toggle('wants', !!waiting);
+  return d;
+}
+
+const ago = (a) => {
+  if (a.daysAgo === null) return 'never signed in';
+  if (a.daysAgo === 0) return 'here today';
+  return `${a.daysAgo} day${a.daysAgo === 1 ? '' : 's'} ago`;
+};
+
+const accountRow = (a) => `<div class="fix">
+    <div>
+      <strong>${esc(a.name)}</strong>
+      ${a.state === 'pending' ? '<span class="badge untagged">waiting for you</span>' : ''}
+      ${a.state === 'denied' ? '<span class="badge untagged">refused</span>' : ''}
+      ${a.hasPassword ? '' : '<span class="badge untagged" title="A name from before accounts existed. It is approved, and whoever signs in with it first chooses the password.">no password yet</span>'}
+      <div class="sub">Last here: ${esc(ago(a))}${a.signedIn ? ` · signed in on ${a.signedIn} browser(s)` : ''}</div>
+      <div class="sub">${a.started} book(s) started · ${a.finished} finished · ${a.hours} h listened · ${a.favourites} ♥</div>
+      ${a.reason ? `<div class="sub">“${esc(a.reason)}” — says they ${a.knowsAdmin ? 'know' : '<strong>do not know</strong>'} you</div>` : ''}
+      ${a.requestedAt ? `<div class="sub path">asked ${esc(new Date(a.requestedAt).toLocaleString())}</div>` : ''}
+    </div>
+    <div class="actions">
+      ${a.state !== 'approved' ? `<button data-approve="${esc(a.name)}">Approve</button>` : ''}
+      ${a.state === 'pending' ? `<button class="ghost" data-deny="${esc(a.name)}">Refuse</button>` : ''}
+      ${a.state === 'approved' ? `<button class="ghost" data-deny="${esc(a.name)}">Suspend</button>` : ''}
+      <button class="ghost danger" data-drop="${esc(a.name)}">Delete…</button>
+    </div>
+  </div>`;
+
+$('#accountList').onclick = async () => {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
+  $('#accountList').classList.add('active');
+  $('#authors ul').innerHTML = '';
+  const { accounts } = await loadAccounts();
+  const waiting = accounts.filter((a) => a.state === 'pending');
+  const rest = accounts.filter((a) => a.state !== 'pending');
+  $('#books .list').innerHTML = `<div class="row pager">
+      <span class="hint">${accounts.length} account(s)${state.adminName
+    ? ` · you are <strong>${esc(state.adminName)}</strong>, from the container`
+    : ' · no ADMIN_USER is set on the container, so nothing here is locked'}</span>
+    </div>
+    ${waiting.length ? `<div class="series-head">Waiting for you — ${waiting.length}</div>${waiting.map(accountRow).join('')}` : ''}
+    ${rest.length ? `<div class="series-head">Accounts</div>${rest.map(accountRow).join('')}`
+    : (waiting.length ? '' : '<div class="empty">Nobody has an account yet.</div>')}`;
+
+  const decide = (name, s) => work($('#accountList'), 'The change', async () => {
+    try { await post(`/api/accounts/${encodeURIComponent(name)}/state`, { state: s }); }
+    catch (e) { return toast(e.message); }
+    toast(s === 'approved' ? `${name} may listen.` : `${name} may not listen.`);
+    return $('#accountList').click();
+  });
+  $('#books .list').querySelectorAll('button[data-approve]')
+    .forEach((b) => { b.onclick = () => decide(b.dataset.approve, 'approved'); });
+  $('#books .list').querySelectorAll('button[data-deny]')
+    .forEach((b) => { b.onclick = () => decide(b.dataset.deny, 'denied'); });
+  $('#books .list').querySelectorAll('button[data-drop]').forEach((b) => {
+    b.onclick = () => work($('#accountList'), 'The delete', async () => {
+      if (!confirm(`Delete the account “${b.dataset.drop}”?\n\nEverything that was only about `
+        + 'them goes with it: where they were in every book, what they had finished, and what '
+        + 'they had hearted. The books themselves are untouched.')) return undefined;
+      try { await post(`/api/accounts/${encodeURIComponent(b.dataset.drop)}/remove`, {}); }
+      catch (e) { return toast(e.message); }
+      toast(`${b.dataset.drop} is gone.`);
+      return $('#accountList').click();
+    });
+  });
+};
+
+// --- telling Discord ------------------------------------------------------
+async function loadHook() {
+  const d = await api('/api/notify').catch(() => ({ set: false, last: {} }));
+  const last = d.last || {};
+  $('#hookState').innerHTML = d.set
+    ? `<strong class="ok">A webhook is saved.</strong> ${last.error
+      ? `<span class="missing">The last line failed: ${esc(last.error)}</span>`
+      : last.at ? `Last line sent ${esc(new Date(last.at).toLocaleString())} (${last.sent} in all).`
+        : 'Nothing sent yet.'}`
+    : '<strong class="warn">No webhook saved.</strong> Nothing is sent anywhere.';
+}
+
+$('#hookSave').onclick = () => work($('#hookSave'), 'Saving the webhook', async () => {
+  const url = $('#hookUrl').value.trim();
+  if (!url) return toast('Paste the webhook address first.');
+  try { await post('/api/notify', { webhook: url }); } catch (e) { return toast(e.message); }
+  $('#hookUrl').value = '';
+  toast('Saved. It is never shown back to this page.');
+  return loadHook();
+});
+
+$('#hookTest').onclick = () => work($('#hookTest'), 'The test line', async () => {
+  try { await post('/api/notify/test', {}); } catch (e) { return toast(e.message); }
+  await loadHook();
+  return toast('Sent — look in the channel.');
+});
+
+$('#hookForget').onclick = () => work($('#hookForget'), 'Forgetting the webhook', async () => {
+  if (!confirm('Forget the webhook? Nothing will be sent anywhere until a new one is saved.')) return undefined;
+  await post('/api/notify', { webhook: '-' }).catch((e) => toast(e.message));
+  toast('Forgotten.');
+  return loadHook();
+});
 
 // --- Series to complete -------------------------------------------------
 // Two questions in one list, and they are answered by different things. What is
@@ -1671,6 +1754,7 @@ $('#convertedList').onclick = async () => {
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
 const MAINTENANCE_ROWS = ['needsTags', 'convertList', 'convertedList', 'brokenList', 'skippedList',
+  'accountList',
   'importList', 'replacedList', 'trashList',
   // not maintenance, but a view of its own in the same column, and the same rule
   // holds: what is drawn again after a change is what was on screen
@@ -1690,7 +1774,7 @@ async function backToView() {
 async function refreshLibrary() {
   await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(),
     loadReplaced(), loadBroken(), loadSkipped(), loadListened(), loadConvertible(),
-    loadConverted(), loadSeriesCount(), importCountOnly()]);
+    loadConverted(), loadSeriesCount(), loadAccounts(), importCountOnly()]);
   await backToView();
 }
 
@@ -2461,22 +2545,16 @@ for (const id of MAINTENANCE_ROWS) {
 
 $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
 
-// A name first: the whole point of the app is remembering where you were.
-(async () => {
-  // read the remembered name first: loadUsers falls back to the first name in
-  // the list and writes that back, which would hide that this browser is new
-  const remembered = localStorage.user || '';
-  // this browser has been here before: say so, or the server would not know which
-  // names are its own to offer
-  if (remembered) await post('/api/users', { name: remembered }).catch(() => {});
+// Nothing is drawn until somebody is signed in: `account.js` calls this once it
+// knows who is asking. This page is the admin's, so it also sends anybody who is
+// merely a listener back to the shelves — that check is `loadPerm`.
+window.begin = async () => {
   await loadPerm();
-  const users = await loadUsers();
   await loadGenres();
   await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
     loadReplaced(), loadBroken(), loadSkipped(), loadConvertible(), loadConverted(),
-    loadSeriesCount()]);
+    loadSeriesCount(), loadAccounts()]);
   await loadHome();
-  if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
   // a scan another browser started is still running: follow it instead of
   // offering a button that would only be refused
   const tagging = await api('/api/tagall/status').catch(() => null);
@@ -2485,4 +2563,4 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
   if (scanning && scanning.running) {
     work($('#scan'), 'The scan', async () => finishScan(null, await trackProgress('/api/scan/status', 'Looking for books…')));
   }
-})();
+};
