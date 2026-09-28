@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.7.16.** This document describes what the app is, how every
+**Version described: 2.7.24.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.16` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.24` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,7 +101,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1460 | Express app: every route, and nothing else |
+| `server/index.js` | 1461 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 197 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -130,15 +130,17 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 163 | signing in and the hearts, on both pages, one copy |
+| `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
+| `public/accounts.js` | 161 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 320 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 379 | the admin page: columns, dialogs |
-| `public/app.js` | 2585 | the admin page's behaviour |
+| `public/index.html` | 380 | the admin page: columns, dialogs |
+| `public/app.js` | 2508 | the admin page's behaviour |
 | `public/listen.html` | 118 | the listening page |
 | `public/shelf.js` | 495 | the listening page’s behaviour |
-| `public/style.css` | 716 | the whole look, every page, phone included |
+| `public/style.css` | 760 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1655,11 +1657,28 @@ email address is asked for and none is kept — it would be one more thing to lo
 after for a thing the admin can settle by recognising the name. The row goes in
 `pending`.
 
-**Deciding.** *Accounts*, in the admin column, is the only list in this app whose
-count is the number of things waiting rather than the number of things there:
-approve, refuse, suspend, or delete. Deleting takes everything that was only
-about that person — their place in every book, what they had finished, their
-hearts, and every browser still signed in as them — and leaves the books alone.
+**Deciding.** *Accounts* is a page of its own at `/accounts`, reached from the
+Settings pulldown or from the row in the admin's column — which is a pointer
+rather than a second list, and keeps the count because the number waiting is the
+one thing worth seeing without going to look. A page rather than a pane for the
+same reason the Home Assistant page is one: a row per person with numbers on it
+is read rather than browsed, and wants width and stillness that the column beside
+a library has not got.
+
+Two **ticks** per person, and ticks rather than buttons on purpose: *May listen*
+and *May download* are states somebody is in, and a checkbox says "this is how it
+stands" where a button says "press me and something happens". Taking *May listen*
+off refuses the account and signs out every browser that was them; nothing they
+have is lost, and ticking it again puts them back where they were. *May download*
+is the admin's grant, beside the level rather than instead of it.
+
+**Delete** is the third thing on a row, and it takes everything that was only
+about that person: their place in every book, what they had finished, the books
+they had played to the end, what they had downloaded, their hearts, and every
+browser still signed in as them. The books themselves are untouched. The suite
+names those five tables one by one rather than counting them, because a table
+added later and forgotten there would leave somebody's traces behind after they
+had been deleted and nothing would say so.
 
 **Signing in.** scrypt with a random salt per account, off the main thread
 (`scryptSync` blocks the only thread this server has and the route asks for no
@@ -2007,6 +2026,9 @@ volume number, and category-as-genre buttons); *Edit metadata* (title, author, s
 series, narrator, year, description — each in a `.field` row with a **⧉** button that
 copies it, then a **Cover** box that takes a pasted, dropped or chosen picture
 (§7.8b), and the book's folder and file count at the foot, above the buttons); *Move…*.
+
+Two pages are one column rather than three, because they are read rather than
+browsed: `/ha` and `/accounts` (`body.one-column main.page`).
 
 **On a phone** (`@media (max-width: 720px)`): the three columns become one, and
 `document.body.dataset.col` — `genres` / `authors` / `books` — says which is on
@@ -2564,6 +2586,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.24 | the accounts and their statistics are a page of their own at `/accounts`, with a tick per person for may-listen and may-download rather than a row of buttons |
 | 2.7.16 | the Discord line in Settings says whether a webhook is saved: the call that fills it in had landed in the wrong handler |
 | 2.7.8 | ten levels over the books somebody has played to the end, with the icon and its name beside theirs; the author under the title in the player; downloading earned at the top level or handed over by the admin, listed per person and announced |
 | 2.7.0 | listeners are accounts: asked for with a reason, approved by the admin, signed in with a password and remembered for seven days — plus a heart on every book, an Accounts page with what each person has listened to, and a line to Discord when somebody asks, signs in, or starts and stops a book |

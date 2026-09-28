@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accounts · My Audiobook Collection</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<script src="day.js"></script>
+</head>
+<body class="one-column">
+<header>
+  <h1 id="brand" title="Back to the shelves">🎧 My Audiobook Collection</h1>
+  <div class="spacer"></div>
+  <button id="toAdmin" class="ghost">Library</button>
+  <button id="toListen" class="ghost">Listening page</button>
+</header>
+
+<main class="page">
+  <h2>Accounts</h2>
+  <p class="hint" id="whoRuns"></p>
+
+  <!-- what is waiting, first, because it is the only thing here that needs
+       deciding; the rest is a record to read -->
+  <section id="waiting" hidden>
+    <h3>Waiting for you</h3>
+    <div id="waitingList"></div>
+  </section>
+
+  <section>
+    <h3 id="everyoneTitle">Everybody</h3>
+    <p class="hint">
+      <strong>May listen</strong> is the approval: take the tick off and that account
+      cannot sign in, and every browser signed in as them is signed out. Nothing it has
+      is lost — tick it again and they carry on.
+      <strong>May download</strong> hands somebody whole books before they have earned
+      them; the top level opens that on its own, and this sits beside it rather than
+      instead of it.
+    </p>
+    <div id="everyone"></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script src="accounts.js"></script>
+</body>
+</html>

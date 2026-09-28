@@ -714,3 +714,47 @@ dialog label.pick input {
    that would only be refused is not offered. */
 body:not(.may-download) #pGet,
 body:not(.may-download) .cmenu [data-act="download"] { display: none; }
+
+/* --- a page of its own, not a column ------------------------------------
+   The accounts page and the Home Assistant page are read rather than browsed,
+   so they are one column with room to breathe rather than three. */
+body.one-column main.page {
+  display: block; max-width: 900px; margin: 0 auto; padding: 18px 16px 40px; overflow-y: auto;
+}
+main.page h2 { margin: 4px 0 6px; font-size: 19px; }
+main.page h3 { margin: 26px 0 8px; font-size: 13px; color: var(--accent2);
+  text-transform: uppercase; letter-spacing: .1em; }
+main.page section:first-of-type h3 { margin-top: 14px; }
+
+/* one person */
+.account {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px 18px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 10px;
+}
+.account .name { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 15px; }
+.account .sub { color: var(--dim); font-size: 12px; margin-top: 3px; }
+.account .sub.said { margin-top: 7px; font-style: italic; }
+.account .numbers { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 22px;
+  border-top: 1px solid var(--line); padding-top: 9px; }
+.account .numbers div { display: flex; flex-direction: column; }
+.account .numbers strong { font-size: 16px; line-height: 1.1; }
+.account .numbers span { color: var(--dim); font-size: 11px; }
+/* The two ticks, which are what this page is for. `main.page label` makes a
+   label a block in small capitals — right for a field's name, wrong for a tick,
+   which reads as one thing beside its box. */
+.account .allowed { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
+.account label.pick {
+  display: flex; align-items: center; gap: 7px; margin: 0; white-space: nowrap;
+  font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; cursor: pointer;
+}
+.account label.pick input {
+  width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--accent); cursor: pointer;
+}
+.account .allowed .pick .sub { margin: 0; }
+.account .took { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+
+@media (max-width: 720px) {
+  .account { grid-template-columns: 1fr; }
+  .account .allowed { flex-direction: row; flex-wrap: wrap; align-items: center; }
+}
