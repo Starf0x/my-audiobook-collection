@@ -24,6 +24,7 @@ import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purg
 import { toolsWhy, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
+import { coverFile } from './safepath.js';
 import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
   loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
   minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
@@ -727,8 +728,11 @@ app.get('/api/cover/:id', (req, res) => {
   const drawn = () => res.type('image/svg+xml')
     .set('Cache-Control', `public, max-age=${untilTomorrow()}`).send(placeholderCover(book));
   if (!book.cover) return drawn();
-  const file = book.cover.startsWith('file:') ? book.cover.slice(5) : path.join(DATA_DIR, 'covers', book.cover);
-  if (!fs.existsSync(file)) return drawn();
+  // Never straight from the column to the disk: this route asks for no password,
+  // and the column is written by one that does. A cover naming anything but a
+  // file in covers/ or a picture beside the audio gets the drawn one (§7.9b).
+  const file = coverFile(book.cover);
+  if (!file) return drawn();
   // with the marker the URL names one picture, so it need not be asked for again
   res.sendFile(file, req.query.v ? { maxAge: '7d', immutable: true } : {});
 });

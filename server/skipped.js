@@ -22,6 +22,7 @@ import { parseFile } from 'music-metadata';
 import { db, getLibraries } from './db.js';
 import { genreFolders, destinationFor, clean } from './import.js';
 import { addOne } from './scan.js';
+import { insideAny } from './safepath.js';
 
 const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 
@@ -137,6 +138,13 @@ function pruneUpTo(from, stopAt) {
 // Move it, add it, and hand back the row it landed on.
 export async function fileSkipped({ source, reason, genre, author, series, title }) {
   if (!source || !fs.existsSync(source)) throw new Error('That folder is no longer there.');
+  // A folder the scan walked past is by definition one inside the library. This
+  // route moves what it is given and writes tags into it, so it asks rather than
+  // assumes: the list the page offers only ever holds library folders, but the
+  // list is not what arrives here.
+  if (!insideAny(getLibraries().map((l) => l.path), source)) {
+    throw new Error('That folder is not inside a library folder, so this app will not move it.');
+  }
   const found = filesOf(source, reason);
   if (!found.length) throw new Error('There is no audio in that folder to file.');
   const dest = destinationFor({ genre, author, series, title });
