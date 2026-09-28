@@ -78,8 +78,20 @@ export async function moveFolder(src, dest) {
   const to = treeOf(dest);
   const missing = [...from].filter(([rel, size]) => to.get(rel) !== size);
   if (missing.length) {
+    // Take the half-copy away again. Nothing was at `dest` when this started —
+    // the top of this function makes sure of it — so what is there is ours to
+    // remove, and leaving it is worse than removing it: an import that replaced a
+    // book rolls the old copy back only when the destination is free, so a
+    // partial copy left standing kept the library pointing at a broken folder
+    // with the good one renamed to `Replaced - …` beside it.
+    let swept = '';
+    try {
+      fs.rmSync(dest, { recursive: true, force: true });
+    } catch (e) {
+      swept = ` What was copied is still at ${dest} (${e.code}) and has to go by hand.`;
+    }
     throw new Error(`Copied ${to.size} of ${from.size} file(s) to ${dest}, so nothing was removed `
-      + `from ${src}. The first one missing is ${missing[0][0]}.`);
+      + `from ${src}. The first one missing is ${missing[0][0]}.${swept}`);
   }
   try {
     fs.rmSync(src, { recursive: true, force: true });
