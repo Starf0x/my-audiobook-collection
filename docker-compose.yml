@@ -6,10 +6,16 @@ services:
       - "8523:8523"
     environment:
       # who the app writes as: without these it runs as root, and the folders it
-      # creates on your share are ones you cannot write into yourself
+      # creates on your share are ones you cannot write into yourself. If it
+      # cannot become this user it now stops rather than carrying on as root —
+      # ALLOW_ROOT=1 if you would rather it started anyway.
       PUID: "99"
       PGID: "100"
-      UMASK: "000"
+      # 022 makes what it creates yours to write and everybody else's to read,
+      # which is the safe answer. Unraid shares are usually shared between users
+      # and machines, and 000 is what makes that work — it is also what makes
+      # every file world-writable, so set it only if you need it.
+      UMASK: "022"
       # both of these may be left empty
       ADMIN_PASSWORD: ""
       GOOGLE_API_KEY: ""

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>B</title></head>
+<body style="font:16px system-ui;padding:40px">
+<h1>Page B</h1>
+<p id="say">asking to play…</p>
+<audio id="a" src="/tone.wav" preload="auto"></audio>
+<script>
+// The whole question: may a page that has only just loaded start playing sound?
+window.__probe = { settled: null, error: null, done: false };
+const a = document.getElementById('a');
+a.play().then(() => { window.__probe.settled = 'resolved'; })
+        .catch((e) => { window.__probe.settled = 'rejected'; window.__probe.error = e.name + ': ' + e.message; });
+setTimeout(() => {
+  window.__probe.paused = a.paused;
+  window.__probe.currentTime = a.currentTime;
+  window.__probe.done = true;
+  document.getElementById('say').textContent = JSON.stringify(window.__probe);
+}, 1500);
+</script>
+</body>
+</html>

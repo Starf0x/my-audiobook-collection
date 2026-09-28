@@ -1,0 +1,32 @@
+# The suites, on every push and every pull request.
+#
+# The image build has always run on a tag; nothing ran the checks. They were not
+# even in the repository — 74 of them were described in the spec and none could
+# be cloned — so this workflow and that are one change: a suite nobody can run is
+# a suite nobody runs.
+#
+# Two suites are left out here rather than made to work: one unpacks its archive
+# with PowerShell and one drives a headless browser. `tests/run-all.mjs` names
+# both of them in its output, so what is not covered says so on every run.
+name: Checks
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  suites:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # the same major the image is built on, or a check can pass here and
+          # fail in the container over something in node itself
+          node-version: '26'
+      # `npm ci` needs the lock to match package.json, which is also the check
+      # that nothing was installed into the tree by hand
+      - run: npm ci --omit=dev
+      - run: npm test

@@ -2208,7 +2208,9 @@ window.lookMeta = async function (id, query, deep = false) {
         () => lookMeta(id, query, true), false);
     }
   } catch (e) {
-    $('#lookupBody').innerHTML = `<div class="empty">${e.message}</div>`;
+    // escaped like everything else that lands in markup: this message is a
+    // sentence from the server, and one of them quotes what Google answered
+    $('#lookupBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   } finally {
     state_.finished = true;
     await poll;
