@@ -1018,7 +1018,12 @@ const accountRow = (a) => `<div class="fix">
       ${a.state === 'denied' ? '<span class="badge untagged">refused</span>' : ''}
       ${a.hasPassword ? '' : '<span class="badge untagged" title="A name from before accounts existed. It is approved, and whoever signs in with it first chooses the password.">no password yet</span>'}
       <div class="sub">Last here: ${esc(ago(a))}${a.signedIn ? ` · signed in on ${a.signedIn} browser(s)` : ''}</div>
-      <div class="sub">${a.started} book(s) started · ${a.finished} finished · ${a.hours} h listened · ${a.favourites} ♥</div>
+      <div class="sub">${a.level.icon ? `${a.level.icon} <strong>${esc(a.level.name)}</strong> · ` : ''}${a.completed} book(s) played to the end${a.level.next
+    ? ` · ${a.level.next.at - a.completed} to ${esc(a.level.next.name)}` : ''}</div>
+      <div class="sub">${a.started} book(s) started · ${a.finished} ticked · ${a.hours} h listened · ${a.favourites} ♥</div>
+      ${a.downloads.length ? `<div class="sub">Downloaded: ${a.downloads
+    .map((d) => `${esc(d.title || 'a book')} <span class="path">(${esc(new Date(d.at).toLocaleDateString())})</span>`)
+    .join(', ')}</div>` : ''}
       ${a.reason ? `<div class="sub">“${esc(a.reason)}” — says they ${a.knowsAdmin ? 'know' : '<strong>do not know</strong>'} you</div>` : ''}
       ${a.requestedAt ? `<div class="sub path">asked ${esc(new Date(a.requestedAt).toLocaleString())}</div>` : ''}
     </div>
@@ -1026,6 +1031,9 @@ const accountRow = (a) => `<div class="fix">
       ${a.state !== 'approved' ? `<button data-approve="${esc(a.name)}">Approve</button>` : ''}
       ${a.state === 'pending' ? `<button class="ghost" data-deny="${esc(a.name)}">Refuse</button>` : ''}
       ${a.state === 'approved' ? `<button class="ghost" data-deny="${esc(a.name)}">Suspend</button>` : ''}
+      ${a.state === 'approved' ? `<button class="ghost" data-may="${esc(a.name)}" data-on="${a.granted ? 0 : 1}"
+        title="${a.level.at >= 100 ? 'They have earned this at the top level; the grant is beside that, not instead of it.' : 'Let them download whole books before they have earned it.'}"
+        >${a.granted ? 'Take downloading back' : 'Let them download'}</button>` : ''}
       <button class="ghost danger" data-drop="${esc(a.name)}">Delete…</button>
     </div>
   </div>`;
@@ -1057,6 +1065,16 @@ $('#accountList').onclick = async () => {
     .forEach((b) => { b.onclick = () => decide(b.dataset.approve, 'approved'); });
   $('#books .list').querySelectorAll('button[data-deny]')
     .forEach((b) => { b.onclick = () => decide(b.dataset.deny, 'denied'); });
+  $('#books .list').querySelectorAll('button[data-may]').forEach((b) => {
+    b.onclick = () => work($('#accountList'), 'The change', async () => {
+      try { await post(`/api/accounts/${encodeURIComponent(b.dataset.may)}/download`, { may: b.dataset.on === '1' }); }
+      catch (e) { return toast(e.message); }
+      toast(b.dataset.on === '1'
+        ? `${b.dataset.may} may download whole books.`
+        : `${b.dataset.may} may not download.`);
+      return $('#accountList').click();
+    });
+  });
   $('#books .list').querySelectorAll('button[data-drop]').forEach((b) => {
     b.onclick = () => work($('#accountList'), 'The delete', async () => {
       if (!confirm(`Delete the account “${b.dataset.drop}”?\n\nEverything that was only about `

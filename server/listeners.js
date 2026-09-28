@@ -28,6 +28,7 @@
 import crypto from 'node:crypto';
 import { db } from './db.js';
 import { mustWait, wrong, right } from './guessing.js';
+import { levelOf, mayDownload } from './levels.js';
 
 export const WEEK = 7 * 24 * 60 * 60 * 1000;
 const A_NAME = 40;
@@ -104,6 +105,16 @@ export function decide(name, state) {
   return find(row.name);
 }
 
+// The admin handing somebody downloading before they have earned it, or taking
+// it back. The level still earns it on its own: this is a grant beside that, not
+// a switch that can turn it off.
+export function grantDownload(name, may) {
+  const row = find(name);
+  if (!row) throw new Error('No such account.');
+  db.prepare('UPDATE users SET may_download = ? WHERE name = ?').run(may ? 1 : 0, row.name);
+  return { name: row.name, granted: !!may, mayDownload: mayDownload(finishedCount(row.name), may) };
+}
+
 // Removing an account takes everything that was only about that person with it:
 // where they were in every book, what they had finished, what they had hearted,
 // and any browser still signed in as them. The books are untouched.
@@ -113,6 +124,8 @@ export function remove(name) {
   q.closeAllOf.run(row.name);
   db.prepare('DELETE FROM progress WHERE user = ?').run(row.name);
   db.prepare('DELETE FROM favourites WHERE user = ?').run(row.name);
+  db.prepare('DELETE FROM completions WHERE user = ?').run(row.name);
+  db.prepare('DELETE FROM downloads WHERE user = ?').run(row.name);
   q.drop.run(row.name);
   return { removed: row.name };
 }
@@ -201,6 +214,39 @@ export function signOut(req) {
 // What the admin page shows: who they are, when they were last here, and how
 // much they have listened to. The numbers come from the same places the rest of
 // the app counts from, so they cannot disagree with it.
+// A book played to its end. Written once per person per book — finishing it a
+// second time is the same accomplishment — and never taken away again: that is
+// what makes it a record of what somebody has done rather than a view of what
+// they are doing. The title comes along because a book can be deleted later and
+// the reading still happened.
+export function finishedABook(user, bookId) {
+  const who = asName(user);
+  if (!who || !bookId) return false;
+  const book = db.prepare('SELECT title FROM books WHERE id = ?').get(Number(bookId));
+  const already = db.prepare('SELECT 1 FROM completions WHERE user = ? AND book_id = ?')
+    .get(who, Number(bookId));
+  if (already) return false;
+  db.prepare('INSERT INTO completions (user, book_id, title, at) VALUES (?, ?, ?, ?)')
+    .run(who, Number(bookId), book?.title || '', new Date().toISOString());
+  return true;
+}
+
+export const finishedCount = (user) =>
+  db.prepare('SELECT COUNT(*) AS n FROM completions WHERE user = ?').get(asName(user) || '').n;
+
+// Whole books taken away. Kept per person because the admin's statistics say
+// who took what, and because Discord is told.
+export function tookABook(user, bookId, title) {
+  const who = asName(user);
+  if (!who) return;
+  db.prepare('INSERT INTO downloads (user, book_id, title, at) VALUES (?, ?, ?, ?)')
+    .run(who, Number(bookId) || 0, String(title || ''), new Date().toISOString());
+}
+
+export const downloadsOf = (user, most = 25) => db.prepare(
+  'SELECT book_id, title, at FROM downloads WHERE user = ? ORDER BY at DESC LIMIT ?')
+  .all(asName(user) || '', most);
+
 export function withStats() {
   return everyone().map((u) => {
     const kept = db.prepare(`SELECT COUNT(*) AS started,
@@ -211,6 +257,9 @@ export function withStats() {
                   WHERE t.book_id = b.id AND t.idx < p.track_idx), 0) + p.position END), 0) AS s
       FROM progress p JOIN books b ON b.id = p.book_id WHERE p.user = ?`).get(u.name).s;
     const hearts = db.prepare('SELECT COUNT(*) AS n FROM favourites WHERE user = ?').get(u.name).n;
+    const done = finishedCount(u.name);
+    const level = levelOf(done);
+    const took = downloadsOf(u.name);
     const sessions = db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE name = ?').get(u.name).n;
     const days = u.last_seen ? Math.floor((Date.now() - Date.parse(u.last_seen)) / 86400000) : null;
     return {
@@ -228,6 +277,13 @@ export function withStats() {
       finished: kept.finished,
       hours: Math.round((seconds / 3600) * 10) / 10,
       favourites: hearts,
+      // what they have actually finished, which is what the level is made of —
+      // `finished` above is how many they have ticked, and the two can differ
+      completed: done,
+      level,
+      mayDownload: mayDownload(done, u.may_download),
+      granted: !!u.may_download,
+      downloads: took,
     };
   });
 }

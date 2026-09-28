@@ -17,12 +17,24 @@ const showGate = (which) => {
 
 const said = (where, text) => { $(where).textContent = text || ''; };
 
+window.whoAmI = whoAmI;
 async function whoAmI() {
   const me = await api('/api/account/me').catch(() => ({ signedIn: false, required: true }));
   state.user = me.name || '';
   state.admin = !!me.admin;
   if (me.name) localStorage.user = me.name;
-  $('#whoAmI').textContent = me.name || '';
+  // The name, with what they have earned under it: an icon and the level's name.
+  // Nought to nine has neither — a level everybody starts at is not an
+  // accomplishment, and a badge saying so is noise.
+  const level = me.level || {};
+  state.level = level;
+  state.mayDownload = me.mayDownload !== false;
+  document.body.classList.toggle('may-download', state.mayDownload);
+  $('#whoAmI').innerHTML = me.name
+    ? `<span class="me">${level.icon
+      ? `<span class="badge-icon" title="${esc(level.name)}">${level.icon}</span>` : ''}${esc(me.name)}</span>`
+      + (level.name ? `<span class="level">${esc(level.name)}</span>` : '')
+    : '';
   $('#signOut').hidden = !me.signedIn;
   return me;
 }
