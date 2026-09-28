@@ -1155,16 +1155,26 @@ sign-in card and nothing behind it. They press *I have no account yet* and give:
 * a sentence saying why they would like access,
 * and a tick for whether they know you.
 
-**No email address is asked for and none is kept.** The request appears under
-**Accounts** in your left column with a number on it, showing their words and
-whether they claim to know you. You approve, refuse or delete. Once approved they
-sign in with the name and password they chose — there is nothing for you to send
-them.
+**No email address is asked for and none is kept.** The request appears on the **Accounts** page — *Settings ▾ → Accounts and
+statistics*, or the row in your left column, which carries the number waiting — showing their words and
+whether they claim to know you. Each person has two ticks and a delete:
+
+* **May listen** is the approval. Take the tick off and they cannot sign in, and
+  every browser signed in as them is signed out — but nothing they have is lost;
+  tick it again and they carry on where they were.
+* **May download** hands somebody whole books before they have earned them.
+* **Delete…** removes the account and everything that was only about that
+  person: their place in every book, what they had finished, the books they
+  played to the end, what they downloaded, and their hearts. The books
+  themselves are untouched.
+
+Once approved they sign in with the name and password they chose — there is
+nothing for you to send them.
 
 Signing in leaves a cookie good for **seven days that moves with them**: every
 visit pushes it out again, so it is seven days of not listening that ends it.
 
-*Accounts* also shows, per person, when they were last here — in days — how many
+That page also shows, per person, when they were last here — in days — how many
 books they have started and finished, how many hours that is, and how many they
 have hearted. **Delete** takes everything that was only about them: their place
 in every book, what they had finished, their hearts, and any browser still signed

@@ -1004,88 +1004,11 @@ async function loadAccounts() {
   return d;
 }
 
-const ago = (a) => {
-  if (a.daysAgo === null) return 'never signed in';
-  if (a.daysAgo === 0) return 'here today';
-  return `${a.daysAgo} day${a.daysAgo === 1 ? '' : 's'} ago`;
-};
-
-const accountRow = (a) => `<div class="fix">
-    <div>
-      <strong>${esc(a.name)}</strong>
-      ${a.state === 'pending' ? '<span class="badge untagged">waiting for you</span>' : ''}
-      ${a.state === 'denied' ? '<span class="badge untagged">refused</span>' : ''}
-      ${a.hasPassword ? '' : '<span class="badge untagged" title="A name from before accounts existed. It is approved, and whoever signs in with it first chooses the password.">no password yet</span>'}
-      <div class="sub">Last here: ${esc(ago(a))}${a.signedIn ? ` · signed in on ${a.signedIn} browser(s)` : ''}</div>
-      <div class="sub">${a.level.icon ? `${a.level.icon} <strong>${esc(a.level.name)}</strong> · ` : ''}${a.completed} book(s) played to the end${a.level.next
-    ? ` · ${a.level.next.at - a.completed} to ${esc(a.level.next.name)}` : ''}</div>
-      <div class="sub">${a.started} book(s) started · ${a.finished} ticked · ${a.hours} h listened · ${a.favourites} ♥</div>
-      ${a.downloads.length ? `<div class="sub">Downloaded: ${a.downloads
-    .map((d) => `${esc(d.title || 'a book')} <span class="path">(${esc(new Date(d.at).toLocaleDateString())})</span>`)
-    .join(', ')}</div>` : ''}
-      ${a.reason ? `<div class="sub">“${esc(a.reason)}” — says they ${a.knowsAdmin ? 'know' : '<strong>do not know</strong>'} you</div>` : ''}
-      ${a.requestedAt ? `<div class="sub path">asked ${esc(new Date(a.requestedAt).toLocaleString())}</div>` : ''}
-    </div>
-    <div class="actions">
-      ${a.state !== 'approved' ? `<button data-approve="${esc(a.name)}">Approve</button>` : ''}
-      ${a.state === 'pending' ? `<button class="ghost" data-deny="${esc(a.name)}">Refuse</button>` : ''}
-      ${a.state === 'approved' ? `<button class="ghost" data-deny="${esc(a.name)}">Suspend</button>` : ''}
-      ${a.state === 'approved' ? `<button class="ghost" data-may="${esc(a.name)}" data-on="${a.granted ? 0 : 1}"
-        title="${a.level.at >= 100 ? 'They have earned this at the top level; the grant is beside that, not instead of it.' : 'Let them download whole books before they have earned it.'}"
-        >${a.granted ? 'Take downloading back' : 'Let them download'}</button>` : ''}
-      <button class="ghost danger" data-drop="${esc(a.name)}">Delete…</button>
-    </div>
-  </div>`;
-
-$('#accountList').onclick = async () => {
-  document.body.classList.add('maintenance');
-  document.querySelectorAll('#genres li').forEach((el) => el.classList.remove('active'));
-  $('#accountList').classList.add('active');
-  $('#authors ul').innerHTML = '';
-  const { accounts } = await loadAccounts();
-  const waiting = accounts.filter((a) => a.state === 'pending');
-  const rest = accounts.filter((a) => a.state !== 'pending');
-  $('#books .list').innerHTML = `<div class="row pager">
-      <span class="hint">${accounts.length} account(s)${state.adminName
-    ? ` · you are <strong>${esc(state.adminName)}</strong>, from the container`
-    : ' · no ADMIN_USER is set on the container, so nothing here is locked'}</span>
-    </div>
-    ${waiting.length ? `<div class="series-head">Waiting for you — ${waiting.length}</div>${waiting.map(accountRow).join('')}` : ''}
-    ${rest.length ? `<div class="series-head">Accounts</div>${rest.map(accountRow).join('')}`
-    : (waiting.length ? '' : '<div class="empty">Nobody has an account yet.</div>')}`;
-
-  const decide = (name, s) => work($('#accountList'), 'The change', async () => {
-    try { await post(`/api/accounts/${encodeURIComponent(name)}/state`, { state: s }); }
-    catch (e) { return toast(e.message); }
-    toast(s === 'approved' ? `${name} may listen.` : `${name} may not listen.`);
-    return $('#accountList').click();
-  });
-  $('#books .list').querySelectorAll('button[data-approve]')
-    .forEach((b) => { b.onclick = () => decide(b.dataset.approve, 'approved'); });
-  $('#books .list').querySelectorAll('button[data-deny]')
-    .forEach((b) => { b.onclick = () => decide(b.dataset.deny, 'denied'); });
-  $('#books .list').querySelectorAll('button[data-may]').forEach((b) => {
-    b.onclick = () => work($('#accountList'), 'The change', async () => {
-      try { await post(`/api/accounts/${encodeURIComponent(b.dataset.may)}/download`, { may: b.dataset.on === '1' }); }
-      catch (e) { return toast(e.message); }
-      toast(b.dataset.on === '1'
-        ? `${b.dataset.may} may download whole books.`
-        : `${b.dataset.may} may not download.`);
-      return $('#accountList').click();
-    });
-  });
-  $('#books .list').querySelectorAll('button[data-drop]').forEach((b) => {
-    b.onclick = () => work($('#accountList'), 'The delete', async () => {
-      if (!confirm(`Delete the account “${b.dataset.drop}”?\n\nEverything that was only about `
-        + 'them goes with it: where they were in every book, what they had finished, and what '
-        + 'they had hearted. The books themselves are untouched.')) return undefined;
-      try { await post(`/api/accounts/${encodeURIComponent(b.dataset.drop)}/remove`, {}); }
-      catch (e) { return toast(e.message); }
-      toast(`${b.dataset.drop} is gone.`);
-      return $('#accountList').click();
-    });
-  });
-};
+// The accounts themselves live on a page of their own now (`accounts.js`): a
+// row per person with numbers on it wants width and stillness, and the column
+// beside a library is neither. This row is the way there, and it keeps the
+// count because that is the one thing worth seeing without going to look.
+$('#accountList').onclick = () => { location.href = '/accounts'; };
 
 // --- telling Discord ------------------------------------------------------
 async function loadHook() {
@@ -1771,7 +1694,6 @@ $('#convertedList').onclick = async () => {
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
 const MAINTENANCE_ROWS = ['needsTags', 'convertList', 'convertedList', 'brokenList', 'skippedList',
-  'accountList',
   'importList', 'replacedList', 'trashList',
   // not maintenance, but a view of its own in the same column, and the same rule
   // holds: what is drawn again after a change is what was on screen
@@ -2408,6 +2330,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && settingsMenu.open) shutMenu();
 });
 $('#openHa').onclick = () => { shutMenu(); location.href = '/ha'; };
+$('#openAccounts').onclick = () => { shutMenu(); location.href = '/accounts'; };
 
 $('#openSettings').onclick = async () => {
   shutMenu();
