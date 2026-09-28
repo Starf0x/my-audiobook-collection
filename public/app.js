@@ -705,7 +705,6 @@ $('#tagAll').onclick = async () => {
 $('#tagAllStop').onclick = async () => {
   await post('/api/tagall/stop', {}).catch((e) => toast(e.message));
   await showTagAll();
-  await loadHook();
 };
 
 // --- import: file a folder from the import path under a genre and author ---
@@ -2421,6 +2420,8 @@ $('#openSettings').onclick = async () => {
     .map((c) => `<option value="${esc(c.code)}"${c.code === (s.googleCountry || '') ? ' selected' : ''}>`
       + `${esc(c.name)}${c.code ? ` (${esc(c.code)})` : ''}</option>`).join('');
   await showTagAll();
+  // whether a Discord webhook is saved, and how the last line went
+  await loadHook();
   renderLibs();
   await loadGenreFolders();
   $('#browser').hidden = true;

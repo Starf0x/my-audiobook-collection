@@ -513,3 +513,9 @@ here:
 * **A comment in a template literal may not hold a backtick.** The SQL schema is
   built with one, and `-- pass is scrypt of the password with \`salt\`` ended the
   literal in the middle of the table definition.
+* **A shell `replace()` takes the first match, which is rarely the one you mean.**
+  `await loadHook()` was meant to go beside the settings dialog opening and
+  landed in the Stop button of the tag run, because that held the first
+  `await showTagAll();` in the file. The line that says whether a Discord webhook
+  is saved was blank, and nothing failed. Match on enough context to be
+  unambiguous, or use the editor.

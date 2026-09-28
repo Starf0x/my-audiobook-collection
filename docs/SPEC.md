@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.7.8.** This document describes what the app is, how every
+**Version described: 2.7.16.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.8` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.16` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -135,7 +135,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/index.html` | 379 | the admin page: columns, dialogs |
-| `public/app.js` | 2584 | the admin page's behaviour |
+| `public/app.js` | 2585 | the admin page's behaviour |
 | `public/listen.html` | 118 | the listening page |
 | `public/shelf.js` | 495 | the listening page’s behaviour |
 | `public/style.css` | 716 | the whole look, every page, phone included |
@@ -2564,6 +2564,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.16 | the Discord line in Settings says whether a webhook is saved: the call that fills it in had landed in the wrong handler |
 | 2.7.8 | ten levels over the books somebody has played to the end, with the icon and its name beside theirs; the author under the title in the player; downloading earned at the top level or handed over by the admin, listed per person and announced |
 | 2.7.0 | listeners are accounts: asked for with a reason, approved by the admin, signed in with a password and remembered for seven days — plus a heart on every book, an Accounts page with what each person has listened to, and a line to Discord when somebody asks, signs in, or starts and stops a book |
 | 2.6.64 | the checks are in the repository and run on every push, the dependency advisory is cleared, and the smaller things the read turned up |
