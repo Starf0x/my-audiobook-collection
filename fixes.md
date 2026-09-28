@@ -501,3 +501,15 @@ here:
 * **A refused PUID drop that carries on as root is the bug PUID exists to stop.**
   It logged one line and went on creating root-owned folders on somebody's share.
   It stops now, unless `ALLOW_ROOT=1` says otherwise.
+* **A demo left running on a suite's port answers the suite's requests.** The
+  accounts demo took 8533, which `abs-contract` owns, so the suite logged in
+  against a server with no `MA_TOKEN` and reported the app broken. The demos live
+  at 86xx now. When a check fails in a way that makes no sense, look at who else
+  is listening on that port before reading the code.
+* **Inside an `app.use(path, …)` mount, `req.path` is what is left after the
+  mount point.** The account gate compared `/api/account/me` against `req.path`,
+  which was `/account/me`, so the four routes that exist for people without an
+  account were the first thing it shut. Compare `req.baseUrl + req.path`.
+* **A comment in a template literal may not hold a backtick.** The SQL schema is
+  built with one, and `-- pass is scrypt of the password with \`salt\`` ended the
+  literal in the middle of the table definition.

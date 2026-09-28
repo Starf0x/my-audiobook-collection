@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.64.** This document describes what the app is, how every
+**Version described: 2.7.0.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.64` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.0` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,9 +101,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1266 | Express app: every route, and nothing else |
+| `server/index.js` | 1421 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 145 | schema, migrations, settings, library list |
+| `server/db.js` | 179 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 565 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
@@ -119,21 +119,25 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
+| `server/listeners.js` | 233 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
+| `server/notify.js` | 131 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `public/account.js` | 151 | signing in and the hearts, on both pages, one copy |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 287 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 309 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 327 | the admin page: columns, dialogs |
-| `public/app.js` | 2488 | the admin page's behaviour |
-| `public/listen.html` | 92 | the listening page |
-| `public/shelf.js` | 528 | the listening page’s behaviour |
-| `public/style.css` | 673 | the whole look, every page, phone included |
+| `public/index.html` | 378 | the admin page: columns, dialogs |
+| `public/app.js` | 2566 | the admin page's behaviour |
+| `public/listen.html` | 117 | the listening page |
+| `public/shelf.js` | 495 | the listening page’s behaviour |
+| `public/style.css` | 703 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -275,7 +279,8 @@ book folder: whether it is there, its owner and mode, and whether a file can
 actually be written in it and removed again — measured, not inferred from the mode.
 Settings shows it as a table.
 | `PORT` | `8523` | HTTP port |
-| `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked; empty → private install, everyone may do anything |
+| `ADMIN_USER` | empty | the administrator's name. Set with the password, it is what shuts the listening page: everybody else needs an account you have approved |
+| `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked and the library needs an account; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
 | `HA_TOKEN` | empty | when set, every `/api/ha…` address needs it as `?token=` or `Authorization: Bearer`. The audio itself stays open, or a speaker could not play it |
 | `MA_TOKEN` | empty | the password Music Assistant logs in with (§7.9d). **Empty means the whole Audiobookshelf face is not there**: every one of its addresses answers 404, so a default install grows no new surface |
@@ -1635,32 +1640,98 @@ install.
 **The server refuses, the interface merely hides.** Every route that changes
 anything carries `requireAdmin`; hiding buttons is not what protects it.
 
-### 7.12 Who is listening, and which names a browser is offered
+### 7.12 Who is listening (`listeners.js`, `guessing.js`)
 
-A listener has no password: the app is shared inside a house, and the one admin
-password guards what *changes* the collection. What keeps one person out of
-another person's place in a book is that **a browser is only ever offered the
-names it has said itself**.
+Until 2.7.0 a listener was a name in a table and the listening page answered
+whoever could reach it. What kept one person out of another's place in a book was
+that *a browser is only ever offered the names it has said itself* — honest about
+what it was, and not a door. It is an account now.
 
-The names a browser has claimed live in a cookie it gets back from the server —
-`whoami`, a base64url JSON array, `HttpOnly`, `SameSite=Lax`, 400 days:
+**Asking.** A stranger gets the gate and nothing else: a name to listen under, a
+password of their own choosing (at least eight characters), a sentence saying why
+they would like access, and a tick for whether they know the administrator. No
+email address is asked for and none is kept — it would be one more thing to look
+after for a thing the admin can settle by recognising the name. The row goes in
+`pending`.
 
-* `GET /api/users` returns the claimed names that still exist in `users`, sorted.
-  No cookie means an empty list, whatever the collection holds. A cookie the
-  server did not write is ignored rather than trusted.
-* `POST /api/users` inserts the name if it is new, adds it to the cookie, and
-  returns `{ok: true}`. An empty name claims nothing.
+**Deciding.** *Accounts*, in the admin column, is the only list in this app whose
+count is the number of things waiting rather than the number of things there:
+approve, refuse, suspend, or delete. Deleting takes everything that was only
+about that person — their place in every book, what they had finished, their
+hearts, and every browser still signed in as them — and leaves the books alone.
 
-The dialog needs no special case: it renders a pick list only when it was given
-names, so a stranger sees the field alone. Both pages claim
-`localStorage.user` on load, so a browser that was here before an update keeps
-its name and its dropdown instead of being asked again.
+**Signing in.** scrypt with a random salt per account, off the main thread
+(`scryptSync` blocks the only thread this server has and the route asks for no
+password to reach), compared with `timingSafeEqual`. "No such name" and "wrong
+password" are one sentence, or the route tells anybody who asks which names
+exist. A wrong password costs the address that gave it: five tries free, then a
+wait doubling to thirty seconds (`guessing.js`, shared with the admin's own
+password so the two cannot drift).
 
-Two consequences, both intended. A browser two people share is offered both names
-once both have typed theirs — what a family tablet needs. And someone who knows an
-existing name exactly can still type it and take that place up; on a new phone
-that is the point, and without a password per listener the two cannot be told
-apart. The guarantee is about not *offering* names, not about proving identity.
+**Staying signed in.** A random 32-byte token in an HttpOnly, SameSite=Lax cookie
+— `Secure` only where the request really was https, because on a LAN over plain
+http a Secure cookie is one the browser throws away. It is good for seven days
+and it *moves*: every request pushes the seven days out again, so seven days of
+quiet is what ends it. The sessions live in the database rather than in memory,
+because a container restart is not a reason to ask everybody in the house to sign
+in again.
+
+**The gate is one middleware.** `app.use('/api', …)` rather than a guard on
+fifteen routes, because fifteen is fourteen chances to forget one. Four kinds of
+caller get past: a signed-in listener, the admin, Home Assistant with its token,
+and Music Assistant with its own — the last two because a media player fetches
+the audio itself and has no cookie of ours. Four routes answer without an
+account, and they are the four somebody without one needs: `/api/account/me`,
+`/request`, `/signin`, `/signout`.
+
+**Whose write is it.** Once anything is locked, a place in a book belongs to the
+session and the name in the request body is ignored — otherwise one account could
+write into another's, which is the whole thing accounts were added for. With no
+`ADMIN_PASSWORD` set there are no sessions and no lock: that is the private
+install the app has always supported, and there the name in the request is all
+there is.
+
+**The names that were already there.** Every one of them is approved and carries
+no password, and the first sign-in with such a name chooses one. Locking a
+household out of its own listening history to add a login would be a poor trade —
+and the admin page marks those names, so one nobody claims can be seen and
+removed rather than sitting there for ever.
+
+### 7.12a The hearts
+
+A row per person per book in `favourites`, with a trigger that drops it when the
+book goes. The heart is drawn by whatever draws a book — card and shelf tile
+both — from one set held in the page, so the two places it appears cannot
+disagree. Pressing it colours it at once and asks afterwards: if the server
+refuses, it goes back. **Favourites** appears in the left column only while there
+is something in it, the way *Listened* does.
+
+### 7.13 Telling Discord (`notify.js`)
+
+A webhook address saved by the admin, and three things worth saying: somebody
+asked for an account (with their reason and whether they claim to know you),
+somebody signed in (the admin's own sign-in is not announced — it would be noise
+about yourself), and a book started or stopped, with which book and who.
+
+All three carry text a person wrote, so all three are cleaned: `@everyone` and
+`@here` would ring every phone in the server, backticks and newlines would let a
+title write its own lines, and a message is bounded. The real fix for the pings
+is `allowed_mentions: { parse: [] }`, which is Discord's own switch rather than a
+guess at their syntax; the stripping is so the line still reads as words.
+
+The address itself is checked: https, one of Discord's own hosts, and a path
+beginning `/api/webhooks/` — this server posts to it on its own, so it must not
+become a "post this anywhere" button for whoever reaches the settings. Messages
+go one at a time in order, a 429 is waited out for as long as Discord asks, and
+the page is told whether one is saved and how the last line went, never the
+address.
+
+**Start and stop come from the player**, because nothing else can tell them
+apart: a position arriving every ten seconds says somebody is listening, never
+that they just pressed play. The page sends only the changes and the server keeps
+one book per listener, so a page that says "started" twice is a page, not two
+starts.
+
 
 ## 8. The interface
 
@@ -2217,6 +2288,22 @@ skips them will reproduce the bugs.
     pointing elsewhere and left it hanging until the client gave up. The older
     one is answered with a ping first.
 
+56. **The gate is one middleware, not fifteen guards.** Fifteen routes is
+    fourteen chances to forget one, and the one forgotten is the one somebody
+    finds. Routes keep their own stricter guards on top of it.
+57. **A session that does not move is not a seven-day session.** Every request
+    pushes the week out again; seven days of *quiet* is what ends it. The
+    sessions are in the database, so a restart does not sign the house out.
+58. **Once anything is locked, a write belongs to the session.** A name in the
+    request body would let one account write into another's place in a book,
+    which is the thing accounts were added for.
+59. **Text a person wrote is cleaned before it becomes syntax somewhere else.**
+    A title could write playlist lines; a name could ring every phone in a
+    Discord server. `allowed_mentions: { parse: [] }` is the switch that settles
+    the second, because it is Discord's own rather than a guess at their syntax.
+60. **"No such name" and "wrong password" are one sentence**, or the sign-in
+    route answers the question "who has an account here?" for anybody who asks.
+
 ## 10. Measured performance
 
 Numbers from the machine this was built on (20 CPUs; the share is SMB on a NAS).
@@ -2431,6 +2518,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.0 | listeners are accounts: asked for with a reason, approved by the admin, signed in with a password and remembered for seven days — plus a heart on every book, an Accounts page with what each person has listened to, and a line to Discord when somebody asks, signs in, or starts and stops a book |
 | 2.6.64 | the checks are in the repository and run on every push, the dependency advisory is cleared, and the smaller things the read turned up |
 | 2.6.56 | one job at a time on the server rather than only in the page, a password that costs the guesser, and what the open routes will take |
 | 2.6.48 | what this app fetches when it is told an address, what it writes into a playlist, and which Home Assistant its token belongs to |

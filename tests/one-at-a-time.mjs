@@ -88,15 +88,14 @@ check('which is really in the database',
 check('ticking a book that is not there is refused',
   (await post('/api/listened', { user: 'Frank', bookId: 99, done: true })).status, 404);
 
-await post('/api/users', { name: `  Frank${NUL}${long}  ` });
-const names = db.prepare('SELECT name FROM users').all().map((u) => u.name);
-const kept = names.find((n) => n.startsWith('Frank'));
-check('a name is cut to something a list can hold', kept.length <= 60, true);
-check('and carries no control characters', kept.includes(NUL), false);
-
-await post('/api/users', { name: '   ' });
-check('a name of nothing but space makes no listener',
-  db.prepare('SELECT COUNT(*) AS n FROM users').get().n, names.length);
+// A name is bounded and has no control characters in it. It used to arrive at
+// `POST /api/users`, which accounts replaced in 2.7.0 — the rule moved with it
+// and is checked where it lives now.
+const { asName } = await import('../server/listeners.js');
+check('a name is cut to something a list can hold', asName(`Frank${long}`).length, 40);
+check('and carries no control characters', asName(`Fr${NUL}ank`).includes(NUL), false);
+check('a name of nothing but space is no name', asName('   '), '');
+check('and the spaces around one are not part of it', asName('  Frank  '), 'Frank');
 
 // --- what the open book route hands out ---------------------------------
 // Where a book sits on disk is the edit dialog's and Move…'s business, and
@@ -109,9 +108,23 @@ const wideOpen = await bookNow();
 check('with no password set, everybody is the admin and gets the path',
   typeof wideOpen.path, 'string');
 
+// With a password set the route is behind the gate, so the question becomes what
+// a signed-in *listener* is given — somebody who may play the book and may not
+// edit it. (A browser with no account gets nothing at all; that is accounts.mjs.)
 process.env.ADMIN_PASSWORD = 'a password';
-const locked = await bookNow();
-check('with one set, a browser that has not unlocked gets no path', 'path' in locked, false);
+const { requestAccount, decide } = await import('../server/listeners.js');
+await requestAccount({
+  name: 'Ann', password: 'a good long one', reason: 'I would like to listen to these books',
+});
+decide('Ann', 'approved');
+const inAs = await fetch(`${BASE}/api/account/signin`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'Ann', password: 'a good long one' }),
+});
+const hers = (inAs.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+const locked = await (await fetch(`${BASE}/api/books/7`, { headers: { Cookie: hers } })).json();
+
+check('a listener gets no path on disk', 'path' in locked, false);
 check('nor the folder series the move dialog prefills from', 'folderSeries' in locked, false);
 check('nor the name of the cover file on disk', 'cover' in locked, false);
 check('but still everything the listening page plays with',

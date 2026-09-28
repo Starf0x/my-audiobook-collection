@@ -16,7 +16,10 @@ services:
       # and machines, and 000 is what makes that work — it is also what makes
       # every file world-writable, so set it only if you need it.
       UMASK: "022"
-      # both of these may be left empty
+      # the administrator: a name as well as a password now. With both set, the
+      # listening page is shut to everybody else until you approve their account;
+      # leave them empty and the app is open on your network, as it always was.
+      ADMIN_USER: ""
       ADMIN_PASSWORD: ""
       GOOGLE_API_KEY: ""
       # which country's Google catalogue to answer from; series data belongs to one

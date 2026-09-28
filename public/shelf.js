@@ -32,41 +32,9 @@ $('#adminGo').onclick = async () => {
 };
 
 // --- who is listening ---------------------------------------------------
-async function loadUsers() {
-  const users = await api('/api/users');
-  $('#user').innerHTML = users.map((u) => `<option${u === state.user ? ' selected' : ''}>${esc(u)}</option>`).join('')
-    || '<option value="">(no user)</option>';
-  state.user = $('#user').value || '';
-  localStorage.user = state.user;
-  return users;
-}
-
-async function askWho(users, cancellable) {
-  $('#whoList').innerHTML = users.length
-    ? `<label>Pick a name</label><div class="row" style="flex-wrap:wrap">${users
-      .map((u) => `<button data-who="${esc(u)}">${esc(u)}</button>`).join('')}</div>`
-    : '';
-  $('#whoClose').hidden = !cancellable;
-  const pick = async (name) => {
-    state.user = localStorage.user = name;
-    $('#who').close();
-    await loadUsers();
-    $('#user').value = name;
-    await Promise.all([loadStats(), loadHome()]);
-  };
-  $('#whoList').querySelectorAll('button[data-who]').forEach((b) => { b.onclick = () => pick(b.dataset.who); });
-  $('#whoGo').onclick = async () => {
-    const name = $('#whoName').value.trim();
-    if (!name) return toast('Fill in a name first.');
-    try { await post('/api/users', { name }); } catch (e) { return toast(e.message); }
-    $('#whoName').value = '';
-    await pick(name);
-  };
-  $('#whoClose').onclick = () => $('#who').close();
-  $('#who').showModal();
-}
-
-$('#user').onchange = () => { state.user = localStorage.user = $('#user').value; loadStats(); loadHome(); };
+// Who is listening is the session now, not a name picked from a list: the old
+// picker and the "Who is listening?" dialog are gone with the open page they
+// belonged to. account.js fills in the name and offers the way out.
 
 async function loadStats() {
   const s = await api('/api/stats?user=' + encodeURIComponent(state.user));
@@ -90,6 +58,7 @@ const tile = (b, resumable) => {
   return `<div class="tile" data-id="${b.id}" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
        data-resume="${resumable ? 1 : 0}" title="${esc(b.title)}">
     <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async">
+    ${heart(b.id)}
     <div class="t">${esc(b.title)}</div>
     <div class="a">${esc(b.author)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
@@ -284,6 +253,7 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
       <div class="cover" data-glyph="▶">
         <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
           onclick="playBook(${b.id})" title="Play or pause">
+        ${heart(b.id)}
         <label class="listened">
           <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
         </label>
@@ -515,14 +485,11 @@ window.setListened = async function (id, box) {
   }
 };
 
-(async () => {
-  const remembered = localStorage.user || '';
-  // this browser has been here before: say so, or the server would not know which
-  // names are its own to offer
-  if (remembered) await post('/api/users', { name: remembered }).catch(() => {});
-  const users = await loadUsers();
+// Nothing is drawn until somebody is signed in, so this page does not start
+// itself: `account.js` calls it once it knows who is asking. There is no name
+// to pick any more — the session says who you are.
+window.begin = async () => {
   await loadGenres();
   await loadStats();
   await loadHome();
-  if (!users.length || !users.includes(remembered)) await askWho(users, users.length > 0);
-})();
+};

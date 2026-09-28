@@ -1,0 +1,182 @@
+// accounts — the door, the hearts, and what Discord is told.
+//
+// The listening page used to answer anybody who could reach it. It is an
+// account now: asked for with a reason, approved by the admin, signed in with a
+// password, remembered for seven days. This suite drives a real server, because
+// the thing being checked is who gets an answer and who does not.
+//
+// Run: node tests/accounts.mjs
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const HERE = path.join(ROOT, 'fixtures', 'accounts-test');
+const DATA = path.join(HERE, 'data');
+const PORT = 8541;
+const BASE = `http://127.0.0.1:${PORT}`;
+
+let failed = 0;
+const check = (label, got, want) => {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`);
+};
+
+fs.rmSync(HERE, { recursive: true, force: true });
+fs.mkdirSync(DATA, { recursive: true });
+process.env.DATA_DIR = DATA;
+process.env.PORT = String(PORT);
+process.env.ADMIN_USER = 'frank';
+process.env.ADMIN_PASSWORD = 'a very good password';
+
+// What would have gone to Discord. The address has to be a real Discord one —
+// the app refuses anything else — so the fetch is what is stood in for.
+const sent = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  if (String(url).startsWith('https://discord.com/')) {
+    sent.push(JSON.parse(opts.body));
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  return realFetch(url, opts);
+};
+
+const { db, setSetting } = await import('../server/db.js');
+const { KEY } = await import('../server/notify.js');
+setSetting(KEY, 'https://discord.com/api/webhooks/1/abc');
+db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
+            VALUES (3, '/x', 'Fantasy', 'An Author', 'A Book', 60)`).run();
+await import('../server/index.js');
+await new Promise((r) => setTimeout(r, 800));
+
+const call = async (how, where, body, cookie) => {
+  const r = await realFetch(`${BASE}${where}`, {
+    method: how,
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const cookies = (r.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+  return { status: r.status, body: await r.json().catch(() => ({})), cookies };
+};
+const get = (where, cookie) => call('GET', where, null, cookie);
+const post = (where, body, cookie) => call('POST', where, body, cookie);
+
+// --- the door ------------------------------------------------------------
+check('the library is shut to somebody with no account', (await get('/api/genres')).status, 401);
+check('so are the shelves', (await get('/api/home')).status, 401);
+check('and a book', (await get('/api/books/3')).status, 401);
+check('but the page can ask who it is talking to', (await get('/api/account/me')).status, 200);
+
+const asked = await post('/api/account/request', {
+  name: 'Bert', password: 'a good long one', knowsAdmin: true,
+  reason: 'I live in this house and would like to listen along',
+});
+check('an account can be asked for', asked.body, { asked: true, name: 'Bert' });
+check('Discord is told, with the reason and whether they know the admin',
+  [/would like an account/.test(sent[0].content), /live in this house/.test(sent[0].content),
+    /they do know/i.test(sent[0].content)], [true, true, true]);
+check('and nothing in it can ring a phone', sent[0].allowed_mentions, { parse: [] });
+
+check('asking twice under one name is refused',
+  (await post('/api/account/request', { name: 'bert', password: 'another long one', reason: 'because I say so, that is why' })).status, 400);
+check('a password that is too short is refused',
+  (await post('/api/account/request', { name: 'Ann', password: 'short', reason: 'I would like to listen to the books' })).status, 400);
+check('and a reason that says nothing is refused',
+  (await post('/api/account/request', { name: 'Ann', password: 'a good long one', reason: 'hi' })).status, 400);
+
+check('an account nobody has approved cannot sign in',
+  (await post('/api/account/signin', { name: 'Bert', password: 'a good long one' })).body.error,
+  'That account is waiting for the administrator to approve it.');
+
+// --- the admin -----------------------------------------------------------
+const wrongOne = await post('/api/account/signin', { name: 'frank', password: 'not it' });
+check('the admin name with the wrong password is refused', wrongOne.status, 400);
+const admin = await post('/api/account/signin', { name: 'frank', password: 'a very good password' });
+check('and with the right one is let in', admin.body, { name: 'frank', admin: true });
+check('the admin sign-in is not announced', sent.filter((s) => /frank/.test(s.content)).length, 0);
+
+const seen = await get('/api/accounts', admin.cookies);
+check('the admin sees who has asked',
+  seen.body.accounts.map((a) => [a.name, a.state]), [['Bert', 'pending']]);
+check('with the words they wrote', /live in this house/.test(seen.body.accounts[0].reason), true);
+check('a listener cannot see that list',
+  (await get('/api/accounts')).status, 401);
+
+check('approving says so', (await post('/api/accounts/Bert/state', { state: 'approved' }, admin.cookies)).body.state, 'approved');
+
+// --- the listener --------------------------------------------------------
+const bert = await post('/api/account/signin', { name: 'Bert', password: 'a good long one' });
+check('an approved account signs in', bert.body.name, 'Bert');
+check('and is given a session cookie for a week',
+  /^listener=[a-f0-9]{64}$/.test(bert.cookies), true);
+check('which Discord is told about', /Bert.*signed in/s.test(sent[sent.length - 1].content), true);
+check('the library opens for them', (await get('/api/genres', bert.cookies)).status, 200);
+check('but the admin list does not', (await get('/api/accounts', bert.cookies)).status, 403);
+
+// --- the hearts ----------------------------------------------------------
+check('nothing is hearted to begin with', (await get('/api/favourites', bert.cookies)).body.length, 0);
+check('a heart goes on', (await post('/api/favourites/3', { on: true }, bert.cookies)).body, { favourite: true, count: 1 });
+check('and the book is in the list',
+  (await get('/api/favourites', bert.cookies)).body.map((b) => b.title), ['A Book']);
+check('pressing it again takes it off',
+  (await post('/api/favourites/3', { on: false }, bert.cookies)).body, { favourite: false, count: 0 });
+check('a heart on a book that is not there is refused',
+  (await post('/api/favourites/999', { on: true }, bert.cookies)).status, 404);
+check('and somebody with no account cannot heart anything',
+  (await post('/api/favourites/3', { on: true })).status, 401);
+
+// --- what is playing -----------------------------------------------------
+await post('/api/playing', { bookId: 3, playing: true }, bert.cookies);
+check('starting a book is announced, with the book and the person',
+  [/Bert/.test(sent[sent.length - 1].content), /A Book/.test(sent[sent.length - 1].content)], [true, true]);
+const before = sent.length;
+await post('/api/playing', { bookId: 3, playing: true }, bert.cookies);
+check('and saying it twice is not two starts', sent.length, before);
+await post('/api/playing', { bookId: 3, playing: false, how: 'finished' }, bert.cookies);
+check('stopping is announced too', /Bert.*finished.*A Book/s.test(sent[sent.length - 1].content), true);
+
+// --- a place in a book belongs to whoever kept it -------------------------
+await post('/api/progress', { user: 'Someone Else', bookId: 3, trackIdx: 0, position: 30 }, bert.cookies);
+check('a name in the body cannot write into another account',
+  db.prepare('SELECT user FROM progress').all().map((p) => p.user), ['Bert']);
+
+// --- seven quiet days ----------------------------------------------------
+const token = bert.cookies.replace('listener=', '');
+db.prepare("UPDATE listener_sessions SET seen = ? WHERE token = ?")
+  .run(new Date(Date.now() - 8 * 86400000).toISOString(), token);
+check('a session nobody used for a week is over', (await get('/api/genres', bert.cookies)).status, 401);
+
+const again = await post('/api/account/signin', { name: 'Bert', password: 'a good long one' });
+check('signing in again works', again.status, 200);
+db.prepare("UPDATE listener_sessions SET seen = ? WHERE token = ?")
+  .run(new Date(Date.now() - 6 * 86400000).toISOString(), again.cookies.replace('listener=', ''));
+check('six quiet days is not seven', (await get('/api/genres', again.cookies)).status, 200);
+
+// --- taking an account away ----------------------------------------------
+await post('/api/favourites/3', { on: true }, again.cookies);
+check('the account has something of its own',
+  [db.prepare('SELECT COUNT(*) AS n FROM favourites').get().n,
+    db.prepare('SELECT COUNT(*) AS n FROM progress').get().n], [1, 1]);
+check('deleting it says whose it was',
+  (await post('/api/accounts/Bert/remove', {}, admin.cookies)).body, { removed: 'Bert' });
+check('and everything that was only about them goes with it',
+  [db.prepare('SELECT COUNT(*) AS n FROM favourites').get().n,
+    db.prepare('SELECT COUNT(*) AS n FROM progress').get().n,
+    db.prepare('SELECT COUNT(*) AS n FROM listener_sessions').get().n], [0, 0, 0]);
+check('the books are untouched', db.prepare('SELECT COUNT(*) AS n FROM books').get().n, 1);
+check('and the session it had is no longer a way in',
+  (await get('/api/genres', again.cookies)).status, 401);
+
+// --- guessing ------------------------------------------------------------
+db.prepare(`INSERT INTO users (name, state, pass, salt) VALUES ('Ann', 'approved', 'x', 'y')`).run();
+let refused = 0;
+for (let i = 0; i < 7; i++) {
+  // eslint-disable-next-line no-await-in-loop -- the count is the point
+  const r = await post('/api/account/signin', { name: 'Ann', password: `guess ${i}` });
+  if (r.status === 429) refused++;
+}
+check('guessing starts costing after a handful of tries', refused > 0, true);
+
+console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
+process.exit(failed ? 1 : 0);

@@ -29,7 +29,27 @@ db.exec(`
     done INTEGER DEFAULT 0,
     PRIMARY KEY (user, book_id)
   );
+  -- A listener used to be a name and nothing else, and the listening page was
+  -- open to whoever could reach it. It is an account now: somebody asks for one
+  -- with a reason, the admin approves it, and only then can they sign in.
+  -- state is pending, approved or denied; pass is scrypt of the password with
+  -- salt, and is empty for the names that existed before this, which are
+  -- approved and choose a password the first time they sign in.
   CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY);
+  -- Signed-in browsers. In the database rather than in memory, because the
+  -- cookie is good for seven days and a container restart is not a reason to
+  -- ask everybody in the house to sign in again.
+  CREATE TABLE IF NOT EXISTS listener_sessions (
+    token TEXT PRIMARY KEY, name TEXT, made TEXT, seen TEXT
+  );
+  CREATE INDEX IF NOT EXISTS listener_sessions_name ON listener_sessions (name);
+  -- The hearts. One row per person per book, and it goes when either goes.
+  CREATE TABLE IF NOT EXISTS favourites (
+    user TEXT, book_id INTEGER, at TEXT,
+    PRIMARY KEY (user, book_id)
+  );
+  CREATE TRIGGER IF NOT EXISTS favourites_follow_books AFTER DELETE ON books
+  BEGIN DELETE FROM favourites WHERE book_id = OLD.id; END;
   -- a whole-collection tag write, and what is left of it: the queue is what
   -- makes the run resumable after a stop or a restart
   CREATE TABLE IF NOT EXISTS tagrun (
@@ -78,6 +98,20 @@ try { db.exec('ALTER TABLE progress ADD COLUMN done INTEGER DEFAULT 0'); } catch
 try { db.exec("ALTER TABLE books ADD COLUMN tagged TEXT DEFAULT ''"); } catch { /* already there */ }
 try { db.exec("ALTER TABLE books ADD COLUMN tag_series TEXT DEFAULT ''"); } catch { /* already there */ }
 try { db.exec('ALTER TABLE books ADD COLUMN series_no INTEGER DEFAULT 0'); } catch { /* already there */ }
+
+// A listener became an account in 2.7.0. Every name that was already there is
+// approved — locking the household out of its own listening history to add a
+// login would be a poor trade — and carries no password until it signs in and
+// chooses one. The admin page lists those, so a name nobody claims can be seen
+// and removed rather than sitting there for ever.
+for (const [column, kind] of [
+  ['state', "TEXT DEFAULT 'approved'"], ['pass', "TEXT DEFAULT ''"], ['salt', "TEXT DEFAULT ''"],
+  ['reason', "TEXT DEFAULT ''"], ['knows_admin', 'INTEGER DEFAULT 0'],
+  ['requested_at', "TEXT DEFAULT ''"], ['decided_at', "TEXT DEFAULT ''"],
+  ['last_seen', "TEXT DEFAULT ''"], ['first_seen', "TEXT DEFAULT ''"],
+]) {
+  try { db.exec(`ALTER TABLE users ADD COLUMN ${column} ${kind}`); } catch { /* already there */ }
+}
 
 // descriptions stored before iTunes normalisation data was filtered out of them
 for (const b of db.prepare("SELECT id, description FROM books WHERE description <> ''").all()) {
