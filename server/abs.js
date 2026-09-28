@@ -422,6 +422,17 @@ export function socketPoll(req, res) {
     s.queue = [];
     return res.type('text/plain; charset=UTF-8').send(out);
   }
+  // A poll already held open, and another one arriving: the first used to be
+  // dropped on the floor — overwritten here, and then its own timer found
+  // `s.waiting` pointing at the newer one and left it hanging until the client
+  // gave up. Answer it with a ping first, which is a thing engine.io expects to
+  // see, so the connection it belongs to carries on rather than stalling.
+  if (s.waiting) {
+    const older = s.waiting;
+    s.waiting = null;
+    clearTimeout(s.timer);
+    try { older.type('text/plain; charset=UTF-8').send('2'); } catch { /* already gone */ }
+  }
   // hold it open, and let go on every way out: a poll whose reader has gone must
   // not keep a timer and a response alive behind it
   s.waiting = res;
