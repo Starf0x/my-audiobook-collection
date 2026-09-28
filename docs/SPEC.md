@@ -1,6 +1,6 @@
 # My Audiobook Collection — build specification
 
-**Version described: 2.6.48.** This document describes what the app is, how every
+**Version described: 2.6.56.** This document describes what the app is, how every
 part of it behaves, and the decisions and traps behind those behaviours. It is
 written to be handed back to an assistant later as the sole brief for rebuilding
 the app.
@@ -14,7 +14,7 @@ itself — wording of comments, order of small helpers, exact CSS values. Nothin
 in the spec depends on those.
 
 If you want a literal reproduction, keep the repository as well: this document
-plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.48` is an
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.6.56` is an
 exact answer. This document alone is a faithful one, and it is the part that
 carries the *reasoning* the code cannot show — every rule in §9 is there because
 something went wrong without it.
@@ -101,10 +101,10 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1210 | Express app: every route, and nothing else |
+| `server/index.js` | 1255 | Express app: every route, and nothing else |
 | `server/user.js` | 85 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 145 | schema, migrations, settings, library list |
-| `server/admin.js` | 47 | the one password, sessions, `requireAdmin` |
+| `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 565 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
 | `server/google.js` | 718 | Google Books lookup, and writing tags into files |
@@ -117,13 +117,14 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/covers.js` | 67 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
+| `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 445 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
-| `server/abs.js` | 661 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 672 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 287 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 108 | the Home Assistant page |
@@ -2186,6 +2187,29 @@ skips them will reproduce the bugs.
     whatever is there on the next call — a typo is enough — so changing the
     address forgets the token, and the address itself has to be `http(s)://host`
     with nothing after it.
+52. **A guard in a page guards one page** (`onejob.js`). `work()` in app.js keeps
+    one browser from starting a second job, which is worth having and is not a
+    lock: a phone beside a laptop, or a reload in the middle of an import, is a
+    request that page never knew about — and what it reaches moves folders,
+    renames them and deletes them. The routes that move files take a server-side
+    lock and answer **409** with the name of the job that holds it. Tag writes
+    stay out of it on purpose: each touches only its own book (§7.3).
+53. **scrypt is slow on purpose, so it may not be synchronous.** `unlock` hashed
+    twice with `scryptSync` on a route that asks for no password to reach, which
+    made guessing a way to stop the server answering anything at all. It hashes
+    off-thread now, works the stored side out once, and a wrong password costs
+    the asker a wait that doubles from half a second to thirty — per address, so
+    a mistyped password does not lock the house.
+54. **Open is not the same as taking whatever arrives.** A listener has no
+    password (§7.12) and `POST /api/users`, `/api/progress` and `/api/listened`
+    stay open, because that is the model. They still cut a name to 60 characters
+    and strip control characters from it, and a place in a book has to be a book
+    that exists, a whole track index and a position that is a number at all.
+55. **A held poll that is replaced must be answered, not dropped.** A second
+    Engine.IO poll overwrote the first, whose own timer then found `s.waiting`
+    pointing elsewhere and left it hanging until the client gave up. The older
+    one is answered with a ping first.
+
 ## 10. Measured performance
 
 Numbers from the machine this was built on (20 CPUs; the share is SMB on a NAS).
@@ -2381,6 +2405,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.6.56 | one job at a time on the server rather than only in the page, a password that costs the guesser, and what the open routes will take |
 | 2.6.48 | what this app fetches when it is told an address, what it writes into a playlist, and which Home Assistant its token belongs to |
 | 2.6.40 | three jobs that could finish without having done the work: a swept-up half-copy, tag writes that answer `false` counted as the failures they are, and a conversion lock taken before the first await |
 | 2.6.32 | a path from outside is resolved and contained before it reaches the disk — covers, import sources, filing sources — and a scan that could read no library removes nothing |
