@@ -417,6 +417,10 @@ async function walkAndScan(only) {
   const jobs = [];
   const tooDeep = [];
   const skipped = [];
+  // The roots this walk really got to read. Only what sits under one of these may
+  // be reconciled away at the end: a root that answered with an error saw no
+  // books, and "saw no books" must never mean "there are none".
+  const read = [];
   const note = (dir, reason, detail) => {
     if (skipped.length < 500) skipped.push({ path: dir, reason, detail });
   };
@@ -429,10 +433,23 @@ async function walkAndScan(only) {
     if (!fs.existsSync(lib.path)) continue;
     if (!lib.asGenre && looksTooDeep(lib.path)) tooDeep.push(lib.path);
     const root = lib.asGenre ? null : listing(lib.path);
-    if (root) root.aside.forEach((d) => note(d, 'aside', 'set aside by an import, and not offered again'));
+    if (root) {
+      // a root that cannot be listed is not an empty root
+      if (root.error) {
+        note(lib.path, 'unreadable', root.error);
+        continue;
+      }
+      root.aside.forEach((d) => note(d, 'aside', 'set aside by an import, and not offered again'));
+      read.push(path.resolve(lib.path));
+    }
     for (const genreDir of (lib.asGenre ? [lib.path] : root.dirs)) {
       const genre = path.basename(genreDir);
       const inGenre = listing(genreDir);
+      if (inGenre.error) {
+        note(genreDir, 'unreadable', inGenre.error);
+        continue;
+      }
+      if (lib.asGenre) read.push(path.resolve(lib.path));
       inGenre.aside.forEach((d) => note(d, 'aside', 'set aside by an import, and not offered again'));
       if (inGenre.audio.length) {
         note(genreDir, 'loose', `${inGenre.audio.length} audio file(s) lying in the genre folder `
@@ -501,14 +518,40 @@ async function walkAndScan(only) {
     progress.books += added;
     progress.done++;
   });
-  // Books whose folder is gone are dropped — but only from what was walked, or
-  // scanning one library folder would delete the books of all the others.
+  // Books whose folder is gone are dropped — but only from a root this walk
+  // actually read, and only when the folder really is gone.
+  //
+  // What this replaces could empty the whole library. `walked` was `!only || …`,
+  // and `only` is empty on every ordinary scan, so every book not in `seen` was
+  // dropped — and `seen` is empty when there is nothing to walk. A `libraries`
+  // setting that will not parse answers `[]` (db.js says so outright), a share
+  // that is mounted but unreadable lists nothing, and either one took every book
+  // row with it. The files survive that and a rescan puts the books back; what
+  // does not come back is everyone's place in them, which the
+  // `progress_follows_books` trigger deletes along with the row.
   const seen = new Set(jobs.map((j) => j.dir));
-  const roots = libs.map((l) => path.resolve(l.path));
-  for (const b of q.allBookPaths.all()) {
-    const here = path.resolve(b.path);
-    const walked = !only || roots.some((r) => here === r || here.startsWith(r + path.sep));
-    if (walked && !seen.has(b.path)) {
+  // A folder that still holds audio is still a book, whatever the walk made of
+  // it; one this process cannot read is not evidence of anything, so it stays.
+  const stillABook = (dir) => {
+    // gone is gone, and that is the case this reconciliation exists for
+    if (!fs.existsSync(dir)) return false;
+    try {
+      return audioFiles(dir).length > 0 || !!discFiles(dir);
+    } catch {
+      // there, but this process cannot read it: a permission that changed is not
+      // a book that went away
+      return true;
+    }
+  };
+  if (!read.length) {
+    progress.warning = `${progress.warning ? progress.warning + ' ' : ''}`
+      + 'No library folder could be read, so nothing was removed from the library. '
+      + 'Check that the share is mounted and that Settings still lists it.';
+  } else {
+    for (const b of q.allBookPaths.all()) {
+      const here = path.resolve(b.path);
+      if (!read.some((r) => here.startsWith(r + path.sep))) continue;
+      if (seen.has(b.path) || stillABook(b.path)) continue;
       q.dropTracks.run(b.id);
       q.dropBook.run(b.id);
     }

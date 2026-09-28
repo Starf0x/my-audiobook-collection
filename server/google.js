@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { writeTag } from './tagpool.js';
 import { db, googleKey, googleCountry, DATA_DIR } from './db.js';
+import { coverFile, storedCover } from './safepath.js';
 
 // Google Books answers 503 when it will not serve a request, and on some keys it
 // does that to three requests out of four, at random, whatever the spacing. Short
@@ -600,7 +601,13 @@ async function apply_(book, pick, writeTags, progress) {
   // A cover pasted into the dialog is a decision already taken; a thumbnail is
   // only what a lookup offered. So the paste wins, and it wins silently: the
   // owner who pastes art over a looked-up result means the art they pasted.
+  //
+  // Only a name `POST /api/cover` handed out, though. This is the one place a
+  // cover can be named from outside, and what it writes is read back by a route
+  // that asks for no password — so a pick of `../../etc/passwd` would have made
+  // an admin's save into a file the whole network could fetch.
   if (pick.cover) {
+    if (!storedCover(pick.cover)) throw new Error('That is not a cover this app stored.');
     cover = pick.cover;
   } else if (pick.thumbnail) {
     // a cover that will not download must not stop the metadata being applied
@@ -635,10 +642,9 @@ async function apply_(book, pick, writeTags, progress) {
     // A cover is either a file this app keeps or a picture beside the audio
     // (cover.jpg and its kind). Both go into the files: the Needs tags list
     // counts what the FILES carry, so skipping the second kind left a book asking
-    // for a cover it already had, for ever.
-    const kept = cover && !cover.startsWith('file:') ? path.join(DATA_DIR, 'covers', cover) : '';
-    const beside = cover && cover.startsWith('file:') ? cover.slice(5) : '';
-    const coverFile = [kept, beside].find((p) => p && fs.existsSync(p)) || null;
+    // for a cover it already had, for ever. Resolved by the same rule that serves
+    // it, so a path this app would not show is not one it writes into MP3s.
+    const art = coverFile(cover) || null;
     const author = pick.author || book.author;
     const description = pick.description || book.description || '';
     const tags = {
@@ -658,7 +664,7 @@ async function apply_(book, pick, writeTags, progress) {
       // the files, would drop the series again
       ...(series ? { contentGroup: series + (pick.seriesNo ? ` ${pick.seriesNo}` : '') } : {}),
       ...(description ? { comment: { language: 'eng', text: description } } : {}),
-      ...(coverFile ? { APIC: coverFile } : {}),
+      ...(art ? { APIC: art } : {}),
     };
     // an empty value would write an empty frame, which reads back as "present"
     for (const [k, v] of Object.entries(tags)) if (!v) delete tags[k];
