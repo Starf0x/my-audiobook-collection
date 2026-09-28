@@ -65,6 +65,7 @@ const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC, name));
 app.get('/', page('listen.html'));
 app.get('/admin', page('index.html'));
 app.get('/ha', page('ha.html'));
+app.get('/accounts', page('accounts.html'));
 app.get('/listen.html', (req, res) => res.redirect('/'));
 app.get('/index.html', (req, res) => res.redirect('/admin'));
 app.use(express.static(PUBLIC, { index: false }));

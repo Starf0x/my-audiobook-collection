@@ -114,6 +114,32 @@ check('which Discord is told about', /Bert.*signed in/s.test(sent[sent.length - 
 check('the library opens for them', (await get('/api/genres', bert.cookies)).status, 200);
 check('but the admin list does not', (await get('/api/accounts', bert.cookies)).status, 403);
 
+// --- the page the admin reads them on ------------------------------------
+const pageOf = async (where, cookie) => {
+  const r = await realFetch(`${BASE}${where}`, { headers: cookie ? { Cookie: cookie } : {} });
+  return { status: r.status, type: (r.headers.get('content-type') || '').split(';')[0], body: await r.text() };
+};
+const accountsPage = await pageOf('/accounts');
+check('the accounts page is served', [accountsPage.status, accountsPage.type], [200, 'text/html']);
+check('and it is the accounts page', /id="everyone"/.test(accountsPage.body), true);
+check('with a tick per account rather than a button',
+  /data-may-listen|accounts\.js/.test(accountsPage.body), true);
+
+// Taking the tick off is the approval going away: they cannot sign in, and the
+// browsers signed in as them stop being signed in.
+const deniedThem = await post('/api/accounts/Bert/state', { state: 'denied' }, admin.cookies);
+check('taking the tick off refuses the account', deniedThem.body.state, 'denied');
+check('and signs out every browser that was them',
+  db.prepare("SELECT COUNT(*) AS n FROM listener_sessions WHERE name = 'Bert'").get().n, 0);
+check('whose session is no longer a way in', (await get('/api/genres', bert.cookies)).status, 401);
+check('and who cannot sign in again while it is off',
+  (await post('/api/account/signin', { name: 'Bert', password: 'a good long one' })).status, 400);
+await post('/api/accounts/Bert/state', { state: 'approved' }, admin.cookies);
+const backIn = await post('/api/account/signin', { name: 'Bert', password: 'a good long one' });
+check('ticking it again lets them straight back in', backIn.status, 200);
+check('with everything they had', (await get('/api/favourites', backIn.cookies)).status, 200);
+bert.cookies = backIn.cookies;
+
 // --- the hearts ----------------------------------------------------------
 check('nothing is hearted to begin with', (await get('/api/favourites', bert.cookies)).body.length, 0);
 check('a heart goes on', (await post('/api/favourites/3', { on: true }, bert.cookies)).body, { favourite: true, count: 1 });
@@ -155,15 +181,22 @@ check('six quiet days is not seven', (await get('/api/genres', again.cookies)).s
 
 // --- taking an account away ----------------------------------------------
 await post('/api/favourites/3', { on: true }, again.cookies);
-check('the account has something of its own',
-  [db.prepare('SELECT COUNT(*) AS n FROM favourites').get().n,
-    db.prepare('SELECT COUNT(*) AS n FROM progress').get().n], [1, 1]);
+db.prepare("INSERT INTO completions (user, book_id, title, at) VALUES ('Bert', 3, 'A Book', datetime('now'))").run();
+db.prepare("INSERT INTO downloads (user, book_id, title, at) VALUES ('Bert', 3, 'A Book', datetime('now'))").run();
+check('the account has something of its own in every one of them',
+  ['favourites', 'progress', 'completions', 'downloads', 'listener_sessions']
+    .map((t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n),
+  [1, 1, 1, 1, 1]);
 check('deleting it says whose it was',
   (await post('/api/accounts/Bert/remove', {}, admin.cookies)).body, { removed: 'Bert' });
+// every table that is only about a person, named one by one: a new one added
+// later and forgotten here would leave somebody's traces behind after they had
+// been deleted, and nothing would say so
 check('and everything that was only about them goes with it',
-  [db.prepare('SELECT COUNT(*) AS n FROM favourites').get().n,
-    db.prepare('SELECT COUNT(*) AS n FROM progress').get().n,
-    db.prepare('SELECT COUNT(*) AS n FROM listener_sessions').get().n], [0, 0, 0]);
+  ['favourites', 'progress', 'listener_sessions', 'completions', 'downloads']
+    .map((t) => [t, db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n]),
+  [['favourites', 0], ['progress', 0], ['listener_sessions', 0],
+    ['completions', 0], ['downloads', 0]]);
 check('the books are untouched', db.prepare('SELECT COUNT(*) AS n FROM books').get().n, 1);
 check('and the session it had is no longer a way in',
   (await get('/api/genres', again.cookies)).status, 401);
