@@ -25,6 +25,7 @@ import { toolsWhy, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
 import { coverFile } from './safepath.js';
+import { alone } from './onejob.js';
 import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
   loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
   minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
@@ -80,7 +81,10 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(PUBLIC, '../package.json'),
 // process. Nothing can be said to that reader any more, so the connection goes.
 const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => {
   if (res.headersSent) return res.destroyed ? undefined : res.destroy();
-  return res.status(400).json({ error: e.message });
+  // a refusal carries its own status where it has one: 409 for "something else
+  // is using the files", 429 for "you have guessed enough for now"
+  if (e.retryAfter) res.set('Retry-After', String(e.retryAfter));
+  return res.status(e.status || (e.retryAfter ? 429 : 400)).json({ error: e.message });
 });
 
 // --- who may change things ---------------------------------------------
@@ -89,8 +93,15 @@ app.get('/api/admin', (req, res) => res.json({
 }));
 
 app.post('/api/admin/unlock', wrap(async (req, res) => {
-  const { token } = unlock(req.body.password);
-  if (token) res.setHeader('Set-Cookie', `admin=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+  const { token } = await unlock(req.body.password, req.ip || req.socket.remoteAddress || '');
+  // Secure only where it means something: this app is normally reached over plain
+  // http on a home network, and a Secure cookie there is a cookie the browser
+  // throws away — the password would be asked for again on every page.
+  const https = (req.headers['x-forwarded-proto'] || req.protocol || '').split(',')[0].trim() === 'https';
+  if (token) {
+    res.setHeader('Set-Cookie', `admin=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+      + (https ? '; Secure' : ''));
+  }
   res.json({ admin: true });
 }));
 
@@ -169,8 +180,19 @@ app.get('/api/users', (req, res) => {
   res.json(claimed(req).filter((n) => known.has(n)).sort());
 });
 
+// A listener has no password by design (§7.12), so these two routes take what
+// anybody on the network sends. That is the model and it stays — what it is not
+// is a reason to write whatever arrives into the database: a name is a name, and
+// a place in a book is two numbers and a book that exists.
+const A_NAME = 60;
+const asName = (said) => String(said ?? '')
+  // control characters would make a nonsense of every list this name appears in
+  .replace(new RegExp('[\\u0000-\\u001f\\u007f]', 'g'), ' ')
+  .trim()
+  .slice(0, A_NAME);
+
 app.post('/api/users', (req, res) => {
-  const name = (req.body.name || '').trim();
+  const name = asName(req.body.name);
   if (!name) return res.json({ ok: true });
   db.prepare('INSERT OR IGNORE INTO users (name) VALUES (?)').run(name);
   const names = claimed(req);
@@ -273,8 +295,10 @@ app.get('/api/import', requireAdmin, wrap(async (req, res) => {
 app.get('/api/import/compare', requireAdmin, wrap(async (req, res) =>
   res.json(await compareWithExisting(req.query))));
 // Not importing it: the folder stays, renamed so it says so, and is not offered again
-app.post('/api/import/skip', requireAdmin, wrap(async (req, res) => res.json(skipImport(req.body.source))));
-app.post('/api/import', requireAdmin, wrap(async (req, res) => res.json(await importBook(req.body))));
+app.post('/api/import/skip', requireAdmin, wrap(async (req, res) =>
+  res.json(await alone('Setting that copy aside', () => skipImport(req.body.source)))));
+app.post('/api/import', requireAdmin, wrap(async (req, res) =>
+  res.json(await alone('The import', () => importBook(req.body)))));
 
 // --- writing tags into the whole collection -----------------------------
 // Runs on the server, so closing the page does not stop it, and what is left of
@@ -303,7 +327,7 @@ app.post('/api/broken/:id/delete', requireAdmin, wrap(async (req, res) => {
   const book = db.prepare('SELECT path FROM books WHERE id = ?').get(Number(req.params.id));
   if (!book) throw new Error('Book not found');
   res.json(fs.existsSync(book.path)
-    ? { ...await deleteToTrash(req.params.id, Date.now()), trashed: true }
+    ? { ...await alone('The delete', () => deleteToTrash(req.params.id, Date.now())), trashed: true }
     : forget(req.params.id));
 }));
 
@@ -338,13 +362,16 @@ app.post('/api/converted/all', requireAdmin, wrap(async (req, res) => res.json(d
 app.post('/api/converted/:id', requireAdmin, wrap(async (req, res) => res.json(deleteConverted(req.params.id))));
 
 // --- move and delete ---------------------------------------------------
-app.post('/api/move/:id', requireAdmin, wrap(async (req, res) => res.json(await moveBook(req.params.id, req.body))));
+app.post('/api/move/:id', requireAdmin, wrap(async (req, res) =>
+  res.json(await alone('The move', () => moveBook(req.params.id, req.body)))));
 
 app.get('/api/trash', requireAdmin, (req, res) => res.json({ keepDays: KEEP_DAYS, items: listTrash(Date.now()) }));
 // before /api/trash/:id, which would otherwise read "empty" as a book id
 app.post('/api/trash/empty', requireAdmin, wrap(async (req, res) => res.json(emptyTrash())));
-app.post('/api/trash/:id', requireAdmin, wrap(async (req, res) => res.json(await deleteToTrash(req.params.id, Date.now()))));
-app.post('/api/trash/:id/restore', requireAdmin, wrap(async (req, res) => res.json(await restoreFromTrash(req.params.id))));
+app.post('/api/trash/:id', requireAdmin, wrap(async (req, res) =>
+  res.json(await alone('The delete', () => deleteToTrash(req.params.id, Date.now())))));
+app.post('/api/trash/:id/restore', requireAdmin, wrap(async (req, res) =>
+  res.json(await alone('Putting the book back', () => restoreFromTrash(req.params.id)))));
 app.post('/api/trash/:id/purge', requireAdmin, wrap(async (req, res) => res.json(purge(req.params.id))));
 
 app.post('/api/scan', requireAdmin, (req, res) => {
@@ -364,7 +391,7 @@ app.get('/api/skipped/guess', requireAdmin, wrap(async (req, res) =>
 // File it where the given genre, author and title say it belongs, and write those
 // words into its files, so what put it there is what it carries.
 app.post('/api/skipped/file', requireAdmin, wrap(async (req, res) => {
-  const filed = await fileSkipped(req.body || {});
+  const filed = await alone('Filing the book', () => fileSkipped(req.body || {}));
   forgetSkipped(req.body.source);
   let written = 0;
   if (req.body.writeTags && filed.id) {
@@ -641,13 +668,19 @@ app.get('/api/search', (req, res) => {
 });
 
 app.post('/api/listened', (req, res) => {
-  const { user, bookId, done } = req.body;
+  const user = asName(req.body.user);
+  const bookId = Number(req.body.bookId);
+  const done = !!req.body.done;
   if (!user) return res.status(400).json({ error: 'No user' });
+  if (!Number.isInteger(bookId)) return res.status(400).json({ error: 'No such book' });
   // Unticking it says "I have not listened to this", so the place kept in it goes
   // with the tick: the book leaves Continue listening and starts from the top.
   if (!done) {
-    db.prepare('DELETE FROM progress WHERE user = ? AND book_id = ?').run(user, Number(bookId));
+    db.prepare('DELETE FROM progress WHERE user = ? AND book_id = ?').run(user, bookId);
     return res.json({ ok: true, cleared: true });
+  }
+  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
+    return res.status(404).json({ error: 'No such book' });
   }
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated)
     VALUES (?, ?, 0, 0, 1, datetime('now'))
@@ -1117,8 +1150,20 @@ const keptOne = db.prepare(`SELECT p.done, p.track_idx, p.position,
 const tickIt = db.prepare('UPDATE progress SET done = 1 WHERE user = ? AND book_id = ?');
 
 app.post('/api/progress', (req, res) => {
-  const { user, bookId, trackIdx, position } = req.body;
+  const user = asName(req.body.user);
+  const bookId = Number(req.body.bookId);
+  const trackIdx = Number(req.body.trackIdx);
+  const position = Number(req.body.position);
   if (!user) return res.status(400).json({ error: 'No user' });
+  if (!Number.isInteger(bookId) || !Number.isInteger(trackIdx) || trackIdx < 0
+    || !Number.isFinite(position) || position < 0) {
+    return res.status(400).json({ error: 'A place in a book is a book, a track and a position.' });
+  }
+  // a row about a book that is not there is a row nothing will ever read, and it
+  // outlives the book it names: the trigger only fires on a book that existed
+  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
+    return res.status(404).json({ error: 'No such book' });
+  }
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated) VALUES (?, ?, ?, ?, datetime('now'))
     ON CONFLICT(user, book_id) DO UPDATE SET track_idx = excluded.track_idx,
       position = excluded.position, updated = excluded.updated`)

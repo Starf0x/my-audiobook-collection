@@ -486,3 +486,10 @@ here:
   `node --check` says "missing /" about the line above. Build that class with
   `new RegExp('[\r\n\u2028\u2029]+')` instead — which is also the thing the
   regex was for: those characters end a line in an M3U too.
+* **A guard in a page guards one page.** Importing, moving and deleting were kept
+  one-at-a-time by `work()` in the browser. Two browsers, or a reload mid-import,
+  is a second request that page never knew about — and those routes move folders.
+  The lock belongs on the server; the page's is a courtesy.
+* **`scryptSync` on an open route is a way to stop the server.** It is slow by
+  design and it blocks the only thread there is. Hash off-thread, work the stored
+  side out once, and make a wrong password cost the asker a growing wait.
