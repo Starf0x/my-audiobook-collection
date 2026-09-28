@@ -327,10 +327,6 @@ table.cmp td.better { color: #7ee2a8; font-weight: 600; }
 .series-head .copy-search,
 .series-head .open-series { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
 
-/* the gap list: each row leads to that series in the library */
-#gapsOut tr[data-series] { cursor: pointer; }
-#gapsOut tr[data-series]:hover td { background: var(--panel2); }
-
 /* while a job runs: its own button is disabled, and so is anything that would
    start a second one. Playing and marking listened stay available. */
 button:disabled { opacity: .45; cursor: default; }
