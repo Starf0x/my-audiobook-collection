@@ -136,10 +136,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/player.js` | 320 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 384 | the admin page: columns, dialogs |
-| `public/app.js` | 2508 | the admin page's behaviour |
-| `public/listen.html` | 132 | the listening page |
-| `public/shelf.js` | 489 | the listening page’s behaviour |
+| `public/browse.js` | 247 | browsing the collection: what both pages do the same way, in one copy |
+| `public/index.html` | 385 | the admin page: columns, dialogs |
+| `public/app.js` | 2312 | the admin page's behaviour |
+| `public/listen.html` | 133 | the listening page |
+| `public/shelf.js` | 293 | the listening page’s behaviour |
 | `public/style.css` | 800 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -1867,6 +1868,29 @@ No framework, no build. `$` is `querySelector`, `api()` throws the server's
 `error` message, `toast()` shows it. `esc()` escapes `& < > "` — folder names and
 Google descriptions land in markup.
 
+**One copy of the browsing half.** The listening page and the admin page are
+different jobs — one plays books and changes nothing, the other files and tags
+and deletes — but they show the same shelves, tiles, search, *Listened* section
+and cover menu. Those were two copies, one in `shelf.js` and one in `app.js`,
+and twenty-two declarations had drifted to byte-identical: `browse.js` holds them
+once and both pages load it **before** their own script, because both use `$`,
+`api` and `esc` in their own top-level code and the scripts share one global
+scope. What stays with each page is what only that page decides — `state`,
+`drawBooks`, `loadHome`, `loadGenres` and the column functions — and `browse.js`
+calls those by name, so the seam runs one way: the shared file asks the page for
+what only the page knows, and the page never reaches back into it. The one
+reference that cannot be taken eagerly is `$('#brand').onclick`, which calls
+`loadHome()` rather than being handed it, since the page has not declared it yet
+when `browse.js` runs.
+
+Two things about that arrangement are checked, because neither shows in
+`node --check`, which reads one file at a time: that `browse.js` is loaded first
+on both pages, and that no name is declared in both it and a page script — two
+`const $` in one scope is a `SyntaxError` that stops the whole page with nothing
+on the server any the wiser. `accounts.html` keeps its own small helpers instead
+of loading `browse.js`, which would run top-level code against shelves and a
+cover menu that page has not got.
+
 Layout, both pages: a header (title, **search box**, user select, and on the admin
 page the scan-scope select, *Scan library* and the **Settings pulldown**), then three columns —
 **Genres** (with a **Maintenance** section on the admin page), **Authors**,
@@ -2514,7 +2538,7 @@ anywhere:
 | --- | --- |
 | `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows |
-| `plays-on` | drives headless Edge, so it is run by hand |
+| `plays-on` | drives headless Edge, so it is run by hand — and **does not pass**: it starts the app again since 2.8.0 fixed a path that had been two levels wrong since `tests/` was committed, but it still waits for the *"who is listening?"* dialog that 2.7.0 removed, so it is written against the app as it was before accounts |
 
 The rest of the table below is a record of what was checked while the app was
 built, kept because it says what each rule is *for* — but those scripts are not
@@ -2670,6 +2694,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.0 | the browsing half of the two pages is one file: twenty-two byte-identical declarations out of `shelf.js` and `app.js` into `browse.js`, with checks that it loads first on both and that no name is declared twice |
 | 2.7.72 | the reason box shows an example of what to write, which is what the two copied-hint requests actually needed; the machinery built for the autofill that was never happening is out again |
 | 2.7.64 | Favourites has its authors column: the authors of the hearted books with a count each, and clicking one narrows to that author — it had been cleared and never filled |
 | 2.7.56 | a reason that is the form's own wording is refused and said to be so, and the box is emptied when the form opens — two requests arrived carrying the sentence printed under it, and what filled it is still unestablished |
