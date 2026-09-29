@@ -681,9 +681,17 @@ app.post('/api/series-online', requireAdmin, (req, res) => {
 app.get('/api/series-online/status', requireAdmin, (req, res) =>
   res.json({ ...onlineProgress, lastAt: lastOnlineAt() }));
 
-app.get('/api/authors', (req, res) => res.json(
-  db.prepare('SELECT author AS name, COUNT(*) AS books FROM books WHERE genre = ? GROUP BY author ORDER BY author')
-    .all(req.query.genre)));
+// The authors within one genre. Asking without naming it reached SQLite with
+// `undefined` to bind and threw, the same way `/api/books` did — an empty genre
+// is a fair question with an empty answer, a missing one is not a question.
+app.get('/api/authors', (req, res) => {
+  if (req.query.genre === undefined) {
+    return res.status(400).json({ error: 'Say which genre.' });
+  }
+  return res.json(
+    db.prepare('SELECT author AS name, COUNT(*) AS books FROM books WHERE genre = ? GROUP BY author ORDER BY author')
+      .all(req.query.genre));
+});
 
 // Whether a series is all there. Only the volume numbers can say it: the books of
 // one series that carry a number are laid out from 1 to the highest, and the
@@ -731,16 +739,24 @@ const seriesState = (genre, name) => {
 
 // Books of one author, or of one series: the same card either way, and with them
 // what each series on the page is missing.
+// A genre, and an author or a series within it. Both are needed — the page
+// never asks otherwise — and asking without them used to reach SQLite with
+// `undefined` to bind, which threw. Saying so is the answer; a 500 from a
+// question this route cannot take is the app blaming itself for a typo.
 app.get('/api/books', (req, res) => {
   const bySeries = !!req.query.series;
+  const within = bySeries ? req.query.series : req.query.author;
+  if (!req.query.genre || !within) {
+    return res.status(400).json({ error: 'Say which genre, and which author or series in it.' });
+  }
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
                                   b.description, b.cover, b.duration, b.tagged,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
                            ORDER BY series IS NULL, series, b.series_no, b.title`)
-    .all(req.query.user || '', req.query.genre, bySeries ? req.query.series : req.query.author);
-  res.json({
+    .all(req.query.user || '', req.query.genre, within);
+  return res.json({
     books: rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
       finished: isFinished({ ...b, trackSeconds }) })),
     series: [...new Set(rows.map((b) => b.series).filter(Boolean))]
@@ -1444,6 +1460,36 @@ app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
   }
   res.json({ ...await applyMetadata(book, req.body.pick, !!req.body.writeTags), moved });
 }));
+
+// --- anything thrown that nothing caught --------------------------------
+// Last of all, and it has to be last: Express only treats a four-argument
+// middleware as an error handler, and only reaches it after every route.
+//
+// `wrap` catches the routes it is put on, which is 44 of about 130. For the
+// rest, a throw fell through to Express's own handler — which answers with the
+// stack trace as an HTML page: the server's absolute paths, the line numbers,
+// the lot, to whoever asked. `GET /api/books` with no genre threw a SQLite bind
+// error, and any approved listener could read
+// `file:///…/My Audiobook Collection/server/index.js:742` out of the reply.
+//
+// So the reason is written to the log, where the owner can read it, and never
+// to the asker. A refusal thrown on purpose still carries its own words and its
+// own status — that is what `wrap` sends and what the pages show — but an error
+// with neither is a bug in this app, and a stranger is told only that.
+// eslint-disable-next-line no-unused-vars -- four arguments is what makes it an error handler
+app.use((err, req, res, next) => {
+  const deliberate = !!(err && (err.status || err.retryAfter));
+  if (!deliberate) console.error(`[${req.method} ${req.originalUrl}]`, err);
+  // the answer has already started — a download that broke off half way — and
+  // nothing more can be said into it; setting a status now would throw again
+  if (res.headersSent) return res.destroyed ? undefined : res.destroy();
+  if (err && err.retryAfter) res.set('Retry-After', String(err.retryAfter));
+  const status = (err && err.status) || (err && err.retryAfter ? 429 : 500);
+  return res.status(status).json({
+    error: deliberate ? err.message
+      : 'Something went wrong in the app. The server log says what.',
+  });
+});
 
 // drop whatever outstayed its keep-days, at startup and once a day after that,
 // so a container that runs for months still clears its trash
