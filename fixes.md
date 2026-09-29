@@ -475,6 +475,27 @@ request was refused as a **name already taken**, a 400 that had nothing to do
 with what was being checked. Give each case its own name and assert the message,
 not the status.
 
+### The UI suite had been unrunnable since it was committed (2.8.0)
+
+`plays-on` starts the app itself, and it did it with `join(here, '..', '..')` —
+two levels up from `tests/`, which is `…/Projects`, not this project. It had been
+spawning `…/Projects/server/index.js`, which does not exist, and answering *"the
+app never came up"*. The path was right where the suite used to live, one
+directory deeper, and came along unchanged when `tests/` was committed in 2.6.64.
+Nobody noticed because the spec calls it "run by hand", and by hand means never.
+It was also building its library, database and browser profile inside `tests/`
+rather than in `fixtures/`, against the rule at the foot of this file.
+
+That is fixed, and the suite now starts the app and passes its first check — then
+stops, because it waits for the *"who is listening?"* dialog that 2.7.0 removed
+when listeners became accounts. It is written against the app as it was before
+accounts and needs its own pass.
+
+**Rule:** a suite that is not run is not a suite, the same way one that is not in
+the repository is not. "Run by hand" is a plan for nobody to run it: if it cannot
+go in `npm test`, it still has to be run on the day it is changed, and a suite
+nothing has executed since the feature it covers was rewritten is decoration.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

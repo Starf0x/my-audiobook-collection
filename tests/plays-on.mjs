@@ -12,11 +12,18 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// One level up from tests/, not two: this suite was written where it used to
+// live, a directory deeper, and when tests/ was committed in 2.6.64 the path
+// came with it. It has been starting `…/Projects/server/index.js` — which does
+// not exist — ever since, and the spec called it "run by hand" so nobody did.
 const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, '..', '..');
-const LIB = join(here, 'audiobooks');
-const DATA = join(here, 'data');
-const PROFILE = join(here, 'edge-profile');
+const root = join(here, '..');
+// and its library, database and browser profile go in fixtures/ with every
+// other suite's, rather than being built inside tests/ next to the source
+const MINE = join(root, 'fixtures', 'plays-on-test');
+const LIB = join(MINE, 'audiobooks');
+const DATA = join(MINE, 'data');
+const PROFILE = join(MINE, 'edge-profile');
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const PORT = 8531;
 const CDP = 9334;

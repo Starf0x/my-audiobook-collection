@@ -180,6 +180,30 @@ check('and the admin is told they are',
 check('a listener asking the admin page’s own route is refused',
   (await get('/api/accounts', bert.cookies)).status, 403);
 
+// --- one copy of the browsing half ---------------------------------------
+// browse.js holds what the two pages do the same way, and each page script
+// holds what only it decides. Two things have to hold, and neither shows up in
+// `node --check`, which reads one file at a time:
+//
+//  * browse.js is loaded, and before the page's own script — both scripts share
+//    one global scope, and the page uses `$`, `api` and `esc` at its top level.
+//  * no name is declared in both. Two `const $` in one scope is a SyntaxError
+//    that stops the entire page, with nothing on the server any the wiser.
+const scripts = (html) => [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
+const declared = (file) => new Set([...fs.readFileSync(path.join(ROOT, 'public', file), 'utf8')
+  .matchAll(/^(?:async\s+function|function|const|let|var)\s+([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]));
+
+const shared = declared('browse.js');
+check('browse.js declares the browsing half', shared.size > 15, true);
+for (const [where, own] of [['/', 'shelf.js'], ['/admin', 'app.js']]) {
+  // eslint-disable-next-line no-await-in-loop -- two pages, read one after the other
+  const loaded = scripts((await pageOf(where)).body);
+  check(`${where} loads browse.js before ${own}`,
+    loaded.indexOf('browse.js') >= 0 && loaded.indexOf('browse.js') < loaded.indexOf(own), true);
+  check(`and ${own} declares nothing browse.js already has`,
+    [...declared(own)].filter((n) => shared.has(n)), []);
+}
+
 // --- the box the reason is typed into ------------------------------------
 // Two people, stuck for what to write, copied the sentence under this box and
 // sent that as their reason. The placeholder gives them an example instead, and
