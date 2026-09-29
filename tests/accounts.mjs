@@ -238,6 +238,22 @@ check('nothing is hearted to begin with', (await get('/api/favourites', bert.coo
 check('a heart goes on', (await post('/api/favourites/3', { on: true }, bert.cookies)).body, { favourite: true, count: 1 });
 check('and the book is in the list',
   (await get('/api/favourites', bert.cookies)).body.map((b) => b.title), ['A Book']);
+// Favourites draws an authors column beside the books, the way Listened does —
+// a view and the column beside it are one view. It had none: the handler
+// cleared `#authors ul` and never filled it, so the heading stood over nothing
+// beside a shelf of books that plainly had authors. Two things hold it: the
+// answer carries the author the column is built from, and the page wires the
+// column's rows to the function that narrows to one author's hearted books.
+check('a favourite carries the author its column is built from',
+  (await get('/api/favourites', bert.cookies)).body.every((b) => 'author' in b), true);
+const acct = fs.readFileSync(path.join(ROOT, 'public', 'account.js'), 'utf8');
+// The wiring is asserted as a call from a row's onclick, not as the name
+// appearing somewhere: `favouritesOf` matches its own definition, so the looser
+// version of this check stayed green with every row's click handler emptied.
+check('and the favourites view fills that column and wires it',
+  [/#authors ul.*innerHTML\s*=\s*authors\.map/s.test(acct),
+    /onclick\s*=\s*\(\)\s*=>\s*favouritesOf\(/.test(acct)],
+  [true, true]);
 check('pressing it again takes it off',
   (await post('/api/favourites/3', { on: false }, bert.cookies)).body, { favourite: false, count: 0 });
 check('a heart on a book that is not there is refused',

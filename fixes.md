@@ -539,6 +539,13 @@ here:
   "last asked 16:13" with nothing under it — minutes of somebody's free service
   thrown away, and the surviving half made it look as though nothing had been
   lost. Whatever writes the date writes the rows.
+* **And Favourites shipped with no authors column at all.** Same rule, third
+  time: the handler did `$('#authors ul').innerHTML = ''` and never filled it,
+  while clearing `body.maintenance` so the column stayed *visible* — an AUTHORS
+  heading over nothing, beside a shelf of books that plainly had authors. The
+  view had been written from the books outward, and the column beside it was
+  never asked about. When adding a view to that page, copy the view next to it
+  whole: *Listened* had the column, the counts and the click-to-narrow already.
 * **A view and the column beside it are one view.** The Wikidata poll redrew the
   pane and not the authors column, so Wikidata found volumes under authors the
   column had never heard of. Draw both from one pair of answers, and keep the
