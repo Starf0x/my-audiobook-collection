@@ -118,8 +118,12 @@ async function post(url, content) {
 }
 
 // --- the three things worth saying ---------------------------------------
+// The reason is the whole point of the message — it is what the admin decides
+// on. An empty one says so in words rather than leaving a bare `>`, which
+// Discord draws as nothing at all: a message that looks as though the app forgot
+// to send the reason, where in fact none arrived.
 export const askedForAnAccount = (who) => say(`📩 **${plain(who.name, 40)}** would like an account.`
-  + `\n> ${plain(who.reason, 400)}`
+  + `\n> ${plain(who.reason, 400) || '_(no reason given)_'}`
   + `\n_They say they ${who.knowsAdmin ? 'do' : 'do **not**'} know the administrator._`);
 
 export const signedIn = (name) => say(`🔑 **${plain(name, 40)}** signed in.`);
