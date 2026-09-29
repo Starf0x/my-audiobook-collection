@@ -120,7 +120,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
 | `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
-| `server/listeners.js` | 310 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/listeners.js` | 332 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
 | `server/notify.js` | 142 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
@@ -129,7 +129,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 177 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 187 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 170 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
@@ -1671,6 +1671,20 @@ email address is asked for and none is kept — it would be one more thing to lo
 after for a thing the admin can settle by recognising the name. The row goes in
 `pending`.
 
+**The reason is the asker's own words, and the app insists on it.** Two requests
+arrived whose reason was the sentence printed under the box — *"No email address
+is asked for and none is kept."* — word for word, from one browser, and nothing
+in this app writes into that box. What filled it is still unestablished;
+`autocomplete="off"` and `writingsuggestions="false"` on the textarea did not
+stop it. So there are two guards that do not depend on knowing, and the page's
+own hint text is named in both places rather than being guessed at: the page
+empties the box when the ask form is opened, unless the person has typed in it
+themselves (a flag, so typing survives switching between the two halves of the
+card); and the server refuses a reason that is one of the form's own strings,
+compared on letters and digits alone so punctuation and capitals cannot slip it
+past. The person asking is told it is the page's wording and not theirs, which
+is the one thing that gets a real reason written.
+
 **Deciding.** *Accounts* is a page of its own at `/accounts`, reached from the
 Settings pulldown or from the row in the admin's column — which is a pointer
 rather than a second list, and keeps the count because the number waiting is the
@@ -2655,6 +2669,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.56 | a reason that is the form's own wording is refused and said to be so, and the box is emptied when the form opens — two requests arrived carrying the sentence printed under it, and what filled it is still unestablished |
 | 2.7.48 | the sign-in card is in the middle of the screen again — a `#gate` width left over from the dialog was shrinking the backdrop to 440px — the Admin button is the administrator's alone, and the reason box refuses autofill and writing suggestions |
 | 2.7.40 | the ask-for-an-account card scrolls to its own top when it is taller than the window, and an account request with no reason says so in Discord rather than sending an empty quote |
 | 2.7.32 | the sign-in card gives the browser's top layer back, so a password manager stops warning about the page; and an account's row says their level, what they are playing now and what they are in the middle of |

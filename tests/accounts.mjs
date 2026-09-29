@@ -93,6 +93,34 @@ check('a password that is too short is refused',
 check('and a reason that says nothing is refused',
   (await post('/api/account/request', { name: 'Ann', password: 'a good long one', reason: 'hi' })).status, 400);
 
+// Two requests arrived whose reason was the sentence printed under the box. It
+// is not a reason whatever wrote it there, and the person asking is told so.
+check('the page’s own wording is not a reason',
+  (await post('/api/account/request', {
+    name: 'Ann', password: 'a good long one',
+    reason: 'No email address is asked for and none is kept.',
+  })).body.error,
+  'That is this page’s own wording, not yours. '
+  + 'Clear the box and say in your own words why you would like access.');
+// A name of its own, and the message asserted rather than the status: with the
+// guard taken out, a second try under 'Ann' is refused as a name already taken
+// — which is a 400 for quite another reason, and this check passed on it.
+check('nor is it, punctuated and cased any other way',
+  (await post('/api/account/request', {
+    name: 'Ada', password: 'a good long one',
+    reason: '  no EMAIL address is asked for, and none is kept  ',
+  })).body.error,
+  'That is this page’s own wording, not yours. '
+  + 'Clear the box and say in your own words why you would like access.');
+check('and a sentence that merely mentions email is still a reason',
+  (await post('/api/account/request', {
+    name: 'Nell', password: 'a good long one',
+    reason: 'No email from me, I just live here and would like to listen.',
+  })).status, 200);
+// and out again, because the check below this reads the waiting list whole and
+// an extra name in it would be this check's leavings rather than the app's doing
+db.prepare("DELETE FROM users WHERE name = 'Nell'").run();
+
 check('an account nobody has approved cannot sign in',
   (await post('/api/account/signin', { name: 'Bert', password: 'a good long one' })).body.error,
   'That account is waiting for the administrator to approve it.');
