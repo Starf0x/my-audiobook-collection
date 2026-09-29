@@ -489,7 +489,7 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
      the scan controls */
   header h1 { order: 1; }
   header #user { order: 2; max-width: 120px; }
-  header #adminBtn { order: 3; }
+  header #adminBtn, header #toAdmin { order: 3; }
   header #openSettings { order: 4; }
   .search { order: 5; flex: 1 1 130px; min-width: 120px; }
   header #scanWhich { order: 6; flex: 0 1 110px; min-width: 0; }
@@ -687,17 +687,13 @@ dialog label.pick input {
 .card .cover .heart.on, .tile .heart.on { color: #ff5f5f; }
 .card .cover .heart.on:hover, .tile .heart.on:hover { color: #ff8c8c; }
 
-/* the way in, when nobody is signed in yet */
-#gate { width: min(440px, 92vw); }
-#gate h2 { margin-bottom: 16px; }
-#gate .row { margin-top: 16px; }
-#gate .hint.missing { min-height: 1.2em; margin: 8px 0 0; }
-#gate button.linkish {
-  background: none; border: 0; padding: 0; color: var(--accent2);
-  text-decoration: underline; cursor: pointer; font: inherit;
-}
-#gate button.linkish:hover { color: #fff; filter: none; }
-#whoAmI { margin-right: 4px; }
+/* The way in, when nobody is signed in yet, is `.gate` and `.gate-card` further
+   down. There was a block of `#gate` rules here from when it was a <dialog>,
+   sizing it as the card it then was — `width: min(440px, 92vw)`. When the gate
+   became the full-screen backdrop in 2.7.32 that width stayed behind, and an id
+   beats a class, so the overlay covered 440px of the screen and the card sat in
+   the corner of it. Every rule in that block had already been restated for
+   `.gate-card`, so it is gone rather than corrected. */
 
 /* a maintenance row with something waiting on it says so without being read */
 #genres li.wants .count { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 7px; }
@@ -765,17 +761,19 @@ main.page section:first-of-type h3 { margin-top: 14px; }
    modal open its menu sits underneath, so it re-shows itself on every keystroke
    and after five tries in five seconds switches off with "This page is
    interfering with the Bitwarden experience". Nothing here needs the top layer. */
-/* Centred while it fits, and scrolled from the top when it does not: the ask
-   form is tall, and `place-items: center` on a scrolling box puts the top of an
-   over-tall card above the scroll origin, where nothing can reach it. `auto`
-   margins centre it only when there is room to. */
+/* In the middle of the screen, and still reachable when it is taller than the
+   screen. Those two pull against each other: centring a scrolling box with
+   `align-items`/`place-items: center` puts the top of an over-tall card *above*
+   the scroll origin, where nothing can reach it — and the ask form is tall. A
+   flex box with `margin: auto` on the card does both, because an auto margin
+   only takes the space that is going spare. */
 .gate {
   position: fixed; inset: 0; z-index: 40;
-  display: grid; justify-items: center; align-items: start; padding: 16px;
+  display: flex; padding: 16px;
   background: rgba(8, 9, 12, .88); backdrop-filter: blur(3px);
-  overflow-y: auto;
+  overflow: auto;
 }
-.gate > * { margin-block: auto; }
+.gate > * { margin: auto; }
 .gate-card {
   width: min(440px, 100%); background: var(--panel);
   border: 1px solid var(--line); border-radius: 14px; padding: 20px;

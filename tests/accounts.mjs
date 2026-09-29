@@ -133,6 +133,38 @@ check('and it is the accounts page', /id="everyone"/.test(accountsPage.body), tr
 check('with a tick per account rather than a button',
   /data-may-listen|accounts\.js/.test(accountsPage.body), true);
 
+// --- the way through to the admin page -----------------------------------
+// Shown to the administrator and to nobody else. It ships hidden and `whoAmI()`
+// reveals it, so the two things to hold are that the markup carries `hidden`
+// and that the answer it is revealed on tells a listener apart from the admin.
+// The lock itself is elsewhere — the admin page asks the server and sends back
+// anybody who is merely a listener, and every admin route refuses them — and
+// these checks are about what is offered, not about what is allowed.
+const listenPage = (await pageOf('/')).body;
+check('the Admin button ships hidden',
+  /<button id="toAdmin"[^>]*\bhidden\b/.test(listenPage), true);
+check('and it is not the admin page’s Lock button wearing the same id',
+  /id="adminBtn"/.test(listenPage), false);
+check('a listener is told they are not the admin',
+  (await get('/api/account/me', bert.cookies)).body.admin, false);
+check('and the admin is told they are',
+  (await get('/api/account/me', admin.cookies)).body.admin, true);
+check('a listener asking the admin page’s own route is refused',
+  (await get('/api/accounts', bert.cookies)).status, 403);
+
+// --- the box the reason is typed into ------------------------------------
+// A request once arrived whose reason was the form's own hint sentence, which
+// nothing in this app ever writes into that box. An unlabelled textarea is what
+// a browser autofill or a Compose-style writing assistant drafts into, so the
+// box says it wants neither. Both pages, because they are two files.
+for (const where of ['/', '/admin']) {
+  // eslint-disable-next-line no-await-in-loop -- two pages, read one after the other
+  const page = (await pageOf(where)).body;
+  const box = (page.match(/<textarea[^>]*\bid="gaWhy"[\s\S]{0,200}?>/) || [''])[0];
+  check(`the reason box on ${where} refuses autofill and writing suggestions`,
+    [/autocomplete="off"/.test(box), /writingsuggestions="false"/.test(box)], [true, true]);
+}
+
 // --- the card that asks for the password ---------------------------------
 // It must not be a <dialog>, and must never be opened with showModal(). A modal
 // dialog takes the browser's top layer and holds it, and a password manager's
@@ -151,6 +183,12 @@ for (const where of ['/', '/admin']) {
 const code = fs.readFileSync(path.join(ROOT, 'public', 'account.js'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 check('and nothing opens it as a modal one', /showModal\s*\(/.test(code), false);
+// The backdrop is sized by `.gate` and the card by `.gate-card`. A rule on
+// `#gate` beats both, and one left over from when the gate was a <dialog> —
+// `width: min(440px, 92vw)` — shrank the full-screen backdrop to the card's old
+// width, leaving the card in the corner of a half-covered screen.
+const css = fs.readFileSync(path.join(ROOT, 'public', 'style.css'), 'utf8');
+check('and nothing sizes the gate by its id', /#gate\b\s*[{,]/.test(css), false);
 
 // Taking the tick off is the approval going away: they cannot sign in, and the
 // browsers signed in as them stop being signed in.

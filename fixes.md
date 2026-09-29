@@ -403,6 +403,34 @@ what it displaces is somebody else's software behaving properly. And: "it did
 this before your change too" is not noise — it is the sentence that rules out
 everything you have been working on.
 
+### The old dialog's width stayed behind and half-covered the screen (2.7.48)
+
+Converting the gate from a `<dialog>` to a `<div class="gate">` in 2.7.32 left a
+block of `#gate` rules in the stylesheet that had sized it as the *card* it then
+was — `width: min(440px, 92vw)`. An id beats a class, so the new full-screen
+backdrop was 440px wide: Frank's screenshot showed the sign-in card down in the
+corner of a page that was only half dimmed.
+
+I then made it worse before I made it better. Measuring the ask form at a small
+size, I found the card taller than the window and "fixed" the centring —
+`align-items: start` with auto block margins — without asking why a `position:
+fixed; inset: 0` box was not filling the screen in the first place. That
+addressed a real problem (centring a *scrolling* box with `place-items: center`
+does put the top of an over-tall card above the scroll origin, unreachable) and
+left the actual cause untouched.
+
+**Fixed** by deleting the whole `#gate` block — every rule in it had already been
+restated for `.gate-card` — and centring with `display: flex` plus `margin: auto`
+on the card, which centres when there is room and gives the space up when there
+is not. Measured both ways: card centre `[450,400]` in a 900×800 window, and in
+a 400×380 one the card is 542 tall with its top at y=16 and the heading on
+screen. `accounts.mjs` now fails if anything sizes the gate by its id.
+
+**Rule:** when an element stops being one kind of thing, its old id rules do not
+stop applying — grep the stylesheet for the id, not just the class you added.
+And a box with `inset: 0` that is not the size of the screen has something
+overriding it; find that before adjusting how its contents sit inside it.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
