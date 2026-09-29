@@ -258,6 +258,57 @@ check('ticking it again lets them straight back in', backIn.status, 200);
 check('with everything they had', (await get('/api/favourites', backIn.cookies)).status, 200);
 bert.cookies = backIn.cookies;
 
+// --- what a failure tells a stranger -------------------------------------
+// `wrap` catches the routes it is put on, which is not all of them. A throw in
+// one of the others reached Express's own handler, which answers with the stack
+// trace as HTML — absolute server paths and line numbers, to whoever asked.
+// `GET /api/books` with no genre threw a SQLite bind error, and an ordinary
+// listener could read the path of this file out of the reply.
+const noGenre = await pageOf('/api/books', bert.cookies);
+check('a question this route cannot take is refused, not a crash',
+  [noGenre.status, noGenre.type], [400, 'application/json']);
+check('and it says what was missing',
+  JSON.parse(noGenre.body).error, 'Say which genre, and which author or series in it.');
+check('with both, it answers',
+  (await get('/api/books?genre=G&author=A', bert.cookies)).status, 200);
+check('the same question to /api/authors is refused the same way',
+  (await get('/api/authors', bert.cookies)).status, 400);
+check('though a genre that is merely empty is a fair question',
+  (await get('/api/authors?genre=', bert.cookies)).status, 200);
+
+// The handler itself, reached by a road that cannot be paved over: a body that
+// is not JSON throws inside Express's own parser, before any route of ours runs.
+// Nothing this app does can stop that happening, so it is the honest test of
+// what a stranger is told when something throws — JSON, and not one word about
+// where this app lives on the disk.
+const torn = await realFetch(`${BASE}/api/favourites/3`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Cookie: bert.cookies },
+  body: '{"on": tru',
+});
+const tornSaid = await torn.text();
+check('a torn request body is answered in JSON, not a stack trace',
+  [torn.status, (torn.headers.get('content-type') || '').split(';')[0]],
+  [400, 'application/json']);
+check('and nothing in it says where this app lives',
+  /file:\/\/|\.js:\d+|\bat \w+ \(|<html/i.test(tornSaid), false);
+
+// A torn body carries its own 400, so it goes down the branch that passes a
+// refusal's own words through. The other branch — an error with no status,
+// which is a bug in this app rather than a bad question — cannot be reached on
+// demand, because reaching it means finding a bug. So it is read instead: that
+// branch must answer with the fixed sentence and never with anything the error
+// itself carries, which is what would put a stack in front of a stranger.
+const handler = (fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8')
+  .match(/app\.use\(\(err, req, res, next\)[\s\S]*?\n\}\);/) || [''])[0];
+check('the handler for an unexpected error exists and is the four-argument kind',
+  handler.length > 0, true);
+// the else-branch of that ternary, read on its own: a fixed string in quotes,
+// and if somebody puts `err.stack` there instead this stops matching
+check('and tells a stranger nothing the error itself carried',
+  (handler.match(/deliberate \? err\.message\s*:\s*'([^']+)'/) || [])[1],
+  'Something went wrong in the app. The server log says what.');
+
 // --- the hearts ----------------------------------------------------------
 check('nothing is hearted to begin with', (await get('/api/favourites', bert.cookies)).body.length, 0);
 check('a heart goes on', (await post('/api/favourites/3', { on: true }, bert.cookies)).body, { favourite: true, count: 1 });
