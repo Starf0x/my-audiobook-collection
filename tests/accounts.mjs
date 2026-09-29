@@ -77,6 +77,14 @@ check('Discord is told, with the reason and whether they know the admin',
   [/would like an account/.test(sent[0].content), /live in this house/.test(sent[0].content),
     /they do know/i.test(sent[0].content)], [true, true, true]);
 check('and nothing in it can ring a phone', sent[0].allowed_mentions, { parse: [] });
+// The reason is what the admin decides on, so the message is checked whole: the
+// words as they were written, on their own line, between the name and the line
+// about knowing the admin. Testing that the reason appears *somewhere* would
+// pass for a message that had lost the line it belongs on.
+check('the message reads as the admin will see it', sent[0].content,
+  '📩 **Bert** would like an account.'
+  + '\n> I live in this house and would like to listen along'
+  + '\n_They say they do know the administrator._');
 
 check('asking twice under one name is refused',
   (await post('/api/account/request', { name: 'bert', password: 'another long one', reason: 'because I say so, that is why' })).status, 400);

@@ -122,7 +122,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
 | `server/listeners.js` | 310 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
-| `server/notify.js` | 138 | telling Discord: the three things worth saying, and cleaning what a person wrote |
+| `server/notify.js` | 142 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
@@ -140,7 +140,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/app.js` | 2508 | the admin page's behaviour |
 | `public/listen.html` | 122 | the listening page |
 | `public/shelf.js` | 495 | the listening page’s behaviour |
-| `public/style.css` | 797 | the whole look, every page, phone included |
+| `public/style.css` | 802 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2623,6 +2623,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.40 | the ask-for-an-account card scrolls to its own top when it is taller than the window, and an account request with no reason says so in Discord rather than sending an empty quote |
 | 2.7.32 | the sign-in card gives the browser's top layer back, so a password manager stops warning about the page; and an account's row says their level, what they are playing now and what they are in the middle of |
 | 2.7.24 | the accounts and their statistics are a page of their own at `/accounts`, with a tick per person for may-listen and may-download rather than a row of buttons |
 | 2.7.16 | the Discord line in Settings says whether a webhook is saved: the call that fills it in had landed in the wrong handler |
