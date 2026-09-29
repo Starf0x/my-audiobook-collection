@@ -371,6 +371,38 @@ measurement that names the side it is on, and nothing else happens until it is
 run. "I have a good hypothesis" is not that measurement, and three good hypotheses
 are not either.
 
+### A modal dialog held a layer the password manager needed (2.7.32)
+
+Frank got Bitwarden's *"this page may be trying to hijack your password
+manager"* warning on every visit to the listening page — and, he said, it had
+been happening since before there were accounts at all. Nothing in this app was
+touching Bitwarden.
+
+The browser has one **top layer**, and three things share it: a modal `<dialog>`,
+anything with `[popover]`, and the inline menu an extension puts over a password
+field. The last one in is the one on top. Our sign-in card was
+`<dialog>.showModal()`, so it sat above Bitwarden's menu and stayed there;
+Bitwarden's `autofill-inline-menu-content.service.ts` answers being covered with
+`hidePopover(); showPopover();`, counts those with
+`checkAndUpdateRefreshCount("topLayer")`, and at five in five seconds shows the
+warning — which is the warning's actual name in their source,
+`topLayerHijackWarning`. The extension was behaving correctly. So was the
+browser. We were the page.
+
+**Fixed** by making the gate an ordinary `<div id="gate" class="gate" hidden>`
+with the dimmed backdrop in CSS. It needed nothing `showModal()` gives: there is
+nothing behind it to reach, so there was nothing to make inert. Measured after:
+`{"tag":"DIV","isDialog":false,"topLayerDialogsOpen":0}`, and signing in still
+works. `accounts.mjs` now reads both pages for the gate's tag name and reads
+`account.js` — with its comments stripped, or the comment explaining all this
+would pass for the mistake — for a `showModal(` call. Both mutants go red.
+
+**Rule:** `showModal()` is for something a reader must answer **and dismiss**.
+Anything that stands until the app puts it away takes a shared layer hostage, and
+what it displaces is somebody else's software behaving properly. And: "it did
+this before your change too" is not noise — it is the sentence that rules out
+everything you have been working on.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

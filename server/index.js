@@ -258,7 +258,14 @@ app.post('/api/account/signout', (req, res) => {
 
 // --- the admin's view of them --------------------------------------------
 app.get('/api/accounts', requireAdmin, (req, res) => res.json({
-  admin: adminName(), accounts: withStats(),
+  admin: adminName(),
+  // what each of them is in the middle of comes from the database; what is
+  // playing *right now* is only known here, because only the player says so
+  accounts: withStats().map((a) => {
+    const id = playing.get(a.name);
+    const book = id && db.prepare('SELECT title, author FROM books WHERE id = ?').get(id);
+    return { ...a, nowPlaying: book ? { title: book.title, author: book.author || '' } : null };
+  }),
 }));
 
 app.post('/api/accounts/:name/state', requireAdmin, wrap(async (req, res) =>

@@ -8,12 +8,17 @@
 // nothing to draw for somebody who is not signed in.
 const gate = $('#gate');
 
+// Shown and hidden with an attribute rather than `showModal()`. See the comment
+// above the markup: the top layer belongs to whatever the browser and its
+// extensions put there, and a page that keeps taking it is a page a password
+// manager switches itself off on.
 const showGate = (which) => {
   $('#gateSignIn').hidden = which !== 'in';
   $('#gateAsk').hidden = which !== 'ask';
-  if (!gate.open) gate.showModal();
+  gate.hidden = false;
   ($('#' + (which === 'in' ? 'giName' : 'gaName'))).focus();
 };
+const closeGate = () => { gate.hidden = true; };
 
 const said = (where, text) => { $(where).textContent = text || ''; };
 
@@ -23,17 +28,22 @@ async function whoAmI() {
   state.user = me.name || '';
   state.admin = !!me.admin;
   if (me.name) localStorage.user = me.name;
-  // The name, with what they have earned under it: an icon and the level's name.
-  // Nought to nine has neither — a level everybody starts at is not an
-  // accomplishment, and a badge saying so is noise.
+  // The name, with what they have earned under it: an icon beside the name and
+  // the level's name below it. Below ten books there is no icon — a level
+  // everybody starts at is not an accomplishment, and a badge saying so is noise
+  // — but the line under the name is there anyway, saying how many books to the
+  // first level. Something to work towards is worth more in that space than a
+  // gap, and the gap read as a bug rather than as an answer.
   const level = me.level || {};
   state.level = level;
   state.mayDownload = me.mayDownload !== false;
   document.body.classList.toggle('may-download', state.mayDownload);
+  const under = level.name || (level.next
+    ? `${level.next.at - (level.finished || 0)} to ${level.next.name}` : '');
   $('#whoAmI').innerHTML = me.name
     ? `<span class="me">${level.icon
       ? `<span class="badge-icon" title="${esc(level.name)}">${level.icon}</span>` : ''}${esc(me.name)}</span>`
-      + (level.name ? `<span class="level">${esc(level.name)}</span>` : '')
+      + (under ? `<span class="level">${esc(under)}</span>` : '')
     : '';
   $('#signOut').hidden = !me.signedIn;
   return me;
@@ -58,7 +68,7 @@ const signIn = async () => {
   } catch (e) {
     return said('#giSaid', e.message);
   }
-  gate.close();
+  closeGate();
   return started();
 };
 $('#giGo').onclick = signIn;

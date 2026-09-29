@@ -101,7 +101,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1461 | Express app: every route, and nothing else |
+| `server/index.js` | 1468 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 197 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -120,7 +120,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
 | `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
-| `server/listeners.js` | 289 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/listeners.js` | 310 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
 | `server/notify.js` | 138 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
@@ -129,18 +129,18 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 163 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 173 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 161 | its behaviour — the statistics and the two ticks |
+| `public/accounts.js` | 170 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 320 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 380 | the admin page: columns, dialogs |
+| `public/index.html` | 378 | the admin page: columns, dialogs |
 | `public/app.js` | 2508 | the admin page's behaviour |
-| `public/listen.html` | 118 | the listening page |
+| `public/listen.html` | 122 | the listening page |
 | `public/shelf.js` | 495 | the listening page’s behaviour |
-| `public/style.css` | 760 | the whole look, every page, phone included |
+| `public/style.css` | 797 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1665,6 +1665,18 @@ same reason the Home Assistant page is one: a row per person with numbers on it
 is read rather than browsed, and wants width and stillness that the column beside
 a library has not got.
 
+**What a row says**, in the order somebody reads it: the name with the level's
+icon beside it, then the level in words and how many books to the next one, then
+when they were last here, then what they are playing *at this moment* if
+anything, then the books they are in the middle of with how far in. The level
+line is there even below ten books, where it reads "No level yet · 10 book(s) to
+Rookie Level" — the listener's own page shows nothing there, because a level
+everybody starts at is no accomplishment, but this is the page where a person is
+looked up and an empty space would read as a gap rather than as an answer. What
+is playing now comes from the server's own map of who is streaming, so it is
+right to the second; what they are in the middle of comes from `progress`, is
+capped at five books and is ordered by when each was last touched.
+
 Two **ticks** per person, and ticks rather than buttons on purpose: *May listen*
 and *May download* are states somebody is in, and a checkbox says "this is how it
 stands" where a button says "press me and something happens". Taking *May listen*
@@ -1704,6 +1716,17 @@ the audio itself and has no cookie of ours. Four routes answer without an
 account, and they are the four somebody without one needs: `/api/account/me`,
 `/request`, `/signin`, `/signout`.
 
+**The gate is not a `<dialog>`.** It looks like one — a card over a dimmed page —
+but it is a plain `<div id="gate" class="gate" hidden>`, shown and hidden with
+that attribute. A modal dialog takes the browser's *top layer* and holds it for
+as long as it is open, and a password manager's own menu lives in that same
+layer: Bitwarden re-shows its inline menu each time something covers it, counts
+five re-shows in five seconds and then warns the reader that the page is trying
+to hijack it. Frank got that warning on every sign-in. The card needs none of
+what `showModal()` gives — there is nothing behind it to reach — so it gives the
+layer up. `accounts.mjs` checks both pages for it, and checks that `account.js`
+holds no `showModal(` outside its comments.
+
 **Whose write is it.** Once anything is locked, a place in a book belongs to the
 session and the name in the request body is ignored — otherwise one account could
 write into another's, which is the whole thing accounts were added for. With no
@@ -1731,10 +1754,16 @@ is something in it, the way *Listened* does.
 Ten levels, named by the owner, over the number of books somebody has **played to
 the end**: 10 Rookie, 20 Listener, 30 Book Hunter, 40 Story Seeker, 50 Book
 Master, 60 Story Master, 70 Audio Expert, 80 Audio Master, 90 Grand Master, 100
-Audio Legend Ultimate. Nought to nine has no name and shows nothing at all beside
-a listener's name — a level everybody starts at is not an accomplishment, and a
-badge saying so is noise. Each level carries an icon; the page draws it beside
-the name with the level's name under it.
+Audio Legend Ultimate. Each level carries an icon, and the header draws it beside
+the name with the level under it.
+
+Nought to nine has **no name and no icon** — a level everybody starts at is not
+an accomplishment, and a badge saying so is noise. The line under the name is
+still drawn there, and says how far off the first one is: `10 to Rookie Level`.
+Something to work towards is worth more in that space than a gap, and a gap read
+as the app having failed to draw something rather than as the answer. The
+Accounts page says the same thing at more length, `No level yet · 10 book(s) to
+Rookie Level`, because that page is read rather than glanced at.
 
 **The count is its own record, and that is the point.** `completions` is written
 when a book runs out and never rewritten: clearing your place in a book,
@@ -2372,6 +2401,14 @@ skips them will reproduce the bugs.
     hides the control so that a button which would only be refused is not
     offered.
 
+64. **Nothing this app shows takes the browser's top layer and keeps it.** The
+    top layer is shared — a modal `<dialog>`, a `[popover]`, and the inline menu
+    a password manager puts over a password field are all in it, and the last one
+    in wins. A card that sits there permanently, as the sign-in gate did, makes
+    an extension fight for its own menu and warn the reader about the page. Use a
+    modal dialog for what a reader must answer *and dismiss*; anything that
+    stands until the app puts it away is an ordinary element with `hidden`.
+
 ## 10. Measured performance
 
 Numbers from the machine this was built on (20 CPUs; the share is SMB on a NAS).
@@ -2422,13 +2459,13 @@ not the same as not kept.
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These nine are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the seven that run
+leans on could not be run by anybody who had only the spec. These eleven are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the nine that run
 anywhere:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows |
 | `plays-on` | drives headless Edge, so it is run by hand |
 
@@ -2586,6 +2623,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.32 | the sign-in card gives the browser's top layer back, so a password manager stops warning about the page; and an account's row says their level, what they are playing now and what they are in the middle of |
 | 2.7.24 | the accounts and their statistics are a page of their own at `/accounts`, with a tick per person for may-listen and may-download rather than a row of buttons |
 | 2.7.16 | the Discord line in Settings says whether a webhook is saved: the call that fills it in had landed in the wrong handler |
 | 2.7.8 | ten levels over the books somebody has played to the end, with the icon and its name beside theirs; the author under the title in the player; downloading earned at the top level or handed over by the admin, listed per person and announced |

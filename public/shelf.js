@@ -16,20 +16,10 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
 const state = { user: localStorage.user || '', genre: null, author: null, book: null, track: 0 };
 
 // --- admin button -------------------------------------------------------
-$('#adminBtn').onclick = async () => {
-  const p = await api('/api/admin').catch(() => ({ required: false, admin: true }));
-  if (!p.required || p.admin) return location.assign('/admin');
-  $('#adminWhy').textContent = 'The password opens the page that can scan, import, tag, move and delete.';
-  $('#adminPass').value = '';
-  $('#admin').showModal();
-};
-$('#adminCancel').onclick = () => $('#admin').close();
-$('#adminGo').onclick = async () => {
-  try {
-    await post('/api/admin/unlock', { password: $('#adminPass').value });
-    location.assign('/admin');
-  } catch (e) { toast(e.message); }
-};
+// One way in for everybody now: the sign-in card asks for a name as well as a
+// password, and the administrator's name is one of them. So this button only
+// goes there — the page itself sends back anybody who is merely a listener.
+$('#adminBtn').onclick = () => location.assign('/admin');
 
 // --- who is listening ---------------------------------------------------
 // Who is listening is the session now, not a name picked from a list: the old
