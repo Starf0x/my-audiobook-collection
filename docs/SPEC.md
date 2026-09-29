@@ -129,16 +129,16 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 210 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 170 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 320 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 383 | the admin page: columns, dialogs |
+| `public/index.html` | 384 | the admin page: columns, dialogs |
 | `public/app.js` | 2508 | the admin page's behaviour |
-| `public/listen.html` | 131 | the listening page |
+| `public/listen.html` | 132 | the listening page |
 | `public/shelf.js` | 489 | the listening page’s behaviour |
 | `public/style.css` | 800 | the whole look, every page, phone included |
 
@@ -1673,17 +1673,13 @@ after for a thing the admin can settle by recognising the name. The row goes in
 
 **The reason is the asker's own words, and the app insists on it.** Two requests
 arrived whose reason was the sentence printed under the box — *"No email address
-is asked for and none is kept."* — word for word, from one browser, and nothing
-in this app writes into that box. What filled it is still unestablished;
-`autocomplete="off"` and `writingsuggestions="false"` on the textarea did not
-stop it. So there are two guards that do not depend on knowing, and the page's
-own hint text is named in both places rather than being guessed at: the page
-empties the box when the ask form is opened, unless the person has typed in it
-themselves (a flag, so typing survives switching between the two halves of the
-card); and the server refuses a reason that is one of the form's own strings,
-compared on letters and digits alone so punctuation and capitals cannot slip it
-past. The person asking is told it is the page's wording and not theirs, which
-is the one thing that gets a real reason written.
+is asked for and none is kept."* The cause was the plainest one available: the
+person did not know what to write and copied the line in front of them. So the
+server refuses a reason that is one of the form's own strings, compared on
+letters and digits alone so punctuation and capitals cannot slip it past, and
+tells the asker it is the page's wording and not theirs. That is the nudge the
+real cause needs, and the placeholder gives an example for the same reason —
+somebody stuck for words is the likeliest person to be filling this box.
 
 **Deciding.** *Accounts* is a page of its own at `/accounts`, reached from the
 Settings pulldown or from the row in the admin's column — which is a pointer
@@ -2674,6 +2670,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.72 | the reason box shows an example of what to write, which is what the two copied-hint requests actually needed; the machinery built for the autofill that was never happening is out again |
 | 2.7.64 | Favourites has its authors column: the authors of the hearted books with a count each, and clicking one narrows to that author — it had been cleared and never filled |
 | 2.7.56 | a reason that is the form's own wording is refused and said to be so, and the box is emptied when the form opens — two requests arrived carrying the sentence printed under it, and what filled it is still unestablished |
 | 2.7.48 | the sign-in card is in the middle of the screen again — a `#gate` width left over from the dialog was shrinking the backdrop to 440px — the Admin button is the administrator's alone, and the reason box refuses autofill and writing suggestions |

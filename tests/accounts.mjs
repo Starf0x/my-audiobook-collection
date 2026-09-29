@@ -181,16 +181,17 @@ check('a listener asking the admin page’s own route is refused',
   (await get('/api/accounts', bert.cookies)).status, 403);
 
 // --- the box the reason is typed into ------------------------------------
-// A request once arrived whose reason was the form's own hint sentence, which
-// nothing in this app ever writes into that box. An unlabelled textarea is what
-// a browser autofill or a Compose-style writing assistant drafts into, so the
-// box says it wants neither. Both pages, because they are two files.
+// Two people, stuck for what to write, copied the sentence under this box and
+// sent that as their reason. The placeholder gives them an example instead, and
+// must not be the bare "A sentence is enough." that left them with nothing to
+// go on. Both pages, because they are two files that have drifted before.
 for (const where of ['/', '/admin']) {
   // eslint-disable-next-line no-await-in-loop -- two pages, read one after the other
   const page = (await pageOf(where)).body;
-  const box = (page.match(/<textarea[^>]*\bid="gaWhy"[\s\S]{0,200}?>/) || [''])[0];
-  check(`the reason box on ${where} refuses autofill and writing suggestions`,
-    [/autocomplete="off"/.test(box), /writingsuggestions="false"/.test(box)], [true, true]);
+  const box = (page.match(/<textarea[^>]*\bid="gaWhy"[\s\S]{0,300}?>/) || [''])[0];
+  const hint = (box.match(/placeholder="([^"]*)"/) || ['', ''])[1];
+  check(`the reason box on ${where} shows somebody how to answer`,
+    [/autocomplete="off"/.test(box), /for instance/i.test(hint)], [true, true]);
 }
 
 // --- the card that asks for the password ---------------------------------

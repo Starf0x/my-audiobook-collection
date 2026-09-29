@@ -113,13 +113,14 @@
       once it is approved you can sign in with the name and password you choose here.</p>
     <label>The name you want to listen under</label><input id="gaName" autocomplete="username">
     <label>A password (at least 8 characters)</label><input id="gaPass" type="password" autocomplete="new-password">
-    <!-- autocomplete and writingsuggestions are off because this box was filled
-         for somebody once: a request arrived whose reason was the hint sentence
-         below, which nothing in this app writes. An unlabelled textarea is what
-         a browser autofill or a Compose-style assistant drafts into. -->
+    <!-- The placeholder gives an example because two people, stuck for what to
+         write, copied the sentence below this box and sent that as their reason.
+         `autocomplete="off"` so a browser does not offer back what somebody else
+         typed on this shared screen; writing suggestions are left alone, since
+         help composing a sentence is the opposite of the problem here. -->
     <label>Why would you like access?</label>
-    <textarea id="gaWhy" rows="3" placeholder="A sentence is enough."
-      autocomplete="off" writingsuggestions="false" spellcheck="true"></textarea>
+    <textarea id="gaWhy" rows="3" autocomplete="off"
+      placeholder="A sentence is enough — for instance, who you are and how you know the person who runs this."></textarea>
     <label class="pick"><input type="checkbox" id="gaKnows"> I know the administrator</label>
     <p class="hint">No email address is asked for and none is kept.</p>
     <p class="hint missing" id="gaSaid"></p>

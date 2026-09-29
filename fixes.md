@@ -431,35 +431,46 @@ stop applying — grep the stylesheet for the id, not just the class you added.
 And a box with `inset: 0` that is not the size of the screen has something
 overriding it; find that before adjusting how its contents sit inside it.
 
-### A reason nobody wrote, and three guesses at why (2.7.56)
+### The reason nobody wrote was written by somebody after all (2.7.56 → 2.7.72)
 
 Two account requests arrived whose reason was the sentence printed under the box
-— *"No email address is asked for and none is kept."* — word for word, from one
-browser. Nothing in this app writes into that box: the page sends
-`$('#gaWhy').value.trim()` and the server stores what it is given, which I
-checked on a running server end to end.
+— *"No email address is asked for and none is kept."* — word for word. Nothing in
+this app writes into that box, which I checked end to end on a running server.
 
-I then spent three rounds on **mechanism** rather than on closing the hole. I
-said it was browser autofill and shipped `autocomplete="off"` plus
-`writingsuggestions="false"`; the next request came in on the version carrying
-that fix with the same sentence. Each guess was plausible and none was measured,
-which is the entry four above this one — *"Three fixes for a fault that was never
-in the app"* — with the names changed.
+I spent three rounds on **mechanism**: the Discord message path, then browser
+autofill (I shipped `autocomplete="off"` and `writingsuggestions="false"` for
+it), then a Compose-style writing assistant. The next request arrived on the
+version carrying the autofill fix, with the same sentence, which should have told
+me the whole class of answer was wrong. Each guess was plausible; none was
+measured. It is the entry four above this one — *"Three fixes for a fault that
+was never in the app"* — with the names changed.
 
-**Fixed** without settling the cause, because the cause was not needed: the page
-empties the box when the ask form is opened unless the person has typed in it
-themselves, so whatever filled it loses; and the server refuses a reason that is
-one of the form's own strings, on letters and digits alone, and says so to the
-asker. The asking database query that would have settled it came back with only
-pre-2.7.0 names, because the two requests had already been deleted.
+**The answer was a person.** Frank asked them: they did not know what to write,
+so they copied the line in front of them and pasted it. No extension, no
+autofill, no assistant. I had built an elaborate search for a machine because the
+value looked machine-made, and never proposed the cheapest measurement in the
+building — *ask the person who filled in the form*. Frank had that answer
+available the whole time and I never asked for it.
 
-**Rule:** when a bad value arrives and its source is on someone else's machine,
-the fix is to stop accepting the value, not to work out who sent it. A guard on
-the data holds whatever the answer turns out to be; a guard on the hypothesis
-holds only while the hypothesis does.
+**What survives** is the guard that happens to fit the real cause: the server
+refuses a reason that is one of the form's own strings and tells the asker it is
+the page's wording and not theirs, which is exactly the nudge somebody who does
+not know what to write needs. The placeholder now gives an example for the same
+reason. What went back out is everything built for the invented cause — the page
+emptying the box on open, and `writingsuggestions="false"`, which switched off
+help a person composing prose might actually want.
 
-And a check that goes red is not yet a check that is right: the mutant showed one
-of these passing for the wrong reason — with the guard removed, the second
+**Rule:** a value that looks machine-generated is not evidence of a machine.
+Before modelling software you cannot see, ask whether a person could simply have
+done it — and when the input came from somebody reachable, asking them *is* the
+measurement, and it is cheaper than every hypothesis you could test instead.
+
+And: when the cause turns out to be different, take the speculative machinery
+out. Code kept "because it is harmless" is a fix for a fault that never existed,
+and the next person to read it will believe the fault did.
+
+A check that goes red is not yet a check that is right, either: the mutant showed
+one of these passing for the wrong reason — with the guard removed, the second
 request was refused as a **name already taken**, a 400 that had nothing to do
 with what was being checked. Give each case its own name and assert the message,
 not the status.
