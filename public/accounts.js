@@ -53,8 +53,17 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
         ${a.hasPassword ? '' : '<span class="badge untagged" title="A name from before accounts existed. Whoever signs in with it first chooses the password.">no password yet</span>'}
         ${a.state === 'denied' ? '<span class="badge untagged">cannot sign in</span>' : ''}
       </div>
-      ${a.level.name ? `<div class="sub">${esc(a.level.name)}</div>` : ''}
+      <!-- The level, always: below ten books the listener's own page shows
+           nothing, because a level everybody starts at is no accomplishment —
+           but this page is where somebody is looked up, and "nothing there"
+           would read as a gap rather than as an answer. -->
+      <div class="sub level">${a.level.name
+    ? `<strong>${esc(a.level.name)}</strong>` : 'No level yet'}${a.level.next
+    ? ` · ${a.level.next.at - a.completed} book(s) to ${esc(a.level.next.name)}` : ' · the top'}</div>
       <div class="sub">Last here: ${esc(ago(a))}${a.signedIn ? ` · signed in on ${a.signedIn} browser(s)` : ''}</div>
+      ${a.nowPlaying ? `<div class="sub playing">▶ Listening now: <strong>${esc(a.nowPlaying.title)}</strong>${a.nowPlaying.author ? ` · ${esc(a.nowPlaying.author)}` : ''}</div>` : ''}
+      ${a.listening.length ? `<div class="sub">In the middle of:
+        ${a.listening.map((b) => `<span class="badge">${esc(b.title)}${b.author ? ` · ${esc(b.author)}` : ''} — ${b.percent}%</span>`).join(' ')}</div>` : ''}
       ${a.reason ? `<div class="sub said">“${esc(a.reason)}”<br>says they ${a.knowsAdmin ? 'know' : '<strong>do not know</strong>'} you${a.requestedAt ? ` · asked ${esc(when(a.requestedAt))}` : ''}</div>` : ''}
     </div>
 

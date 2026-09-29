@@ -125,6 +125,25 @@ check('and it is the accounts page', /id="everyone"/.test(accountsPage.body), tr
 check('with a tick per account rather than a button',
   /data-may-listen|accounts\.js/.test(accountsPage.body), true);
 
+// --- the card that asks for the password ---------------------------------
+// It must not be a <dialog>, and must never be opened with showModal(). A modal
+// dialog takes the browser's top layer and holds it, and a password manager's
+// own menu lives in that same layer: Bitwarden re-shows its menu each time it is
+// covered, counts five in five seconds, and then warns the reader that the page
+// is hijacking it. The card is an ordinary element with `hidden` on it for that
+// reason, and this check is what keeps it one.
+for (const where of ['/', '/admin']) {
+  // eslint-disable-next-line no-await-in-loop -- two pages, read one after the other
+  const page = (await pageOf(where)).body;
+  const gate = (page.match(/<(\w+)[^>]*\bid="gate"/) || [])[1];
+  check(`the sign-in card on ${where} is not a dialog`, gate, 'div');
+}
+// The comment above it in account.js says all this, so the file is read with its
+// comments taken off — otherwise the explanation would pass for the mistake.
+const code = fs.readFileSync(path.join(ROOT, 'public', 'account.js'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+check('and nothing opens it as a modal one', /showModal\s*\(/.test(code), false);
+
 // Taking the tick off is the approval going away: they cannot sign in, and the
 // browsers signed in as them stop being signed in.
 const deniedThem = await post('/api/accounts/Bert/state', { state: 'denied' }, admin.cookies);
