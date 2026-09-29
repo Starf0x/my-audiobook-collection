@@ -758,3 +758,40 @@ main.page section:first-of-type h3 { margin-top: 14px; }
   .account { grid-template-columns: 1fr; }
   .account .allowed { flex-direction: row; flex-wrap: wrap; align-items: center; }
 }
+
+/* --- the way in ----------------------------------------------------------
+   A layer rather than a <dialog>: `showModal()` takes the browser's top layer,
+   and a password manager's inline menu is a popover in that same layer. With a
+   modal open its menu sits underneath, so it re-shows itself on every keystroke
+   and after five tries in five seconds switches off with "This page is
+   interfering with the Bitwarden experience". Nothing here needs the top layer. */
+.gate {
+  position: fixed; inset: 0; z-index: 40;
+  display: grid; place-items: center; padding: 16px;
+  background: rgba(8, 9, 12, .88); backdrop-filter: blur(3px);
+  overflow-y: auto;
+}
+.gate-card {
+  width: min(440px, 100%); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+}
+.gate-card h2 { margin: 0 0 16px; font-size: 17px; }
+.gate-card label { display: block; margin: 14px 0 6px; font-size: 12px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .08em; }
+.gate-card label.pick { display: flex; align-items: center; gap: 7px; margin: 12px 0 0;
+  font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; cursor: pointer; }
+.gate-card label.pick input { width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--accent); }
+.gate-card input, .gate-card textarea {
+  width: 100%; font: inherit; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; resize: vertical;
+}
+.gate-card .row { margin-top: 16px; }
+.gate-card .hint.missing { min-height: 1.2em; margin: 8px 0 0; }
+.gate-card button.linkish {
+  background: none; border: 0; padding: 0; color: var(--accent2);
+  text-decoration: underline; cursor: pointer; font: inherit;
+}
+.gate-card button.linkish:hover { color: #fff; filter: none; }
+.account .sub.level { color: var(--text); }
+.account .sub.playing { color: var(--accent2); }
+.account .sub .badge { margin-right: 4px; }

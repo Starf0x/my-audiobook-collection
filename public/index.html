@@ -88,9 +88,15 @@
 
 <div id="status"></div>
 
-<!-- The way in. Nothing behind it is drawn until somebody is signed in: the
-     library, the shelves and the player all wait for this. -->
-<dialog id="gate">
+<!-- A layer, not a <dialog>: `showModal()` puts an element in the browser's top
+     layer, and a password manager's inline menu is a popover in that same layer.
+     With this open it sat permanently underneath, so Bitwarden re-showed its menu
+     on every keystroke and, after five tries in five seconds, switched itself off
+     with "This page is interfering with the Bitwarden experience." Nothing behind
+     this is worth guarding with `inert` anyway — the API is the guard, and there
+     is nothing loaded to click. -->
+<div id="gate" class="gate" hidden>
+  <div class="gate-card">
   <h2>🎧 My Audiobook Collection</h2>
   <div id="gateSignIn">
     <p class="hint">Sign in to carry on where you were. Where you got to in a book, the books
@@ -115,7 +121,8 @@
     <div class="row"><button id="gaGo">Ask for an account</button>
       <button id="gaBack" class="linkish">I do have an account</button></div>
   </div>
-</dialog>
+  </div>
+</div>
 
 <dialog id="settings">
   <h2>Settings</h2>
@@ -237,16 +244,7 @@
   <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
 </dialog>
 
-<dialog id="who">
-  <h2>Who is listening?</h2>
-  <p class="hint">Where you got to in a book, and which books you have finished, are kept
-    per person. Type your name — the same one as last time if you have listened here on
-    another browser, and this browser will remember it.</p>
-  <div id="whoList"></div>
-  <label>Your name</label>
-  <div class="row"><input id="whoName" placeholder="Your name"><button id="whoGo">Start listening</button></div>
-  <div class="row end"><button id="whoClose" class="ghost" hidden>Cancel</button></div>
-</dialog>
+
 
 <dialog id="importDlg">
   <h2>Import audiobook</h2>

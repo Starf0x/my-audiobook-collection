@@ -260,6 +260,26 @@ export function withStats() {
     const done = finishedCount(u.name);
     const level = levelOf(done);
     const took = downloadsOf(u.name);
+    // What they are in the middle of: the books with a place kept that is not
+    // the end. Newest first, because "what are they listening to" means the last
+    // one they touched — and with how far in, which is the same sum the shelves
+    // and Home Assistant use, so the three cannot disagree.
+    const listening = db.prepare(`SELECT b.title, b.author, b.duration, p.position, p.track_idx, p.updated,
+        (SELECT COALESCE(SUM(t.duration), 0) FROM tracks t
+           WHERE t.book_id = b.id AND t.idx < p.track_idx) AS behind
+      FROM progress p JOIN books b ON b.id = p.book_id
+      WHERE p.user = ? AND p.done = 0 AND p.position > 0
+      ORDER BY p.updated DESC LIMIT 5`).all(u.name)
+      .map((b) => {
+        const into = (b.behind || 0) + (b.position || 0);
+        return {
+          title: b.title,
+          author: b.author || '',
+          percent: b.duration ? Math.max(0, Math.min(100, Math.round((into / b.duration) * 100))) : 0,
+          hours: Math.round((into / 3600) * 10) / 10,
+          updated: b.updated || '',
+        };
+      });
     const sessions = db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE name = ?').get(u.name).n;
     const days = u.last_seen ? Math.floor((Date.now() - Date.parse(u.last_seen)) / 86400000) : null;
     return {
@@ -284,6 +304,7 @@ export function withStats() {
       mayDownload: mayDownload(done, u.may_download),
       granted: !!u.may_download,
       downloads: took,
+      listening,
     };
   });
 }
