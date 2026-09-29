@@ -16,7 +16,11 @@
   <div class="spacer"></div>
   <div id="whoAmI" title="Signed in as"></div>
   <button id="signOut" class="ghost" hidden>Sign out</button>
-  <button id="adminBtn" class="ghost">Admin</button>
+  <!-- Hidden until whoAmI() says the person signed in is the administrator.
+       Its own id rather than the admin page's `adminBtn`, which is that page's
+       Lock button and is managed by app.js: one id for two different buttons is
+       how one of them ends up obeying the other's rule. -->
+  <button id="toAdmin" class="ghost" hidden>Admin</button>
 </header>
 
 <main>
@@ -90,8 +94,13 @@
       once it is approved you can sign in with the name and password you choose here.</p>
     <label>The name you want to listen under</label><input id="gaName" autocomplete="username">
     <label>A password (at least 8 characters)</label><input id="gaPass" type="password" autocomplete="new-password">
+    <!-- autocomplete and writingsuggestions are off because this box was filled
+         for somebody once: a request arrived whose reason was the hint sentence
+         below, which nothing in this app writes. An unlabelled textarea is what
+         a browser autofill or a Compose-style assistant drafts into. -->
     <label>Why would you like access?</label>
-    <textarea id="gaWhy" rows="3" placeholder="A sentence is enough."></textarea>
+    <textarea id="gaWhy" rows="3" placeholder="A sentence is enough."
+      autocomplete="off" writingsuggestions="false" spellcheck="true"></textarea>
     <label class="pick"><input type="checkbox" id="gaKnows"> I know the administrator</label>
     <p class="hint">No email address is asked for and none is kept.</p>
     <p class="hint missing" id="gaSaid"></p>

@@ -129,18 +129,18 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 173 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 177 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 170 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 320 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/index.html` | 378 | the admin page: columns, dialogs |
+| `public/index.html` | 383 | the admin page: columns, dialogs |
 | `public/app.js` | 2508 | the admin page's behaviour |
-| `public/listen.html` | 122 | the listening page |
-| `public/shelf.js` | 495 | the listening page’s behaviour |
-| `public/style.css` | 802 | the whole look, every page, phone included |
+| `public/listen.html` | 131 | the listening page |
+| `public/shelf.js` | 489 | the listening page’s behaviour |
+| `public/style.css` | 800 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1730,6 +1730,24 @@ the audio itself and has no cookie of ours. Four routes answer without an
 account, and they are the four somebody without one needs: `/api/account/me`,
 `/request`, `/signin`, `/signout`.
 
+**Where the card sits.** In the middle of the screen, over a dimmed backdrop that
+covers all of it — and still reachable when the card is taller than the window,
+which the ask form is on a short screen. Those two pull against each other:
+centring a *scrolling* box with `place-items: center` puts the top of an
+over-tall card above the scroll origin, where nothing can reach it. `.gate` is a
+flex box and the card takes `margin: auto`, which centres it when there is room
+and gives the space up when there is not. Nothing may size the gate by its id;
+the backdrop is `.gate` and the card is `.gate-card`, and `accounts.mjs` fails if
+a `#gate` rule appears, because one left over from the dialog did exactly this.
+
+**The Admin button is the administrator's.** The listening page carries a way
+through to the admin page, hidden until `whoAmI()` says who is asking. It has its
+own id rather than the admin page's `adminBtn`, which is that page's Lock button
+and is managed by `app.js` — one id for two different buttons is how one of them
+ends up obeying the other's rule. This is tidiness and not a lock: what keeps a
+listener out is the admin page asking the server and sending back anybody who is
+merely a listener (`app.js`), and every admin route refusing them.
+
 **The gate is not a `<dialog>`.** It looks like one — a card over a dimmed page —
 but it is a plain `<div id="gate" class="gate" hidden>`, shown and hidden with
 that attribute. A modal dialog takes the browser's *top layer* and holds it for
@@ -2637,6 +2655,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.48 | the sign-in card is in the middle of the screen again — a `#gate` width left over from the dialog was shrinking the backdrop to 440px — the Admin button is the administrator's alone, and the reason box refuses autofill and writing suggestions |
 | 2.7.40 | the ask-for-an-account card scrolls to its own top when it is taller than the window, and an account request with no reason says so in Discord rather than sending an empty quote |
 | 2.7.32 | the sign-in card gives the browser's top layer back, so a password manager stops warning about the page; and an account's row says their level, what they are playing now and what they are in the middle of |
 | 2.7.24 | the accounts and their statistics are a page of their own at `/accounts`, with a tick per person for may-listen and may-download rather than a row of buttons |

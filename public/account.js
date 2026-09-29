@@ -46,6 +46,10 @@ async function whoAmI() {
       + (under ? `<span class="level">${esc(under)}</span>` : '')
     : '';
   $('#signOut').hidden = !me.signedIn;
+  // The listening page's way through to the admin page, shown to the one person
+  // it is any use to. It is not on the admin page, where that id is the Lock
+  // button, so this asks whether it is there at all.
+  if ($('#toAdmin')) $('#toAdmin').hidden = !me.admin;
   return me;
 }
 
