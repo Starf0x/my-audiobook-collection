@@ -496,6 +496,39 @@ the repository is not. "Run by hand" is a plan for nobody to run it: if it canno
 go in `npm test`, it still has to be run on the day it is changed, and a suite
 nothing has executed since the feature it covers was rewritten is decoration.
 
+### The default error page handed out the server's paths (2.8.8)
+
+A report from elsewhere said `GET /api/books` without a genre answered 500 —
+"one-line fix, say the word". Reproducing it here found something worse than the
+crash. `/api/books` is one of the routes not passed through `wrap`, so the
+SQLite bind error fell through to **Express's own error handler, which answers
+with the stack trace as an HTML page**: `file:///B:/…/My Audiobook
+Collection/server/index.js:742`, the line numbers, the frames. Any *approved
+listener* could read it, not only the admin — and `wrap` is on 44 of about 130
+routes, so every one of the others leaked the same way.
+
+**Fixed** with a four-argument `app.use` after every route: the reason goes to
+the log, the asker gets a sentence. A refusal thrown on purpose still carries
+its own words, because it has a status and was written for the reader.
+`/api/books` and `/api/authors` now answer 400 saying what was missing.
+
+**Rule:** a framework's default error page is written for the author and
+delivered to the stranger. Put a handler of your own behind everything on the
+day the framework goes in — not on the route that happens to throw, because the
+route that happens to throw is the one you have found.
+
+And two lessons about the checks, both from mutants that stayed green:
+
+* The check has to reach the branch it is about. A torn request body carries its
+  own 400, so it goes down the branch that passes a refusal's words through —
+  the branch that *suppresses* an unexpected error was never touched, and
+  replacing its message with `err.stack` passed. The unreachable branch is read
+  from the source instead, and says so.
+* **Restart the server before believing the measurement.** Two probes in a row
+  were answered by a demo started before the edit: one said the fix had not
+  worked, the other that a bug was still there after it was fixed. A running
+  server is a snapshot of the code as it was when it started.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

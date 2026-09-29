@@ -101,7 +101,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1468 | Express app: every route, and nothing else |
+| `server/index.js` | 1514 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 197 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -385,6 +385,21 @@ others`, `Settings reference`, `Troubleshooting`, plus `_Sidebar.md` and an
 `wrap(fn)` turns a thrown error into `400 {error: message}`. `requireAdmin`
 answers `403 {error: 'Only the admin can change things here. Unlock first.'}`.
 Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
+
+**And an error handler behind all of it.** `wrap` is on 44 of about 130 routes.
+For the rest a throw used to fall through to Express's own handler, which
+answers with the **stack trace as an HTML page** — the server's absolute paths
+and line numbers, to whoever asked. `GET /api/books` with no genre threw a
+SQLite bind error, and any approved listener could read
+`file:///…/My Audiobook Collection/server/index.js:742` out of the reply. A
+four-argument `app.use` after every route now catches whatever nothing else did.
+A refusal thrown on purpose keeps its own words and status — that is what `wrap`
+sends and what the pages show — while an error carrying neither is a bug in this
+app: the reason goes to the log, where the owner can read it, and the asker is
+told only *"Something went wrong in the app. The server log says what."* A
+question a route cannot take is a **400 saying what was missing**, not a 500:
+`/api/books` wants a genre and an author or series, `/api/authors` wants a genre,
+and an empty genre is a fair question with an empty answer.
 
 | Method, path | Guard | Purpose |
 | --- | --- | --- |
@@ -2480,6 +2495,16 @@ skips them will reproduce the bugs.
     modal dialog for what a reader must answer *and dismiss*; anything that
     stands until the app puts it away is an ordinary element with `hidden`.
 
+65. **A failure says what went wrong to the log, and nothing to the stranger.**
+    A framework's default error page is written for the person who wrote the
+    code, and it is sent to whoever asked: this one carried the server's
+    absolute paths and line numbers to any approved listener. Every throw that
+    nothing else catches ends at one handler, which logs the reason and answers
+    with a sentence that says only that there was one. A refusal thrown
+    deliberately — it carries a status — keeps its own words, because those are
+    written for the reader. And a question a route cannot answer is a 400 that
+    says what was missing: a 500 there is the app blaming itself for a typo.
+
 ## 10. Measured performance
 
 Numbers from the machine this was built on (20 CPUs; the share is SMB on a NAS).
@@ -2694,6 +2719,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.8 | a throw nothing caught answered with the stack trace as an HTML page — absolute server paths, to any approved listener; one handler behind every route now logs the reason and tells the asker only that there was one, and `/api/books` and `/api/authors` say what was missing instead of crashing |
 | 2.8.0 | the browsing half of the two pages is one file: twenty-two byte-identical declarations out of `shelf.js` and `app.js` into `browse.js`, with checks that it loads first on both and that no name is declared twice |
 | 2.7.72 | the reason box shows an example of what to write, which is what the two copied-hint requests actually needed; the machinery built for the autofill that was never happening is out again |
 | 2.7.64 | Favourites has its authors column: the authors of the hearted books with a count each, and clicking one narrows to that author — it had been cleared and never filled |
