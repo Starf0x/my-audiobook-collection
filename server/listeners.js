@@ -75,6 +75,24 @@ const q = {
 export const find = (name) => q.byName.get(asName(name)) || null;
 export const everyone = () => q.all.all();
 
+// The form's own words. Two requests arrived whose reason was the sentence
+// under the box, word for word, from one browser — and nothing in this app
+// writes into that box. What put it there is still unestablished, so this does
+// not claim to know: it refuses a reason that is the page talking to itself,
+// which is not a reason whatever wrote it, and says so to the person asking so
+// they can put their own words in instead. The page empties the box as well;
+// this is the half that does not depend on the page behaving.
+const PAGE_SAYS = [
+  'ask for an account the administrator sees your request and decides once it is '
+    + 'approved you can sign in with the name and password you choose here',
+  'no email address is asked for and none is kept',
+  'a sentence is enough',
+  'why would you like access',
+  'i know the administrator',
+  'the name you want to listen under',
+];
+const asWords = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 // --- asking for one ------------------------------------------------------
 export async function requestAccount({ name, password, reason, knowsAdmin }) {
   const who = asName(name);
@@ -86,6 +104,10 @@ export async function requestAccount({ name, password, reason, knowsAdmin }) {
   if (said.length < SHORTEST) throw new Error(`A password of at least ${SHORTEST} characters, please.`);
   const why = String(reason ?? '').replace(new RegExp('[\\u0000-\\u001f\\u007f]', 'g'), ' ').trim().slice(0, 500);
   if (why.length < 10) throw new Error('Say in a sentence why you would like access.');
+  if (PAGE_SAYS.includes(asWords(why))) {
+    throw new Error('That is this page’s own wording, not yours. '
+      + 'Clear the box and say in your own words why you would like access.');
+  }
   if (find(who)) throw new Error('There is already an account with that name. Ask the administrator.');
 
   const salt = crypto.randomBytes(16).toString('hex');

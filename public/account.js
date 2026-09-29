@@ -12,12 +12,22 @@ const gate = $('#gate');
 // above the markup: the top layer belongs to whatever the browser and its
 // extensions put there, and a page that keeps taking it is a page a password
 // manager switches itself off on.
+// The reason box is emptied when the form is opened, unless the person has
+// typed in it themselves. Two requests arrived whose reason was this page's own
+// hint sentence — twice, word for word, from one browser — and nothing in this
+// app writes into that box. `autocomplete="off"` did not stop it, so rather than
+// guess again at what fills it (an extension, a restore, a writing assistant),
+// this empties it at the moment the form is shown, whatever put it there. The
+// flag is so that typing survives switching between the two halves of the card.
 const showGate = (which) => {
   $('#gateSignIn').hidden = which !== 'in';
   $('#gateAsk').hidden = which !== 'ask';
+  const why = $('#gaWhy');
+  if (which === 'ask' && why && !why.dataset.typed) why.value = '';
   gate.hidden = false;
   ($('#' + (which === 'in' ? 'giName' : 'gaName'))).focus();
 };
+if ($('#gaWhy')) $('#gaWhy').addEventListener('input', (e) => { e.target.dataset.typed = '1'; });
 const closeGate = () => { gate.hidden = true; };
 
 const said = (where, text) => { $(where).textContent = text || ''; };
