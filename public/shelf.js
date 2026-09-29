@@ -19,7 +19,11 @@ const state = { user: localStorage.user || '', genre: null, author: null, book: 
 // One way in for everybody now: the sign-in card asks for a name as well as a
 // password, and the administrator's name is one of them. So this button only
 // goes there — the page itself sends back anybody who is merely a listener.
-$('#adminBtn').onclick = () => location.assign('/admin');
+//
+// It starts hidden and `whoAmI()` shows it to the administrator alone. That is
+// tidiness rather than a lock: what keeps a listener out of the admin page is
+// the page asking the server and being refused, not this button being absent.
+$('#toAdmin').onclick = () => location.assign('/admin');
 
 // --- who is listening ---------------------------------------------------
 // Who is listening is the session now, not a name picked from a list: the old
