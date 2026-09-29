@@ -765,12 +765,17 @@ main.page section:first-of-type h3 { margin-top: 14px; }
    modal open its menu sits underneath, so it re-shows itself on every keystroke
    and after five tries in five seconds switches off with "This page is
    interfering with the Bitwarden experience". Nothing here needs the top layer. */
+/* Centred while it fits, and scrolled from the top when it does not: the ask
+   form is tall, and `place-items: center` on a scrolling box puts the top of an
+   over-tall card above the scroll origin, where nothing can reach it. `auto`
+   margins centre it only when there is room to. */
 .gate {
   position: fixed; inset: 0; z-index: 40;
-  display: grid; place-items: center; padding: 16px;
+  display: grid; justify-items: center; align-items: start; padding: 16px;
   background: rgba(8, 9, 12, .88); backdrop-filter: blur(3px);
   overflow-y: auto;
 }
+.gate > * { margin-block: auto; }
 .gate-card {
   width: min(440px, 100%); background: var(--panel);
   border: 1px solid var(--line); border-radius: 14px; padding: 20px;
