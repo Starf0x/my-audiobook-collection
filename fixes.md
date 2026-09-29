@@ -454,6 +454,16 @@ here:
   fired twice and both runs pushed `:latest`. The images were the same source but
   not the same digest — v2.5.64 built `29a69492…` and `e896a8ed…` — and the tag
   went to whichever finished last, three seconds apart. It runs on tags only now.
+* **And two releases pushed together race each other the same way.** Fixing the
+  above left one run per release, which is not the same as one run at a time:
+  `git push origin v2.7.32 v2.7.40` started both, and the **older** one finished
+  sixteen seconds later and took `:latest` with it. Anybody pulling `:latest`
+  would have got 2.7.32 while 2.7.40 was the release. Two guards now, because
+  serialising alone still leaves the order to chance: a `concurrency` group so
+  the runs queue, and `:latest` applied only by the run whose tag is the highest
+  in the repository — `git tag --sort=-v:refname | head -1`, which is true
+  whatever order they finish in. Sort by `-v:refname`, never alphabetically, or
+  `v2.7.8` outranks `v2.7.32`.
 * **`body.maintenance` hides the authors column.** It is there so the maintenance
   lists can have that space, so a maintenance view that browses *by author* must
   not set it — *Books you've listened to* already clears it for that reason.

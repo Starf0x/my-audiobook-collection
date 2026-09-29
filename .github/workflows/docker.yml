@@ -6,16 +6,44 @@ name: Publish Docker image
 # last won the tag: on v2.5.64 that was the tag run by three seconds. Every
 # shipped change is tagged here anyway, so one run per release settles it and
 # :latest is always the same digest as its vX.Y.Z.
+#
+# That fixed one release racing itself. Two releases pushed together race each
+# other the same way, which is what happened on 2026-09-29: v2.7.32 and v2.7.40
+# went up in one `git push`, both built, and the *older* one finished sixteen
+# seconds later and took :latest with it. So there are two guards now. The
+# concurrency group makes these runs queue instead of overlapping, and :latest
+# is applied only by the run whose tag is the highest version in the repository
+# — which is true whatever order they finish in.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
+concurrency:
+  group: publish-docker
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # the whole history, or the tag list below has only the tag being built
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Is this tag the newest release? `-v:refname` sorts by version rather
+      # than alphabetically, so v2.7.8 comes before v2.7.32 as it should.
+      - id: newest
+        run: |
+          top=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          echo "Highest tag is $top; this run is $GITHUB_REF_NAME"
+          if [ "$top" = "$GITHUB_REF_NAME" ]; then
+            echo "isNewest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "isNewest=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -27,7 +55,7 @@ jobs:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/my-audiobook-collection
           tags: |
             type=ref,event=tag
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ steps.newest.outputs.isNewest == 'true' }}
       - uses: docker/build-push-action@v6
         with:
           context: .

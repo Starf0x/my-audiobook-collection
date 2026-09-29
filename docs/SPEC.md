@@ -329,9 +329,11 @@ Docker tab stops treating it as managed. Force update lives in the Docker tab's
 `.github/workflows/docker.yml`, on `v*` tags and on manual dispatch:
 checkout → `docker/setup-buildx-action@v3` → `docker/login-action@v3` →
 `docker/metadata-action@v5` (tags: `type=ref,event=tag` and
-`type=raw,value=latest,enable={{is_default_branch}}`) →
+`type=raw,value=latest,enable=<this tag is the newest>`) →
 `docker/build-push-action@v6` for `linux/amd64,linux/arm64` →
 `peter-evans/dockerhub-description@v4` (on the tag, the only run there is).
+The checkout takes the whole history, because the step that decides whether this
+is the newest release reads the repository's tag list.
 
 `.github/workflows/test.yml` is the other one: **Checks**, on every push to
 `main`, every `v*` tag and every pull request. `npm ci --omit=dev` then
@@ -352,6 +354,18 @@ last, three seconds apart. Nothing would have been wrong in the image, but
 fetch layers it already had. Every shipped change is tagged here anyway, so one
 run per release settles it. `workflow_dispatch` on `main` still moves `:latest`
 by itself; that one is a person deciding, not two runs racing.
+
+**And one run per release is not one run at a time.** On 2026-09-29 two releases
+went up in one `git push` — v2.7.32 and v2.7.40 — and both built. The older one
+finished sixteen seconds later and took `:latest` with it, so anybody pulling
+`:latest` would have got 2.7.32 while 2.7.40 was the release. Two guards now,
+because serialising alone still leaves the order to chance: a `concurrency`
+group named `publish-docker` with `cancel-in-progress: false`, so the runs queue
+rather than overlap; and `:latest` applied only by the run whose tag is the
+highest version in the repository, which is true whatever order they finish in.
+The comparison sorts with `-v:refname` and not alphabetically, or `v2.7.8` would
+outrank `v2.7.32`. An older tag rebuilt on purpose therefore updates its own
+`vX.Y.Z` and leaves `:latest` where it belongs.
 
 **There is one README.** The Docker Hub page is generated from `README.md` by that
 last step, so "update both READMEs" is one edit. Images in it must use absolute
