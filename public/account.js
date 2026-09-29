@@ -165,13 +165,36 @@ $('#favList').onclick = async () => {
   state.author = null;
   state.series = null;
   const books = await loadFavourites();
-  $('#authors ul').innerHTML = '';
+  state.favouriteBooks = books;
   if (!books.length) {
+    $('#authors ul').innerHTML = '';
     $('#books .list').innerHTML = '<div class="empty">Nothing hearted yet. The ♥ on a book puts it here.</div>';
     return show('books');
   }
+  // The authors of those books in the middle column, with how many each — the
+  // same as Listened does, because a view and the column beside it are one
+  // view. This column was cleared and never filled, so Favourites showed an
+  // empty Authors heading beside a shelf of books that plainly had authors.
+  const authors = [...new Set(books.map((b) => b.author))].sort((a, b) => a.localeCompare(b));
+  $('#authors ul').innerHTML = authors.map((name) => `<li data-name="${esc(name)}">
+      <span class="who">${esc(name)}</span>
+      <span class="count">${books.filter((b) => b.author === name).length}</span></li>`).join('');
+  $('#authors ul').querySelectorAll('li').forEach((li) => {
+    li.onclick = () => favouritesOf(li.dataset.name, li);
+  });
   return drawBooks(books, `${books.length} book${books.length === 1 ? '' : 's'}`, 'Favourites');
 };
+
+// What one author has been hearted, in the order a series reads.
+async function favouritesOf(name, li) {
+  document.querySelectorAll('#authors li').forEach((e) => e.classList.remove('active'));
+  if (li) li.classList.add('active');
+  const books = (state.favouriteBooks || []).filter((b) => b.author === name)
+    .sort((a, b) => (a.series || '').localeCompare(b.series || '')
+      || (a.series_no || 0) - (b.series_no || 0)
+      || a.title.localeCompare(b.title));
+  await drawBooks(books, '');
+}
 
 // --- starting the page ----------------------------------------------------
 async function started() {

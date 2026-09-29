@@ -129,7 +129,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 187 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 210 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 170 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
@@ -1789,7 +1789,12 @@ removed rather than sitting there for ever.
 ### 7.12a The hearts
 
 A row per person per book in `favourites`, with a trigger that drops it when the
-book goes. The heart is drawn by whatever draws a book — card and shelf tile
+book goes. **Favourites** draws an authors column beside the books, built from
+the authors of the hearted books with a count each, and clicking one narrows to
+that author's hearted books in series order — the same as *Listened*, because a
+view and the column beside it are one view. It shipped without one: the handler
+cleared `#authors ul` and never filled it, so the heading stood over nothing
+beside a shelf of books that plainly had authors. The heart is drawn by whatever draws a book — card and shelf tile
 both — from one set held in the page, so the two places it appears cannot
 disagree. Pressing it colours it at once and asks afterwards: if the server
 refuses, it goes back. **Favourites** appears in the left column only while there
@@ -2669,6 +2674,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.7.64 | Favourites has its authors column: the authors of the hearted books with a count each, and clicking one narrows to that author — it had been cleared and never filled |
 | 2.7.56 | a reason that is the form's own wording is refused and said to be so, and the box is emptied when the form opens — two requests arrived carrying the sentence printed under it, and what filled it is still unestablished |
 | 2.7.48 | the sign-in card is in the middle of the screen again — a `#gate` width left over from the dialog was shrinking the backdrop to 440px — the Admin button is the administrator's alone, and the reason box refuses autofill and writing suggestions |
 | 2.7.40 | the ask-for-an-account card scrolls to its own top when it is taller than the window, and an account request with no reason says so in Discord rather than sending an empty quote |
