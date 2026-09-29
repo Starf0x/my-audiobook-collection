@@ -431,6 +431,39 @@ stop applying — grep the stylesheet for the id, not just the class you added.
 And a box with `inset: 0` that is not the size of the screen has something
 overriding it; find that before adjusting how its contents sit inside it.
 
+### A reason nobody wrote, and three guesses at why (2.7.56)
+
+Two account requests arrived whose reason was the sentence printed under the box
+— *"No email address is asked for and none is kept."* — word for word, from one
+browser. Nothing in this app writes into that box: the page sends
+`$('#gaWhy').value.trim()` and the server stores what it is given, which I
+checked on a running server end to end.
+
+I then spent three rounds on **mechanism** rather than on closing the hole. I
+said it was browser autofill and shipped `autocomplete="off"` plus
+`writingsuggestions="false"`; the next request came in on the version carrying
+that fix with the same sentence. Each guess was plausible and none was measured,
+which is the entry four above this one — *"Three fixes for a fault that was never
+in the app"* — with the names changed.
+
+**Fixed** without settling the cause, because the cause was not needed: the page
+empties the box when the ask form is opened unless the person has typed in it
+themselves, so whatever filled it loses; and the server refuses a reason that is
+one of the form's own strings, on letters and digits alone, and says so to the
+asker. The asking database query that would have settled it came back with only
+pre-2.7.0 names, because the two requests had already been deleted.
+
+**Rule:** when a bad value arrives and its source is on someone else's machine,
+the fix is to stop accepting the value, not to work out who sent it. A guard on
+the data holds whatever the answer turns out to be; a guard on the hypothesis
+holds only while the hypothesis does.
+
+And a check that goes red is not yet a check that is right: the mutant showed one
+of these passing for the wrong reason — with the guard removed, the second
+request was refused as a **name already taken**, a 400 that had nothing to do
+with what was being checked. Give each case its own name and assert the message,
+not the status.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
