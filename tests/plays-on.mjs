@@ -227,14 +227,7 @@ async function startBrowser() {
   // 'ignore'`, and when the browser would not start on the build machine all
   // the suite could say was "never opened its debugging port" — which is the
   // symptom, and says nothing about a missing library or a refused sandbox.
-  // The build machine sets DBUS_SESSION_BUS_ADDRESS to something Chromium cannot
-  // parse, and it spends seconds retrying a session bus that is not there and
-  // that a headless browser does not need. Handing it an address that fails at
-  // once rather than slowly is most of why this used to take nearly half a
-  // minute to open its port.
-  const env = process.platform === 'win32' ? process.env
-    : { ...process.env, DBUS_SESSION_BUS_ADDRESS: 'unix:path=/dev/null' };
-  const edge = spawn(browser, [...theseArgs, 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'], env });
+  const edge = spawn(browser, [...theseArgs, 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'] });
   const said = [];
   for (const pipe of [edge.stdout, edge.stderr]) pipe.on('data', (d) => said.push(String(d)));
   let gone = null;
@@ -246,6 +239,12 @@ async function startBrowser() {
   // that the usual case finishes just inside is a coin toss, not a timeout. It
   // costs nothing when the browser is quick, because this stops the moment the
   // port answers or the process exits.
+  //
+  // And it says how long it took, so the next argument about this number is had
+  // with a measurement instead of a theory. The first one was not: the session
+  // bus the browser complains about looked like the cost, and handing it a
+  // different address changed nothing that could be seen.
+  const startedAt = Date.now();
   let url = '';
   for (let i = 0; i < 360 && !url && !gone; i++) {
     try {
@@ -262,6 +261,7 @@ async function startBrowser() {
       + `\n  ran: ${browser} ${theseArgs.join(' ')}`
       + `\n  it said: ${said.join('').trim().slice(0, 1500) || '(nothing at all)'}`);
   }
+  console.log(`(its debugging port answered after ${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
   ws = new WebSocket(url);
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = () => no(new Error('cannot talk to the browser')); });
   ws.onmessage = (m) => {
