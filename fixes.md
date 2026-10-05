@@ -158,6 +158,32 @@ book of one track now says the time — `2h 05m of 10h 12m` — instead of
 **Rule:** a bar must measure the thing it claims to measure. Counting tracks is
 not measuring a book; check any progress display against a single-file item.
 
+### And the same bar, in the player, measuring the file (2.8.16)
+
+The entry above fixed the line under a *tile*. The bar under the **player** was
+never touched, and it was the same mistake pointing the other way:
+`audio.currentTime / audio.duration` is the file that happens to be playing, so
+on a book of many files it filled up and started again at every track, and the
+numbers beside it counted the same way. Frank sent a picture of a book two
+minutes in reading *"0:40 of 3:11"*.
+
+**Fixed** by summing the track lengths that already came with the book — those
+before this track are where it starts — and, because the bar is now a place in
+the *book*, by walking the tracks when it is dragged so the seek can land in
+another file. It falls back to the file for a book of one file, and for any book
+with a track whose length the scan never read: one missing length makes the
+total a lie, and the file is then the only thing still certainly true.
+
+**Rule:** when a bar is fixed in one place, ask where else the same quantity is
+drawn. This app drew "how far along" in two places and only one of them was put
+right, for seven minor versions. The tile and the player were showing different
+answers about the same book the whole time.
+
+And for the check: `book-bar.mjs` lifts the two functions out of `player.js` and
+runs them, rather than keeping a copy of the arithmetic in the suite — a copy
+agrees with itself for ever while the page does something else. It throws if
+either is renamed, so the suite cannot quietly stop testing anything.
+
 ### A message asserted a cause it never checked (2.1.56)
 
 The metadata lookup caught a failed `fetch` with `catch {}` — no binding, the
