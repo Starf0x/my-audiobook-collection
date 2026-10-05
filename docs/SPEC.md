@@ -142,7 +142,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/app.js` | 2389 | the admin page's behaviour |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 316 | the listening page’s behaviour |
-| `public/style.css` | 819 | the whole look, every page, phone included |
+| `public/style.css` | 826 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2269,6 +2269,16 @@ way back to the shelves from a book list, a search or a maintenance list. Both i
 and the *Home* link clear the search box, since the shelves are not a search
 result either.
 
+Beside the name is `icon.svg` as `.mark`, which is the app's own drawing — the
+one the favicon already used and the one Unraid shows on its tile, through the
+`net.unraid.docker.icon` label on the image. It was a headphones emoji, so the
+tab, the Unraid tile and the page each showed something different; now all three
+are the same mark. Sized in `em` so it follows whatever heading it sits in — the
+header's 16px and the sign-in card's 17px — at 1.6, which is larger than the
+text on purpose: the drawing is made for 512px, and below about 20 its arc and
+the pages of its book run together. The artwork carries its own rounded dark
+square, so nothing in the stylesheet draws a background or a radius for it.
+
 **Unticking Listened** clears the place kept in the book: the tick means "I have
 listened to this", so `POST /api/listened {done: false}` deletes the progress row
 rather than setting `done = 0`. The card follows — the note goes back to *new* and
@@ -2849,6 +2859,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.16 | the header carries the app's own mark instead of a headphones emoji, so the tab, the Unraid tile and the page all show one drawing |
 | 2.9.8 | *Move…* opens on an install that has never imported: it asked `/api/import` for a list of genres, which throws without an import folder, and an inline handler swallowed that — the button did nothing at all |
 | 2.9.0 | an author who writes in parts: `Auteur / Serie / Onderdeel / Boek` is read, with the part as the series and the one above it kept beside to group by — those books used to be passed over as "deeper than the layout reads" and never appeared at all |
 | 2.8.80 | `plays-on` waits ninety seconds for a browser to open its port rather than thirty, which the build machine was finishing just inside — and it says how long that took, so the number has a measurement behind it; the app itself is unchanged from 2.8.72 |
