@@ -2806,6 +2806,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.80 | `plays-on` waits ninety seconds for a browser to open its port rather than thirty, which the build machine was finishing just inside — and it says how long that took, so the number has a measurement behind it; the app itself is unchanged from 2.8.72 |
 | 2.8.72 | a row in *Needs tags* can hand you the book: *Show the book* opens the library at its genre and author and marks its card for a moment |
 | 2.8.64 | the build machine gets an ffmpeg, so `ogg-lengths` checks something there rather than saying "nothing checked" into a green run — the app itself is unchanged from 2.8.56 |
 | 2.8.56 | the scan steps over an ID3 tag bolted onto an `.ogg` the way converting has since 2.3.40: those books had no length, nothing for the player's bar to measure, and a place on *Broken on disk* — all from a tag the app already knew how to skip |
