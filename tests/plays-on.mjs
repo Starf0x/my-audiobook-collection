@@ -25,6 +25,12 @@ const LIB = join(MINE, 'audiobooks');
 const DATA = join(MINE, 'data');
 const PROFILE = join(MINE, 'edge-profile');
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+// The app has accounts now, so this walks it the way it is really reached: the
+// administrator signs in at the gate and both pages open. Running it with no
+// password would test the private install instead — a real arrangement, but not
+// the one with a sign-in card standing over the page the player lives on.
+const ADMIN = 'tester';
+const PASSWORD = 'a very good password';
 const PORT = 8531;
 const CDP = 9334;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -72,13 +78,22 @@ async function startServer() {
     throw new Error(`something is already listening on ${PORT} — an answer from it is not this app's`);
   }
   const server = spawn(process.execPath, [join(root, 'server', 'index.js')], {
-    env: { ...process.env, PORT: String(PORT), DATA_DIR: DATA },
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      DATA_DIR: DATA,
+      ADMIN_USER: ADMIN,
+      ADMIN_PASSWORD: PASSWORD,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stderr.on('data', (d) => process.stderr.write(`[server] ${d}`));
   for (let i = 0; i < 80; i++) {
     try {
-      const r = await fetch(`${BASE}/api/admin`, { signal: AbortSignal.timeout(700) });
+      // one of the four routes that answer without an account: `/api/admin` is
+      // behind the gate now and would say 401 for ever, which reads as a server
+      // that never started
+      const r = await fetch(`${BASE}/api/account/me`, { signal: AbortSignal.timeout(700) });
       if (r.ok) return server;
     } catch { /* still starting */ }
     await sleep(250);
@@ -86,19 +101,37 @@ async function startServer() {
   throw new Error('the app never came up');
 }
 
+// Everything this suite asks of the app before the browser exists is asked as
+// the administrator, because setting the library and scanning it are the
+// administrator's to do.
+let cookie = '';
 const post = (path, body) => fetch(BASE + path, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+  body: JSON.stringify(body),
 }).then((r) => r.json());
+const get = (path) => fetch(BASE + path, { headers: cookie ? { Cookie: cookie } : {} });
+
+async function signInOverHttp() {
+  const r = await fetch(`${BASE}/api/account/signin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: ADMIN, password: PASSWORD }),
+  });
+  cookie = (r.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+  if (!cookie) throw new Error('the app would not let the administrator in');
+}
 
 async function scanLibrary() {
+  await signInOverHttp();
   await post('/api/settings', { libraries: [LIB], importPath: '' });
   await post('/api/scan', {});
   for (let i = 0; i < 120; i++) {
-    const s = await (await fetch(`${BASE}/api/scan/status`)).json();
+    const s = await (await get('/api/scan/status')).json();
     if (!s.running) break;
     await sleep(250);
   }
-  const books = await (await fetch(`${BASE}/api/search?q=${encodeURIComponent('The Long Book')}`)).json();
+  const books = await (await get(`/api/search?q=${encodeURIComponent('The Long Book')}`)).json();
   if (!books.length) throw new Error('the scan found no books — the fixture is wrong, not the app');
   return books[0];
 }
@@ -121,10 +154,33 @@ let nextId = 0;
 const waiting = new Map();
 const broke = [];
 
+// A profile of its own, emptied first: a kept one carries cookies and
+// sessionStorage, which here means the session the last run signed in with and
+// the book it was carrying — the next run would start already signed in, with a
+// player on screen before it had played anything, and the first check of all
+// says there must not be one.
+//
+// A run that was killed leaves Edge holding that folder, and Windows then
+// refuses to delete it: the suite used to die on EPERM and every later run died
+// the same way until somebody noticed the stray processes. So a folder that
+// cannot be emptied is not reused — this run takes a clean one beside it.
+function freshProfile() {
+  try {
+    rmSync(PROFILE, { recursive: true, force: true });
+    mkdirSync(PROFILE, { recursive: true });
+    return PROFILE;
+  } catch {
+    const mine = `${PROFILE}-${process.pid}`;
+    rmSync(mine, { recursive: true, force: true });
+    mkdirSync(mine, { recursive: true });
+    console.log('(the usual browser profile is held by something; using one of its own)');
+    return mine;
+  }
+}
+
 async function startBrowser() {
-  rmSync(PROFILE, { recursive: true, force: true });
-  mkdirSync(PROFILE, { recursive: true });
-  const edge = spawn(EDGE, [...args, 'about:blank'], { stdio: 'ignore' });
+  const profile = freshProfile();
+  const edge = spawn(EDGE, [...args.map((a) => a.replace(PROFILE, profile)), 'about:blank'], { stdio: 'ignore' });
   let url = '';
   for (let i = 0; i < 60 && !url; i++) {
     try {
@@ -133,6 +189,9 @@ async function startBrowser() {
     } catch { /* not listening yet */ }
     if (!url) await sleep(250);
   }
+  // it is running even though it never answered: leaving it would hold the
+  // profile folder and break the next run the same way
+  if (!url) edge.kill();
   if (!url) throw new Error('the browser never opened its debugging port');
   ws = new WebSocket(url);
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = () => no(new Error('cannot talk to the browser')); });
@@ -295,15 +354,20 @@ async function run() {
     await sleep(800);
     check('nothing played, nothing carried', (await snap()).hasPlayer, false);
 
-    // A name, given the way a reader gives one. It has to be done through the
-    // dialog: while that stands open the document is inert and every click
-    // below would land nowhere, with nothing to say it had not.
+    // Signing in, the way somebody does. Until 2.7.0 this was a "who is
+    // listening?" dialog and a name typed into it; it is an account now, and
+    // the card is a plain element rather than a modal <dialog> — the top layer
+    // belongs to whatever the browser and its extensions put there (2.7.32).
+    // Nothing below this works until it is done: the page draws nothing for
+    // somebody who is not signed in, because account.js is what calls `begin`.
     await goto(`${BASE}/`, '/');
-    await waitFor(`document.querySelector('#who').open`, 'the who-is-listening dialog');
-    await click('#whoName');
-    await send('Input.insertText', { text: 'Tester' });
-    await click('#whoGo');
-    await waitFor(`!document.querySelector('#who').open`, 'the dialog to close');
+    await waitFor(`!document.querySelector('#gate').hidden`, 'the sign-in card');
+    await click('#giName');
+    await send('Input.insertText', { text: ADMIN });
+    await click('#giPass');
+    await send('Input.insertText', { text: PASSWORD });
+    await click('#giGo');
+    await waitFor(`document.querySelector('#gate').hidden`, 'the sign-in card to go');
     await waitFor(shows('#genres li', 'Fantasy'), 'the Fantasy genre');
 
     // browse to the book and press its Play button — a real click, which is what
@@ -321,7 +385,7 @@ async function run() {
 
     // 1. / -> /admin, by the Admin button
     let before = (await snap()).at;
-    await click('#adminBtn');
+    await click('#toAdmin');
     await atPage('/admin');
     await pickedUp();
     let now = await reallyPlaying();
@@ -380,7 +444,7 @@ async function run() {
     await sleep(300);
     check('pausing pauses it', (await snap()).paused, true);
     const pausedAt = (await snap()).at;
-    await click('#adminBtn');
+    await click('#toAdmin');
     await atPage('/admin');
     await settle(`document.querySelector('#audio') && document.querySelector('#audio').currentTime > 0`);
     const after = await reallyPlaying();
