@@ -610,6 +610,19 @@ every other machine. When something external has to start — a browser, a serve
 a container — give it room, and make the failure say what the thing itself said
 rather than only that the wait ran out.
 
+**Thirty seconds was still a coin toss.** The same commit went green on `main`
+and red on its tag an hour later, one job each way. The diagnostic earned itself
+back at once: the browser said *"Failed to connect to the bus: Could not parse
+server address"*, three times, five seconds apart. The build machine sets
+`DBUS_SESSION_BUS_ADDRESS` to something Chromium cannot parse, and a headless
+browser that needs no session bus spends seconds retrying it — 28 of them on the
+run that passed, against a wait of 30. It is ninety seconds now, and the browser
+is handed an address that fails at once instead of slowly.
+
+**Rule:** when a wait is nearly the time the thing usually takes, it is not a
+timeout, it is a coin toss — and the first flake is the measurement. Read what it
+actually took on the run that *passed*, not only on the one that failed.
+
 ### The default error page handed out the server's paths (2.8.8)
 
 A report from elsewhere said `GET /api/books` without a genre answered 500 —
