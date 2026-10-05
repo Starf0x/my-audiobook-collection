@@ -308,6 +308,31 @@ And: an inline `onclick` that calls an `async` function swallows everything it
 throws. Any handler wired that way either cannot fail or has to catch and say so
 — otherwise the whole of the evidence is a line in a console nobody has open.
 
+### The book number was dropped for every book in a part (2.9.32)
+
+2.9.0 taught the app to read `Auteur / Serie / Onderdeel / Boek`. Two days of
+work later, Frank typed a book number into *Edit metadata* on one of those books,
+saved, and nothing happened — no error, no number.
+
+`/api/books/:id` tells that dialog which series folder a book sits in, and it
+worked it out as *the second folder from the top*: `rel[1]`. At
+`author / series / book` that is the folder the book is in; at
+`author / series / part / book` it is the series **above** the part. So the
+dialog's Series field said "The Great Cycle" while the book's series was "First
+Movement" — and `applyMetadata` only writes a number when that field still names
+the series the book is in, a guard that exists so a number from one series cannot
+reorder a book in another. The two disagreed for every book in a part, and the
+number went quietly in the bin.
+
+**Fixed** by asking for the folder the book is *in* — the last one above it,
+`rel[rel.length - 2]` — which is the same answer as before for every book that is
+not in a part.
+
+**Rule:** when a layout gains a level, every line that counts folders from one
+end is a line that now counts to the wrong place. `rel[1]` was right only while
+there was exactly one folder between the author and the book. Count from the
+thing you mean — the book — not from the top of the tree.
+
 ### A narrator that was really the author (2.2.32)
 
 The scan read the narrator as `composer || artist`. In an audiobook the artist *is*
@@ -699,6 +724,13 @@ here:
   any path with a dotfile segment, so `.fixtures` broke every playback test.
 * **Never write JavaScript through a shell heredoc.** `\d`, `\s`, `\r\n`, `\\`
   and backticks are eaten. Write the file with an editor and `node --check` it.
+* **And the other way round: a suite can print every check green and still leave
+  with 127.** `sub-series` was the first to both scan a library — which starts
+  the tag pool's worker threads — and run the server, and `process.exit()` with
+  those still closing makes libuv assert on Windows
+  (`!(handle->flags & UV_HANDLE_CLOSING)`). The output said "all checks passed"
+  and `run-all` reported the suite failed, which reads as a lie in whichever
+  direction you trust. Let the loop turn once before exiting.
 * **An exit code is not a test result.** Not every suite calls `process.exit`;
   count the `ok` and `FAIL` lines it prints instead. One round of "all green" was
   reported wrongly because of this.

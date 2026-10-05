@@ -913,7 +913,14 @@ app.get('/api/books/:id', (req, res) => {
   const here = path.resolve(book.path);
   const gf = genreFolders().find((g) => here.startsWith(path.resolve(g.path) + path.sep));
   const rel = gf ? path.relative(path.resolve(gf.path), here).split(path.sep) : [];
-  book.folderSeries = rel.length >= 3 ? rel[1] : '';
+  // The folder the book is *in*, which is the last one above it — not the second
+  // from the top. Those are the same thing at `author / series / book`, and they
+  // are not for a book in a part of a series (§7.1), where this named the series
+  // above the part. The edit dialog prefills its Series field from here, and
+  // `applyMetadata` only writes a book number when that field still names the
+  // series the book is in — so for every book in a part, the two disagreed and
+  // the number was dropped without a word.
+  book.folderSeries = rel.length >= 3 ? rel[rel.length - 2] : '';
   book.coverV = coverV(book);
   // Where the book sits on disk is the admin's business: the edit dialog shows
   // it and Move… prefills from it, and neither of those exists on the listening

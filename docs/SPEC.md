@@ -101,7 +101,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1527 | Express app: every route, and nothing else |
+| `server/index.js` | 1534 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 205 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -572,6 +572,15 @@ already reasons one level up. Every folder inside a part has to be a book: one
 that is not means this is something else, and the reader is better served by the
 "deeper" note than by a series with a hole in it. One level and no more — a sixth
 is still deeper than the layout reads, and still says so.
+
+**`folderSeries` is the folder the book is in**, which is the last one above it
+and not the second from the top. Those are the same thing at
+`author / series / book`, and they are not once a part is in between. It was the
+second from the top, so for a book in a part the edit dialog's Series field named
+the series *above* the part — and `applyMetadata` only writes a book number while
+that field still names the series the book is in, a guard that stops a number
+from one series reordering a book in another. The two disagreed for every book in
+a part, and a number typed in and saved was dropped without a word.
 
 In the genre column a parent is a row with its parts indented under it, inside
 the genre's own fold; a part does not get a fold of its own, because a third one
@@ -2871,6 +2880,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.32 | a book number can be given to a book in a part: the edit dialog was told the series *above* the part, so the guard that keeps one series' numbers out of another dropped every one of them |
 | 2.9.24 | every action the build machine runs is pinned to a commit rather than to a tag somebody else can move, with the version it is named beside it |
 | 2.9.16 | the header carries the app's own mark instead of a headphones emoji, so the tab, the Unraid tile and the page all show one drawing |
 | 2.9.8 | *Move…* opens on an install that has never imported: it asked `/api/import` for a list of genres, which throws without an import folder, and an inline handler swallowed that — the button did nothing at all |
