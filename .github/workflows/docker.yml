@@ -1,5 +1,11 @@
 name: Publish Docker image
 
+# The token this workflow is handed can only read. Nothing here writes to the
+# repository — the image goes to Docker Hub with credentials of its own — and a
+# default-write token is a write that any action in the job could make.
+permissions:
+  contents: read
+
 # Tags only, deliberately. A tag on main used to fire this twice — once for the
 # branch, once for the tag — and both runs pushed :latest. The two images were
 # built from one commit but were not byte-for-byte equal, so whichever finished

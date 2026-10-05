@@ -127,7 +127,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
-| `server/wikidata.js` | 295 | which volumes a series has, asked of Wikidata |
+| `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
@@ -343,7 +343,10 @@ on another version and fails in the container has told nobody anything. It does
 not gate the image build; the two run beside each other, and a red Checks run on
 a tag is a reason to look before pulling.
 
-Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`.
+Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`. Both workflows declare
+`permissions: contents: read`: neither writes anything back to the repository —
+the image goes to Docker Hub on credentials of its own — and a token that may
+write is a write that any action in the job could make.
 
 **Tags only, and that is the fix for a race.** It used to run on `main` as well,
 and since `metadata-action` counts a tag as the default branch, a tagged release
@@ -2446,6 +2449,16 @@ skips them will reproduce the bugs.
     containers and `169.254.169.254`; fetching whatever it is handed makes it a
     way in to all of them. DNS can still change between the check and the fetch,
     which is said here rather than pretended away.
+
+    **And every outbound call says the same**, not only that one: `fetch` follows
+    a redirect unless told otherwise, and four of the seven did not say. Home
+    Assistant's call carries a long-lived token and the three to Google Books
+    carry the owner's API key in the query string, so a followed redirect hands a
+    credential to whatever the first host names next. Those hosts are fixed, so
+    nothing could aim them anywhere — but the habit costs one word, and
+    `outward.mjs` reads the source and fails when a new call is written without
+    it. Measured before the change: none of googleapis.com, wikidata.org or
+    query.wikidata.org redirects, so refusing one breaks nothing.
 50. **Text that goes into a file with line syntax is folded to one line.** An
     `#EXTINF` line ends at the newline, so a book title carrying one wrote the
     rest of the playlist. Titles come from folder names and tags, neither of
@@ -2750,6 +2763,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.40 | every outbound call refuses to follow a redirect, including the four that did not say and so would have handed the Home Assistant token or the Google key to wherever the first host pointed; both workflows ask for a read-only token |
 | 2.8.32 | `plays-on` runs on the build machine too: it finds whatever Chromium-family browser is there instead of naming one path on one machine, and has a job of its own in Checks |
 | 2.8.24 | `plays-on` drives the app as it is: it signs in at the gate, and its 22 checks pass for the first time since accounts arrived — the only automated cover the three pages have |
 | 2.8.16 | the player's bar measures the book rather than the file playing — on a book of many files it filled up and started again at every track — and dragging it now seeks across files |

@@ -104,7 +104,7 @@ export async function whoseFault(status, url) {
   if (status !== 503) return '';
   let without;
   try {
-    without = await fetch(url.replace(/[?&]key=[^&]*/, ''), { signal: AbortSignal.timeout(8000) });
+    without = await fetch(url.replace(/[?&]key=[^&]*/, ''), { redirect: 'error', signal: AbortSignal.timeout(8000) });
   } catch {
     return '';
   }
@@ -127,7 +127,7 @@ async function search_(book, search, key, trace = null, deep = false) {
     try {
       // every other outbound call in this app has a timeout; without one a network
       // that drops packets leaves the dialog waiting on the operating system
-      res = await paced(() => fetch(url, { signal: AbortSignal.timeout(15000) }));
+      res = await paced(() => fetch(url, { redirect: 'error', signal: AbortSignal.timeout(15000) }));
     } catch (e) {
       throw new Error(unreachable(e));
     }
@@ -286,7 +286,7 @@ const ask = async (url) => {
   for (let attempt = 0; ; attempt++) {
     let res;
     try {
-      res = await paced(() => fetch(url, { signal: AbortSignal.timeout(8000) }));
+      res = await paced(() => fetch(url, { redirect: 'error', signal: AbortSignal.timeout(8000) }));
     } catch (e) {
       return { status: 0, body: null, failed: e.name === 'TimeoutError' ? 'timed out' : 'could not be reached' };
     }
