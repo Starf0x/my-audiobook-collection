@@ -139,6 +139,32 @@ $('#brand').onclick = () => loadHome();
 // looks the same when you come back to it.
 const openGenres = new Set(JSON.parse(localStorage.openGenres || '[]'));
 
+// The series under a genre, and the parts under a series that has them.
+//
+// An author who writes in parts gives `Serie / Onderdeel / Boek`: the part is
+// the series — it is what numbers the books — and the one above it groups. The
+// genre's own fold shows the lot; a part does not get a fold of its own, because
+// a third one in a column this narrow costs more than it explains, and the
+// indent already says which series a part belongs to. The parent row is a row,
+// though: pressing it shows every book of the whole series at once, which is the
+// thing the parts are parts of.
+function seriesRows(g) {
+  const all = g.series || [];
+  const loose = all.filter((s) => !s.parent);
+  const parents = [...new Set(all.filter((s) => s.parent).map((s) => s.parent))].sort();
+  const row = (s, deep) => `<li class="series-in-genre${deep ? ' in-part' : ''}" hidden
+      data-genre="${esc(g.name)}" data-series="${esc(s.name)}"${s.parent ? ` data-parent="${esc(s.parent)}"` : ''}>
+      <span class="who">${esc(s.name)}</span><span class="count">${s.books}</span></li>`;
+  return parents.map((p) => {
+    const mine = all.filter((s) => s.parent === p);
+    const books = mine.reduce((n, s) => n + s.books, 0);
+    return `<li class="series-in-genre is-parent" hidden
+        data-genre="${esc(g.name)}" data-whole="${esc(p)}">
+        <span class="who">${esc(p)}</span><span class="count">${books}</span></li>`
+      + mine.map((s) => row(s, true)).join('');
+  }).join('') + loose.map((s) => row(s, false)).join('');
+}
+
 // --- which column is on screen -------------------------------------------
 const show = (col) => {
   document.body.dataset.col = col;

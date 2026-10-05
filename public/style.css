@@ -389,6 +389,12 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   opacity: .5;
 }
 #genres li.series-in-genre.active { color: #fff; }
+/* An author who writes in parts: the series above, then its parts indented
+   under it. The parent reads as the heavier of the two because it is the whole
+   thing — the parts are what it is divided into, not the other way round. */
+#genres li.series-in-genre.is-parent { color: var(--text); }
+#genres li.series-in-genre.in-part { padding-left: 46px; font-size: 12.5px; }
+#genres li.series-in-genre.in-part::before { left: 31px; }
 /* the series a book belongs to, on its card and on its shelf tile */
 .card .sub.series-of { color: var(--accent2); }
 .tile .a.series-of { color: var(--accent2); opacity: .85; }

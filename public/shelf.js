@@ -72,9 +72,7 @@ async function loadGenres() {
     return `<li data-name="${esc(g.name)}">
       <span class="who">${has ? '<span class="twist">▸</span>' : ''}${esc(g.name)}</span>
       <span class="count">${g.books}</span></li>`
-      + (g.series || []).map((s) => `<li class="series-in-genre" hidden
-          data-genre="${esc(g.name)}" data-series="${esc(s.name)}">
-          <span class="who">${esc(s.name)}</span><span class="count">${s.books}</span></li>`).join('');
+      + seriesRows(g);
   }).join('')
     || '<li class="empty">Nothing here yet.</li>';
   $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => {
@@ -86,6 +84,9 @@ async function loadGenres() {
   });
   $('#genres ul').querySelectorAll('li[data-series]').forEach((li) => {
     li.onclick = () => selectSeries(li.dataset.genre, li.dataset.series, li);
+  });
+  $('#genres ul').querySelectorAll('li[data-whole]').forEach((li) => {
+    li.onclick = () => selectWholeSeries(li.dataset.genre, li.dataset.whole, li);
   });
   for (const g of list) if (openGenres.has(g.name)) showSeriesOf(g.name, true);
 }
@@ -102,6 +103,23 @@ async function selectSeries(genre, series, li) {
   const r = await api(`/api/books?genre=${encodeURIComponent(genre)}&series=${encodeURIComponent(series)}`
     + `&user=${encodeURIComponent(state.user)}`);
   drawBooks(r.books, series, 'Series', r.series);
+}
+
+// A whole series, parts and all, for an author who writes in them. No heading of
+// its own: given one, drawBooks draws that instead of a head per series, and a
+// head per part is the whole point of reading a series this way.
+async function selectWholeSeries(genre, parent, li) {
+  state.genre = genre;
+  state.author = null;
+  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+  if (li) li.classList.add('active');
+  const authors = await api('/api/authors?genre=' + encodeURIComponent(genre));
+  $('#authors ul').innerHTML = authors.map((a) =>
+    `<li data-name="${esc(a.name)}"><span>${esc(a.name)}</span><span class="count">${a.books}</span></li>`).join('');
+  $('#authors ul').querySelectorAll('li').forEach((el) => { el.onclick = () => selectAuthor(el.dataset.name, el); });
+  const r = await api(`/api/books?genre=${encodeURIComponent(genre)}&parent=${encodeURIComponent(parent)}`
+    + `&user=${encodeURIComponent(state.user)}`);
+  drawBooks(r.books, '', 'Series', r.series);
 }
 
 async function selectGenre(genre, li) {
@@ -142,7 +160,12 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
     const author = b.author;
     if (!heading && b.series !== series) {
       series = b.series;
-      if (series) html += `<div class="series-head">Series · ${esc(series)}</div>` + howComplete(series);
+      // A part names the series it is part of, so a whole series read in one
+      // view says which movement each run of books belongs to.
+      if (series) {
+        html += `<div class="series-head">Series · ${b.parent ? `${esc(b.parent)} · ` : ''}${esc(series)}</div>`
+          + howComplete(series);
+      }
     }
     html += `<div class="card" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
       <div class="cover" data-glyph="▶">

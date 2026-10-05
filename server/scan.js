@@ -243,13 +243,14 @@ const q = {
   bookByPath: db.prepare(`SELECT id, duration, narrator, year, description, cover,
                           tag_series, series_no FROM books WHERE path = ?`),
   trackPaths: db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx'),
-  touchBook: db.prepare(`UPDATE books SET genre = ?, author = ?, series = ?, tagged = ?,
+  touchBook: db.prepare(`UPDATE books SET genre = ?, author = ?, series = ?, parent_series = ?, tagged = ?,
       tag_series = ?, series_no = ?, narrator = ?, year = ?, description = ?, cover = ?
       WHERE id = ?`),
   upsertBook: db.prepare(`INSERT INTO books
-      (path, genre, author, series, title, narrator, year, description, cover, duration, tagged, tag_series, series_no)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (path, genre, author, series, parent_series, title, narrator, year, description, cover, duration, tagged, tag_series, series_no)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET genre = excluded.genre, author = excluded.author, series = excluded.series,
+      parent_series = excluded.parent_series,
       title = excluded.title, narrator = excluded.narrator, year = excluded.year,
       description = excluded.description, cover = excluded.cover, duration = excluded.duration,
       tagged = excluded.tagged, tag_series = excluded.tag_series, series_no = excluded.series_no`),
@@ -270,7 +271,8 @@ const q = {
   clearUnreadable: db.prepare("DELETE FROM broken WHERE book_id = ? AND reason = 'unreadable'"),
 };
 
-async function addBook(genre, author, series, bookPath, files = null, force = false, guess = null) {
+async function addBook(genre, author, series, bookPath, files = null, force = false, guess = null,
+  parentSeries = '') {
   files = files || audioFiles(bookPath);
   if (!files.length) return 0;
   const folderTitle = path.basename(bookPath);
@@ -291,7 +293,7 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
     // scan. The series goes the same way: a book already in the library picks up
     // what a newer version of this app can work out, without its folders changing.
     const told = await firstFileTells(files[0]);
-    q.touchBook.run(genre, author, series, told.tagged,
+    q.touchBook.run(genre, author, series, parentSeries || '', told.tagged,
       // the files first, then what the folders suggest, then what the book already
       // says: a series filled in from a lookup without writing the files must not
       // be blanked by the next scan either
@@ -313,7 +315,7 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
   q.upsertBook
     // Folder name wins over the album tag: album tags repeat across a series
     // ("The Belgariad" for all ten books) while folder names identify the book.
-    .run(bookPath, genre, author, series, folderTitle || m.title, m.narrator, m.year, m.description,
+    .run(bookPath, genre, author, series, parentSeries || '', folderTitle || m.title, m.narrator, m.year, m.description,
          m.cover, m.duration, m.tagged || '',
          m.tagSeries || (guess ? guess.name : ''),
          m.seriesNo || (guess ? guess.no : 0));
@@ -428,6 +430,26 @@ export function seriesFromSiblings(names) {
 
 // Why a folder the walk went past holds no book it could read. Called only for
 // folders that turned out to have nothing, so the extra looking is rare.
+// The books inside a folder, when every folder in it is one — audio of its own,
+// or discs — and null otherwise. Every one of them, because a folder that is not
+// a book means this is something else, and the reader is better served by the
+// "deeper than the layout reads" note than by a series with a hole in it.
+//
+// Whether a folder of books is really a *part* is not decided here: one book
+// inside one folder reads equally well as a book nested a level too deep, and
+// what settles it is the siblings. The caller asks that.
+function parted(dir, seen) {
+  if (!seen.dirs.length) return null;
+  const parts = [];
+  for (const inner of seen.dirs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) {
+    const below = listing(inner);
+    const files = below.audio.length ? below.audio : discFiles(inner);
+    if (!files || !files.length) return null;
+    parts.push({ dir: inner, files });
+  }
+  return parts;
+}
+
 function whyNothing(dir, seen) {
   if (seen.error) return { reason: 'unreadable', detail: seen.error };
   // a book one level deeper than the layout goes: genre / author / series / book
@@ -522,9 +544,34 @@ async function walkAndScan(only) {
             // not a series: there is nothing to group.
             const books = inLevel3.dirs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
             const series = books.length > 1 ? path.basename(level3) : null;
-            for (const bookDir of books) {
-              const inBook = listing(bookDir);
-              const files = inBook.audio.length ? inBook.audio : discFiles(bookDir);
+            // What each of these folders is, before deciding what any of them
+            // means: a book of its own, or a folder whose every child is a book.
+            const look = books.map((dir) => {
+              const inBook = listing(dir);
+              const files = inBook.audio.length ? inBook.audio : discFiles(dir);
+              return { dir, inBook, files, parts: files && files.length ? null : parted(dir, inBook) };
+            });
+            // The siblings settle it. One folder holding one book reads just as
+            // well as a book nested a level too deep, so a part is only read as
+            // one where something here holds two or more books — and then the
+            // single-book folder beside it is a part too, because that is plainly
+            // what it is. This is how `seriesFromSiblings` reasons one level up.
+            const parts = look.some((l) => l.parts && l.parts.length > 1);
+            for (const { dir: bookDir, inBook, files, parts: these } of look) {
+              if (parts && these) {
+                for (const part of these) {
+                  jobs.push({
+                    genre,
+                    author,
+                    series: path.basename(bookDir),
+                    parentSeries: series || path.basename(level3),
+                    dir: part.dir,
+                    files: part.files,
+                    guess: null,
+                  });
+                }
+                continue;
+              }
               if (!files || !files.length) {
                 const why = whyNothing(bookDir, inBook);
                 note(bookDir, why.reason, why.detail);
@@ -552,7 +599,7 @@ async function walkAndScan(only) {
     progress.current = path.basename(j.dir);
     // read the count first: "x += await y" reads x before the await, so with
     // several books in flight the additions would overwrite each other
-    const added = await addBook(j.genre, j.author, j.series, j.dir, j.files, false, j.guess);
+    const added = await addBook(j.genre, j.author, j.series, j.dir, j.files, false, j.guess, j.parentSeries);
     progress.books += added;
     progress.done++;
   });
