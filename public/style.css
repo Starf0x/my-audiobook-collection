@@ -88,6 +88,19 @@ main li.active .count { color: #e8e2ff; }
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
   box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 6px 18px -16px #000;
 }
+/* The book a maintenance list sent you to. An author with forty books puts the
+   right card somewhere in a wall of identical ones, so it says which it is for
+   a moment and then stops: a mark that stayed would be a mark on the wrong book
+   the next time something is looked at. `prefers-reduced-motion` gets the ring
+   without the fade — the point is which card, not the animation. */
+.card.found { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+@media (prefers-reduced-motion: no-preference) {
+  .card.found { animation: found 2.6s ease-out; }
+}
+@keyframes found {
+  0%, 60% { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  100% { border-color: var(--line); box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 6px 18px -16px #000; }
+}
 .card img { width: 96px; height: 144px; object-fit: cover; border-radius: 6px; background: var(--panel2); }
 .card h3 { margin: 0 0 4px; font-size: 15px; }
 .card .sub { color: var(--dim); font-size: 12.5px; }
