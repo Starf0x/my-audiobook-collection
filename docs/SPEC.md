@@ -139,7 +139,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 273 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 385 | the admin page: columns, dialogs |
-| `public/app.js` | 2371 | the admin page's behaviour |
+| `public/app.js` | 2389 | the admin page's behaviour |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 316 | the listening page’s behaviour |
 | `public/style.css` | 819 | the whole look, every page, phone included |
@@ -2217,6 +2217,22 @@ series, narrator, year, description — each in a `.field` row with a **⧉** bu
 copies it, then a **Cover** box that takes a pasted, dropped or chosen picture
 (§7.8b), and the book's folder and file count at the foot, above the buttons); *Move…*.
 
+***Move…* takes its genres from the folders.** It used to ask `/api/import` for
+that list, which walks the import folder and throws when there is none set — or
+when there is one and the share it names is not mounted. Moving a book has
+nothing to do with importing, and `moveBook` is an inline handler, so the throw
+went nowhere anybody would see: **the button did nothing at all** on an install
+that had never imported. It asks `/api/genrefolders` now, and catches that too,
+because the dialog is worth opening without the list — the genre the book already
+has is in it either way, so a move within a genre still works.
+
+It writes four folders, so a book that lives in a *part* of a series (§7.1) has
+one more above it than the dialog can express: `clean()` turns a slash into a
+dash, so typing both levels into **Series** makes one folder named for both
+rather than the nesting back. The preview says so — *"out of The Great Cycle /
+First Movement, which this cannot write"* — rather than letting a book leave the
+series it was filed under without a word.
+
 Two pages are one column rather than three, because they are read rather than
 browsed: `/ha` and `/accounts` (`body.one-column main.page`).
 
@@ -2833,6 +2849,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.8 | *Move…* opens on an install that has never imported: it asked `/api/import` for a list of genres, which throws without an import folder, and an inline handler swallowed that — the button did nothing at all |
 | 2.9.0 | an author who writes in parts: `Auteur / Serie / Onderdeel / Boek` is read, with the part as the series and the one above it kept beside to group by — those books used to be passed over as "deeper than the layout reads" and never appeared at all |
 | 2.8.80 | `plays-on` waits ninety seconds for a browser to open its port rather than thirty, which the build machine was finishing just inside — and it says how long that took, so the number has a measurement behind it; the app itself is unchanged from 2.8.72 |
 | 2.8.72 | a row in *Needs tags* can hand you the book: *Show the book* opens the library at its genre and author and marks its card for a moment |

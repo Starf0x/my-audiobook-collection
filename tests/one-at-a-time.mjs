@@ -132,5 +132,28 @@ check('but still everything the listening page plays with',
   ['A Book', true, 'string']);
 delete process.env.ADMIN_PASSWORD;
 
+// --- Move… does not need an import folder ---------------------------------
+// The dialog asked `/api/import` for the list of genres, and that route walks
+// the import folder and throws when there is none set — or when there is one and
+// the share it names is not mounted. Moving a book has nothing to do with
+// importing, and `moveBook` is an inline handler, so the throw went nowhere
+// anybody would see: the button simply did nothing on an install that had never
+// imported. This install has no import folder, which is the case that broke.
+const asksImport = await fetch(`${BASE}/api/import`);
+check('asking about imports without an import folder is refused',
+  [asksImport.status, (await asksImport.json()).error],
+  [400, 'No import folder set yet. Add one in Settings.']);
+const asksGenres = await fetch(`${BASE}/api/genrefolders`);
+check('but the genres can still be had', asksGenres.status, 200);
+
+// Comments off first: the one above this change names the route it stopped
+// asking, and reading that back as the code still asking it is how a check comes
+// to pass for the wrong reason.
+const moveDialog = fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8')
+  .match(/window\.moveBook = async function[\s\S]*?\n\};/)[0]
+  .replace(/^\s*\/\/.*$/gm, '');
+check('and Move… asks that one instead',
+  [/api\/genrefolders/.test(moveDialog), /api\/import/.test(moveDialog)], [true, false]);
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);

@@ -1585,7 +1585,19 @@ async function fileWork(url, body, label) {
 
 window.moveBook = async function (id) {
   const b = await api(`/api/books/${id}`);
-  const { genres } = await api('/api/import');
+  // The genres, from the folders — not from `/api/import`, which this asked for
+  // the same list and which throws when there is no import folder set, or when
+  // there is one and the share it names is not mounted. Moving a book has
+  // nothing to do with importing, and this is an inline handler: the throw went
+  // nowhere anybody would see, so the Move… button did nothing at all on an
+  // install that had never imported. It also walked the whole import folder to
+  // fill a dropdown.
+  //
+  // Caught as well, because the dialog is still worth opening without the list:
+  // the genre the book already has is in it either way, so a move within a genre
+  // — which is most of them — still works.
+  const folders = (await api('/api/genrefolders').catch(() => ({ folders: [] }))).folders || [];
+  const genres = [...new Set(folders.map((g) => g.genre).concat(b.genre || []))].filter(Boolean).sort();
   $('#mGenre').innerHTML = genres.map((g) =>
     `<option${g === b.genre ? ' selected' : ''}>${esc(g)}</option>`).join('');
   $('#mAuthor').value = b.author || '';
@@ -1593,7 +1605,13 @@ window.moveBook = async function (id) {
   $('#mTitle').value = b.title || '';
   const preview = () => {
     const parts = [$('#mAuthor').value.trim(), $('#mSeries').value.trim(), $('#mTitle').value.trim()].filter(Boolean);
-    $('#mWhere').textContent = `Moves to ${$('#mGenre').value} / ${parts.join(' / ')}`;
+    // A book that lives in a part of a series has five folders above it and this
+    // dialog writes four, so a move takes it out of the part. `clean()` turns a
+    // slash into a dash, so typing the two levels into the Series box makes one
+    // folder named for both rather than the nesting back. Said here because the
+    // alternative is a book quietly leaving the series it was filed under.
+    $('#mWhere').textContent = `Moves to ${$('#mGenre').value} / ${parts.join(' / ')}`
+      + (b.parent_series ? ` — out of ${b.parent_series} / ${b.series}, which this cannot write` : '');
   };
   ['mGenre', 'mAuthor', 'mSeries', 'mTitle'].forEach((k) => { $('#' + k).oninput = preview; $('#' + k).onchange = preview; });
   preview();
