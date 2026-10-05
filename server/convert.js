@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { db, getLibraries } from './db.js';
 import { addOne } from './scan.js';
 import { writeTag } from './tagpool.js';
+import { id3Skip } from './id3.js';
 
 // ffmpeg and ffprobe come with the image, so they are always the build that image
 // is for and there is nothing to install. `-version` is still asked of them,
@@ -117,31 +118,6 @@ const run = (file, args, onOut, { quiet = 0, limit = 0 } = {}) => new Promise((r
       : reject(new Error(err.trim().split('\n').filter(Boolean).pop() || `${path.basename(file)} exited ${code}`));
   });
 });
-
-// An .ogg (or .flac, or .m4b) with an ID3 tag bolted on the front. Taggers meant
-// for MP3 write one anyway, and the Ogg demuxer will not look past it: the whole
-// file comes back as "Invalid data found when processing input", and so it does
-// from the scan, which is why such a book shows no length either. The tag says
-// how long it is, and ffmpeg can be told to skip exactly that much. On an MP3 the
-// tag belongs where it is and is never skipped.
-function id3Skip(file) {
-  if (/\.mp3$/i.test(file)) return 0;
-  let fd;
-  try {
-    fd = fs.openSync(file, 'r');
-    const head = Buffer.alloc(10);
-    if (fs.readSync(fd, head, 0, 10, 0) < 10) return 0;
-    if (head.toString('latin1', 0, 3) !== 'ID3') return 0;
-    // four seven-bit bytes, big endian, and the ten of the header itself
-    return ((head[6] & 0x7f) << 21 | (head[7] & 0x7f) << 14
-      | (head[8] & 0x7f) << 7 | (head[9] & 0x7f)) + 10;
-  } catch {
-    // whatever is wrong with this file, ffprobe is about to say it in words
-    return 0;
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd);
-  }
-}
 
 // before -i, because it is how the input is opened
 const skipArgs = (file) => {
