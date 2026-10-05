@@ -139,10 +139,10 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 247 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 385 | the admin page: columns, dialogs |
-| `public/app.js` | 2312 | the admin page's behaviour |
+| `public/app.js` | 2341 | the admin page's behaviour |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 293 | the listening page’s behaviour |
-| `public/style.css` | 800 | the whole look, every page, phone included |
+| `public/style.css` | 813 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2290,6 +2290,22 @@ one author. `state.untaggedAuthor` is what `backToView()` returns to, so writing
 tags into a book — which redraws the list — does not throw the owner back to the
 top of a collection they are working through author by author.
 
+**And each row can hand you the book.** *Show the book* opens the library where
+that book lives — its genre, its author, its card — and marks the card for a
+moment, because an author with forty of them puts the right one somewhere in a
+wall of identical cards. The mark takes itself off after a few seconds: one that
+stayed would be a mark on the wrong book the next time something was looked at.
+Without it the way there was to read the genre and author off the row and find
+them by hand in two columns.
+
+The button hands over an id and nothing else, and `showUntagged(id)` looks the
+rest up in `state.untagged`. Every inline handler on this page passes numbers and
+`this`: a title or an author in one would have to be escaped for an HTML
+attribute and for JavaScript at the same time, and the first person to copy the
+pattern would get it wrong. `jumpToBook` finds the card by `data-id`, which both
+pages' cards now carry, and does nothing at all if it is not there — a book can
+have been moved or deleted since the list was built.
+
 The listening page mirrors browsing, series, folding, search and the player, and
 carries an **Admin** button that unlocks and opens the other page. A visitor who
 types the admin address is sent to the listening page.
@@ -2790,6 +2806,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.72 | a row in *Needs tags* can hand you the book: *Show the book* opens the library at its genre and author and marks its card for a moment |
 | 2.8.64 | the build machine gets an ffmpeg, so `ogg-lengths` checks something there rather than saying "nothing checked" into a green run — the app itself is unchanged from 2.8.56 |
 | 2.8.56 | the scan steps over an ID3 tag bolted onto an `.ogg` the way converting has since 2.3.40: those books had no length, nothing for the player's bar to measure, and a place on *Broken on disk* — all from a tag the app already knew how to skip |
 | 2.8.48 | a looked-up cover is named for what its bytes are, the way a pasted one always was: it read the Content-Type and called everything that was not a PNG a `.jpg`, so a WebP thumbnail landed in `covers/` under a name two things then believed |

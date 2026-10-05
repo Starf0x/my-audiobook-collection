@@ -144,7 +144,7 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
       series = b.series;
       if (series) html += `<div class="series-head">Series · ${esc(series)}</div>` + howComplete(series);
     }
-    html += `<div class="card" data-started="${b.started ? 1 : 0}">
+    html += `<div class="card" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
       <div class="cover" data-glyph="▶">
         <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
           onclick="playBook(${b.id})" title="Play or pause">

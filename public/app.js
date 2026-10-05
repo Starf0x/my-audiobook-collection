@@ -114,6 +114,24 @@ async function openInLibrary(genre, author) {
   await selectAuthor(author, ali);
 }
 
+// The same, and then to the book itself. A maintenance list names books by
+// title, and the thing somebody wants next is usually the book: its cover, its
+// description, the rest of what its author has. Without this the way there is to
+// read the genre and author off the row and find them by hand in two columns.
+//
+// The card is marked rather than merely scrolled to, because an author with
+// forty books lands the right one somewhere in a wall of identical cards. The
+// mark takes itself off: it says "this is the one you asked for", which stops
+// being true as soon as the page has been looked at.
+async function jumpToBook(id, genre, author) {
+  await openInLibrary(genre, author);
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (!card) return;                       // moved or deleted since the list was built
+  card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  card.classList.add('found');
+  setTimeout(() => card.classList.remove('found'), 2600);
+}
+
 // --- browsing ----------------------------------------------------------
 const rememberOpen = () => { localStorage.openGenres = JSON.stringify([...openGenres]); };
 
@@ -218,7 +236,7 @@ async function drawBooks(books, heading, kind = 'Series', states = []) {
       series = b.series;
       if (series) html += `<div class="series-head">Series · ${esc(series)}</div>` + howComplete(series);
     }
-    html += `<div class="card" data-started="${b.started ? 1 : 0}">
+    html += `<div class="card" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
       <div class="cover" data-glyph="▶">
         <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
           onclick="playBook(${b.id})" title="Play or pause">
@@ -1653,6 +1671,8 @@ function drawFix(list) {
       <div class="actions">
         ${b.fixable.length ? `<button onclick="writeTags(${b.id}, this)">Write into MP3s</button>` : ''}
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
+        <button class="ghost" onclick="showUntagged(${b.id})"
+          title="Open this book where it lives in the library">Show the book</button>
       </div>
     </div>`).join('')}`;
   if ($('#tagFixable')) {
@@ -1662,6 +1682,15 @@ function drawFix(list) {
     };
   }
   show('books');
+}
+
+// The row knows the book; the button hands over an id and nothing else. Every
+// inline handler on this page passes numbers and `this` — a title or an author
+// in one would have to be escaped for an HTML attribute and for JavaScript at
+// once, and the first person to copy the pattern would get it wrong.
+function showUntagged(id) {
+  const b = (state.untagged || []).find((x) => x.id === id);
+  if (b) jumpToBook(b.id, b.genre, b.author);
 }
 
 // One author's books that need tags, the way the genres column opens an author
