@@ -604,10 +604,18 @@ app.get('/api/home', (req, res) => {
 
 app.get('/api/genres', (req, res) => {
   const genres = db.prepare('SELECT genre AS name, COUNT(*) AS books FROM books GROUP BY genre ORDER BY genre').all();
-  const series = db.prepare(`SELECT b.genre, ${SERIES} AS name, COUNT(*) AS books
+  // Grouped by the series above it as well as by the series itself, so two parts
+  // that happen to share a name under different parents stay two rows rather
+  // than being added together. Ordered by the parent first, which is what puts
+  // the parts of one series next to each other in the column.
+  const series = db.prepare(`SELECT b.genre, ${SERIES} AS name,
+                                    COALESCE(b.parent_series, '') AS parent, COUNT(*) AS books
                              FROM books b WHERE ${SERIES} IS NOT NULL
-                             GROUP BY b.genre, name ORDER BY name`).all();
-  res.json(genres.map((g) => ({ ...g, series: series.filter((s) => s.genre === g.name).map(({ name, books }) => ({ name, books })) })));
+                             GROUP BY b.genre, parent, name ORDER BY parent, name`).all();
+  res.json(genres.map((g) => ({
+    ...g,
+    series: series.filter((s) => s.genre === g.name).map(({ name, parent, books }) => ({ name, parent, books })),
+  })));
 });
 
 // Every series the collection has a hole in, in one pass. It is the same count as
@@ -744,12 +752,31 @@ const seriesState = (genre, name) => {
 // `undefined` to bind, which threw. Saying so is the answer; a 500 from a
 // question this route cannot take is the app blaming itself for a typo.
 app.get('/api/books', (req, res) => {
+  // A whole series, parts and all: `parent` is the series above the series, and
+  // the books come back ordered by part and then by number within it, which is
+  // the order the pane's own series headings then read in.
+  if (req.query.parent) {
+    if (!req.query.genre) return res.status(400).json({ error: 'Say which genre.' });
+    const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
+                                    b.description, b.cover, b.duration, b.tagged,
+                                    p.position > 0 AS started, ${KEPT}
+                             FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
+                             WHERE b.genre = ? AND b.parent_series = ?
+                             ORDER BY series, b.series_no, b.title`)
+      .all(req.query.user || '', req.query.genre, req.query.parent);
+    return res.json({
+      books: rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+        finished: isFinished({ ...b, trackSeconds }) })),
+      series: [...new Set(rows.map((b) => b.series).filter(Boolean))]
+        .map((name) => seriesState(req.query.genre, name)),
+    });
+  }
   const bySeries = !!req.query.series;
   const within = bySeries ? req.query.series : req.query.author;
   if (!req.query.genre || !within) {
     return res.status(400).json({ error: 'Say which genre, and which author or series in it.' });
   }
-  const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
+  const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
                                   b.description, b.cover, b.duration, b.tagged,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
@@ -773,7 +800,7 @@ const HAYSTACK = ['b.title', 'b.author', 'b.genre', 'b.series', 'b.tag_series', 
 app.get('/api/search', (req, res) => {
   const words = (req.query.q || '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
   if (!words.length || words.join('').length < 2) return res.json([]);
-  const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, b.series_no, b.author, b.narrator, b.year,
+  const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
                                   b.genre, b.description, b.cover, b.duration, b.tagged,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?

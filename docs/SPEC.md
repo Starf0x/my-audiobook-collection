@@ -101,11 +101,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1500 | Express app: every route, and nothing else |
+| `server/index.js` | 1527 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 197 | schema, migrations, settings, library list |
+| `server/db.js` | 205 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 603 | walking the library, reading tags, filing books |
+| `server/scan.js` | 650 | walking the library, reading tags, filing books |
 | `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
 | `server/google.js` | 731 | Google Books lookup, and writing tags into files |
@@ -137,12 +137,12 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/player.js` | 375 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 247 | browsing the collection: what both pages do the same way, in one copy |
+| `public/browse.js` | 273 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 385 | the admin page: columns, dialogs |
-| `public/app.js` | 2341 | the admin page's behaviour |
+| `public/app.js` | 2371 | the admin page's behaviour |
 | `public/listen.html` | 133 | the listening page |
-| `public/shelf.js` | 293 | the listening page’s behaviour |
-| `public/style.css` | 813 | the whole look, every page, phone included |
+| `public/shelf.js` | 316 | the listening page’s behaviour |
+| `public/style.css` | 819 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -540,6 +540,33 @@ How a third-level folder is read:
 | several sub-folders | a **series**, each sub-folder a book |
 | sub-folders all matching `DISC` (two or more) | **one book**, discs concatenated in order |
 | exactly one sub-folder | **one book** — a series of one has nothing to group |
+
+**An author who writes in parts.** Some series are published in parts, which on
+disk is `Auteur / Serie / Onderdeel / Boek` — one level deeper than the four this
+walked, so those books used to be passed over entirely with "a folder deeper than
+the layout reads" and never appeared.
+
+The part is read as the **series**, because that is what it is: the books that
+belong together and are numbered against each other. The series above it is kept
+beside it as `parent_series`, which only groups. That way round is why nothing
+else had to change — numbering, completeness (§7.10a), Music Assistant and Home
+Assistant all go on reading `series` exactly as they did.
+
+**The siblings decide what a part is**, because one folder holding one book reads
+equally well as a book nested a level too deep. So a folder of books is read as a
+part only where something beside it holds **two or more** books — and then the
+single-book folder next to it is a part too, which is how `seriesFromSiblings`
+already reasons one level up. Every folder inside a part has to be a book: one
+that is not means this is something else, and the reader is better served by the
+"deeper" note than by a series with a hole in it. One level and no more — a sixth
+is still deeper than the layout reads, and still says so.
+
+In the genre column a parent is a row with its parts indented under it, inside
+the genre's own fold; a part does not get a fold of its own, because a third one
+in a column that narrow costs more than it explains. Pressing a part shows that
+part; pressing the parent shows the whole series, and `drawBooks` is given no
+heading there so its own per-series heads separate the parts — each reading
+*Series · The Great Cycle · First Movement*.
 
 A library entry is either a folder of genre folders (`asGenre: false`) or a single
 genre folder (`asGenre: true`). `looksTooDeep()` samples three children and three
@@ -2640,15 +2667,15 @@ whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These thirteen are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the eleven that run
+leans on could not be run by anybody who had only the spec. These fourteen are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the twelve that run
 anywhere — `ogg-lengths` among them, which needs `ffmpeg` to make the Ogg it
 checks and says so and checks nothing where there is none, rather than passing
 quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -2806,6 +2833,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.0 | an author who writes in parts: `Auteur / Serie / Onderdeel / Boek` is read, with the part as the series and the one above it kept beside to group by — those books used to be passed over as "deeper than the layout reads" and never appeared at all |
 | 2.8.80 | `plays-on` waits ninety seconds for a browser to open its port rather than thirty, which the build machine was finishing just inside — and it says how long that took, so the number has a measurement behind it; the app itself is unchanged from 2.8.72 |
 | 2.8.72 | a row in *Needs tags* can hand you the book: *Show the book* opens the library at its genre and author and marks its card for a moment |
 | 2.8.64 | the build machine gets an ffmpeg, so `ogg-lengths` checks something there rather than saying "nothing checked" into a green run — the app itself is unchanged from 2.8.56 |

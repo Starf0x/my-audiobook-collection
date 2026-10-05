@@ -18,7 +18,14 @@ db.exec(`
     tagged TEXT DEFAULT '',
     -- the series as the files claim it, for books that are not in a series folder
     tag_series TEXT DEFAULT '',
-    series_no INTEGER DEFAULT 0
+    series_no INTEGER DEFAULT 0,
+    -- The series this book's series belongs to, where an author writes in parts:
+    -- author / series / part / book. The sub-series is the series column itself --
+    -- it is what numbers the books, what completeness counts and what the other
+    -- two faces report -- and this names the one above it, which only groups.
+    -- Keeping it that way round is why nothing else had to change.
+    -- (No backticks in here: this whole schema is one template literal.)
+    parent_series TEXT DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS tracks (
     id INTEGER PRIMARY KEY,
@@ -114,6 +121,7 @@ try { db.exec('ALTER TABLE progress ADD COLUMN done INTEGER DEFAULT 0'); } catch
 try { db.exec("ALTER TABLE books ADD COLUMN tagged TEXT DEFAULT ''"); } catch { /* already there */ }
 try { db.exec("ALTER TABLE books ADD COLUMN tag_series TEXT DEFAULT ''"); } catch { /* already there */ }
 try { db.exec('ALTER TABLE books ADD COLUMN series_no INTEGER DEFAULT 0'); } catch { /* already there */ }
+try { db.exec("ALTER TABLE books ADD COLUMN parent_series TEXT DEFAULT ''"); } catch { /* already there */ }
 
 // A listener became an account in 2.7.0. Every name that was already there is
 // approved — locking the household out of its own listening history to add a
