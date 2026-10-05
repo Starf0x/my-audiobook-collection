@@ -2790,6 +2790,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.64 | the build machine gets an ffmpeg, so `ogg-lengths` checks something there rather than saying "nothing checked" into a green run — the app itself is unchanged from 2.8.56 |
 | 2.8.56 | the scan steps over an ID3 tag bolted onto an `.ogg` the way converting has since 2.3.40: those books had no length, nothing for the player's bar to measure, and a place on *Broken on disk* — all from a tag the app already knew how to skip |
 | 2.8.48 | a looked-up cover is named for what its bytes are, the way a pasted one always was: it read the Content-Type and called everything that was not a PNG a `.jpg`, so a WebP thumbnail landed in `covers/` under a name two things then believed |
 | 2.8.40 | every outbound call refuses to follow a redirect, including the four that did not say and so would have handed the Home Assistant token or the Google key to wherever the first host pointed; both workflows ask for a read-only token |
