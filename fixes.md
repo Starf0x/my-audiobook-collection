@@ -512,15 +512,34 @@ Nobody noticed because the spec calls it "run by hand", and by hand means never.
 It was also building its library, database and browser profile inside `tests/`
 rather than in `fixtures/`, against the rule at the foot of this file.
 
-That is fixed, and the suite now starts the app and passes its first check — then
-stops, because it waits for the *"who is listening?"* dialog that 2.7.0 removed
-when listeners became accounts. It is written against the app as it was before
-accounts and needs its own pass.
+That was fixed in 2.8.0, and the suite then stopped at the *"who is listening?"*
+dialog 2.7.0 had removed. **2.8.24 brought it up to the app as it is** — it signs
+in at the gate as the administrator, carries that cookie through the scan it
+drives, and clicks `#toAdmin` rather than `#adminBtn`, which on the admin page is
+now the *Lock* button and would have signed it straight out again. Its readiness
+probe also had to move off `/api/admin`, which is behind the account gate now and
+answers 401 for ever: that reads exactly like a server that never started.
+
+22 checks, all passing, and a mutant that empties the carried position turns
+three of them red. `npm run test:ui` runs it.
+
+Two more things it taught, both about the suite rather than the app:
+
+* **A killed run leaves Edge holding its profile folder**, and Windows then
+  refuses to delete it — so the next run dies on `EPERM`, and so does every run
+  after that until somebody looks for stray processes. Reusing the folder is not
+  the answer, because it carries the session and the carried book into a run
+  whose very first check is that nothing is on screen. A folder that cannot be
+  emptied is left alone and the run takes a clean one beside it.
+* **A browser that was started and never answered must still be killed.** It was
+  spawned, the debugging port never opened, the suite threw — and the process
+  stayed, holding the folder for the next run to trip over.
 
 **Rule:** a suite that is not run is not a suite, the same way one that is not in
 the repository is not. "Run by hand" is a plan for nobody to run it: if it cannot
-go in `npm test`, it still has to be run on the day it is changed, and a suite
-nothing has executed since the feature it covers was rewritten is decoration.
+go in `npm test`, give it a named script so running it is one word, and run it on
+the day the thing it covers changes. This one had not run since before accounts
+existed — two major features and a refactor of both its pages went by untested.
 
 ### The default error page handed out the server's paths (2.8.8)
 
