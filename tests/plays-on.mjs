@@ -221,20 +221,34 @@ function freshProfile() {
 async function startBrowser() {
   const profile = freshProfile();
   const browser = findBrowser();
+  const theseArgs = args.map((a) => a.replace(PROFILE, profile));
   console.log(`(browser: ${browser})`);
-  const edge = spawn(browser, [...args.map((a) => a.replace(PROFILE, profile)), 'about:blank'], { stdio: 'ignore' });
+  // Its output is kept rather than thrown away. This used to be `stdio:
+  // 'ignore'`, and when the browser would not start on the build machine all
+  // the suite could say was "never opened its debugging port" — which is the
+  // symptom, and says nothing about a missing library or a refused sandbox.
+  const edge = spawn(browser, [...theseArgs, 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const said = [];
+  for (const pipe of [edge.stdout, edge.stderr]) pipe.on('data', (d) => said.push(String(d)));
+  let gone = null;
+  edge.on('exit', (code, signal) => { gone = `exit ${code}${signal ? ` on ${signal}` : ''}`; });
+
   let url = '';
-  for (let i = 0; i < 60 && !url; i++) {
+  for (let i = 0; i < 120 && !url && !gone; i++) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json();
       url = (list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl) || {}).webSocketDebuggerUrl || '';
     } catch { /* not listening yet */ }
     if (!url) await sleep(250);
   }
-  // it is running even though it never answered: leaving it would hold the
-  // profile folder and break the next run the same way
-  if (!url) edge.kill();
-  if (!url) throw new Error('the browser never opened its debugging port');
+  if (!url) {
+    // it may still be running even though it never answered, and leaving it
+    // would hold the profile folder and break the next run the same way
+    edge.kill();
+    throw new Error(`the browser never opened its debugging port${gone ? ` (${gone})` : ''}`
+      + `\n  ran: ${browser} ${theseArgs.join(' ')}`
+      + `\n  it said: ${said.join('').trim().slice(0, 1500) || '(nothing at all)'}`);
+  }
   ws = new WebSocket(url);
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = () => no(new Error('cannot talk to the browser')); });
   ws.onmessage = (m) => {
