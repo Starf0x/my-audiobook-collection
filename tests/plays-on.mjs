@@ -8,7 +8,7 @@
 // Run:  node plays-on.mjs            (headless)
 //       node plays-on.mjs --window   (watch it happen)
 import { spawn } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,7 +24,40 @@ const MINE = join(root, 'fixtures', 'plays-on-test');
 const LIB = join(MINE, 'audiobooks');
 const DATA = join(MINE, 'data');
 const PROFILE = join(MINE, 'edge-profile');
-const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+// Whichever Chromium-family browser this machine has. It was one hard-coded
+// Windows path, which is why this suite could not run on the build machine and
+// so ran nowhere for two major features. Any of these will do — the suite only
+// speaks CDP to it — and `PLAYS_ON_BROWSER` names one that is somewhere else.
+const BROWSERS = {
+  win32: [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ],
+  linux: [
+    '/usr/bin/microsoft-edge', '/usr/bin/microsoft-edge-stable',
+    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium', '/usr/bin/chromium-browser',
+  ],
+  darwin: [
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  ],
+};
+function findBrowser() {
+  const said = process.env.PLAYS_ON_BROWSER;
+  if (said) {
+    if (!existsSync(said)) throw new Error(`PLAYS_ON_BROWSER names ${said}, which is not there`);
+    return said;
+  }
+  const tried = BROWSERS[process.platform] || [];
+  const found = tried.find((p) => existsSync(p));
+  if (found) return found;
+  throw new Error(`no Chromium-family browser on this ${process.platform} machine.`
+    + ` Looked for:\n  ${tried.join('\n  ')}\n`
+    + 'Set PLAYS_ON_BROWSER to one, or install Edge, Chrome or Chromium.');
+}
 // The app has accounts now, so this walks it the way it is really reached: the
 // administrator signs in at the gate and both pages open. Running it with no
 // password would test the private install instead — a real arrangement, but not
@@ -148,6 +181,13 @@ const args = [
 // column at a time, and this suite is not about the phone layout
 args.push('--window-size=1400,900');
 if (!process.argv.includes('--window')) args.push('--headless=new');
+// A build machine has no sound card and no desktop. Muting keeps a missing
+// audio device from being the reason a book will not play — the suite reads
+// `currentTime`, which moves whether or not anything is audible — and the
+// sandbox needs the kernel namespaces a container usually does not give.
+if (process.platform !== 'win32') {
+  args.push('--mute-audio', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu');
+}
 
 let ws;
 let nextId = 0;
@@ -180,7 +220,9 @@ function freshProfile() {
 
 async function startBrowser() {
   const profile = freshProfile();
-  const edge = spawn(EDGE, [...args.map((a) => a.replace(PROFILE, profile)), 'about:blank'], { stdio: 'ignore' });
+  const browser = findBrowser();
+  console.log(`(browser: ${browser})`);
+  const edge = spawn(browser, [...args.map((a) => a.replace(PROFILE, profile)), 'about:blank'], { stdio: 'ignore' });
   let url = '';
   for (let i = 0; i < 60 && !url; i++) {
     try {

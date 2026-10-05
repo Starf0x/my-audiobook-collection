@@ -2572,6 +2572,17 @@ and printing `all checks passed`. UI suites drive headless Edge over CDP
 page. `.dockerignore` keeps them out of the image; they are not shipped, which is
 not the same as not kept.
 
+**The browser it drives is whichever one is there.** `plays-on` named one path —
+Edge, in `Program Files (x86)`, on the machine this was written on — which is
+why the only suite that drives the real pages could not run on a build machine,
+and so ran nowhere at all while accounts were added and both pages were
+refactored under it. It tries Edge, Chrome and Chromium in turn for the platform
+it is on, says which it found, and takes `PLAYS_ON_BROWSER` for one kept
+somewhere else. Chromium is tried last on purpose: the unbranded build ships
+without the MP3 decoder, and this suite plays MP3s. Off Windows it also passes
+`--mute-audio` (a build machine has no sound card, and `currentTime` moves
+whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage`.
+
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
@@ -2582,8 +2593,8 @@ anywhere:
 | In the repository | |
 | --- | --- |
 | `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
-| `plays-on` | drives headless Edge at a Windows path, so it is run by hand: `npm run test:ui`. 22 checks, all passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 
 The rest of the table below is a record of what was checked while the app was
 built, kept because it says what each rule is *for* — but those scripts are not
@@ -2739,6 +2750,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.32 | `plays-on` runs on the build machine too: it finds whatever Chromium-family browser is there instead of naming one path on one machine, and has a job of its own in Checks |
 | 2.8.24 | `plays-on` drives the app as it is: it signs in at the gate, and its 22 checks pass for the first time since accounts arrived — the only automated cover the three pages have |
 | 2.8.16 | the player's bar measures the book rather than the file playing — on a book of many files it filled up and started again at every track — and dragging it now seeks across files |
 | 2.8.8 | a throw nothing caught answered with the stack trace as an HTML page — absolute server paths, to any approved listener; one handler behind every route now logs the reason and tells the asker only that there was one, and `/api/books` and `/api/authors` say what was missing instead of crashing |

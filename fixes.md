@@ -535,11 +535,20 @@ Two more things it taught, both about the suite rather than the app:
   spawned, the debugging port never opened, the suite threw — and the process
   stayed, holding the folder for the next run to trip over.
 
+**And then the real reason it ran nowhere.** The line above was written as "give
+it a named script and remember to run it", which is a rule that depends on
+somebody remembering. The actual obstacle was one hard-coded path —
+`C:\Program Files (x86)\…\msedge.exe` — so the suite could not start on a build
+machine whatever anybody remembered. It looks for Edge, Chrome or Chromium on
+the platform it is on now, takes `PLAYS_ON_BROWSER` for one kept elsewhere, and
+runs as its own job in the Checks workflow. Chromium is tried last because the
+unbranded build has no MP3 decoder and this suite plays MP3s.
+
 **Rule:** a suite that is not run is not a suite, the same way one that is not in
-the repository is not. "Run by hand" is a plan for nobody to run it: if it cannot
-go in `npm test`, give it a named script so running it is one word, and run it on
-the day the thing it covers changes. This one had not run since before accounts
-existed — two major features and a refactor of both its pages went by untested.
+the repository is not — and when it cannot run somewhere, fix *that* before
+writing a rule about discipline. One absolute path kept the only coverage of
+three pages off the build machine, and two major features and a refactor of both
+pages went by untested while the spec called it "run by hand".
 
 ### The default error page handed out the server's paths (2.8.8)
 

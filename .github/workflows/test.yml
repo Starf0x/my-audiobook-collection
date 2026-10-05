@@ -5,9 +5,16 @@
 # be cloned — so this workflow and that are one change: a suite nobody can run is
 # a suite nobody runs.
 #
-# Two suites are left out here rather than made to work: one unpacks its archive
-# with PowerShell and one drives a headless browser. `tests/run-all.mjs` names
-# both of them in its output, so what is not covered says so on every run.
+# One suite is left out rather than made to work: `covers-zip` unpacks its
+# archive with PowerShell. `tests/run-all.mjs` names it in its output, so what is
+# not covered says so on every run.
+#
+# `plays-on` used to be left out too, for a hard-coded path to Edge on Frank's
+# machine — which meant the one suite that drives the real pages ran nowhere, and
+# it sat broken through two major features before anybody noticed. It finds
+# whatever Chromium-family browser it is given now, so it runs here as well, in a
+# job of its own: it is slower than the rest put together and a browser that will
+# not start should say so plainly rather than read as the app being broken.
 name: Checks
 
 on:
@@ -30,3 +37,22 @@ jobs:
       # that nothing was installed into the tree by hand
       - run: npm ci --omit=dev
       - run: npm test
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+      - run: npm ci --omit=dev
+      # Say what is there before using it: when this job fails, the first
+      # question is always whether the machine had a browser at all.
+      - name: Which browsers this runner has
+        run: |
+          for b in /usr/bin/microsoft-edge /usr/bin/microsoft-edge-stable \
+                   /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+                   /usr/bin/chromium /usr/bin/chromium-browser; do
+            [ -x "$b" ] && echo "yes $b" || echo "no  $b"
+          done
+      - run: npm run test:ui
