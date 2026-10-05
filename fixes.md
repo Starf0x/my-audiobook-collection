@@ -718,6 +718,16 @@ here:
   for a file it cannot open. Nothing counted those, so a book whose every file
   was unwritable reported `written: 0` with no error, the run called it done, and
   `books.tagged` claimed tags the files did not carry.
+* **`fetch` follows a redirect unless told not to, and a credential goes with
+  it.** Three of this app's outbound calls said `redirect: 'error'` and four did
+  not — including the one carrying the Home Assistant token and the three to
+  Google Books, which carry the owner's API key in the query string. The hosts
+  are hard-coded so nothing could aim them elsewhere, which is why this sat
+  unnoticed: the reasoning was about where the request goes, not about where the
+  answer can send it next. `outward.mjs` reads the source now and fails on a call
+  written without it. And the endpoints were measured first — none of them
+  redirects — because refusing a redirect that a service really uses would have
+  broken lookups to fix nothing.
 * **An address in a request is a request to this network.** The cover thumbnail
   was fetched with a bare `fetch` — no timeout, redirects followed, no ceiling,
   no check that it was even a picture. This server can reach the router, the

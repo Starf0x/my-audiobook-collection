@@ -86,6 +86,8 @@ const remembered = new Map();
 const defaultAsk = async (url) => {
   const r = await fetch(url, {
     headers: { 'User-Agent': AGENT, Accept: 'application/json' },
+    // a redirect is another address, and this app does not follow one anywhere
+    redirect: 'error',
     signal: AbortSignal.timeout(url.startsWith(SPARQL) ? SPARQL_TIMEOUT : TIMEOUT),
   });
   if (!r.ok) {

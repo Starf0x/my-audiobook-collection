@@ -17,6 +17,12 @@
 # not start should say so plainly rather than read as the app being broken.
 name: Checks
 
+# The token this workflow is handed can only read. These jobs check out the code
+# and run it; nothing here writes anything back, and a token that may write is a
+# write any action in the job could make.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]

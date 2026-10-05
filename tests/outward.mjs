@@ -101,5 +101,27 @@ for (const [what, url] of [
 check('and the address that was there is untouched',
   haSettings().url, 'http://somewhere-else.example:8123');
 
+// --- every outbound call says what to do with a redirect ------------------
+// A redirect is another address, and `fetch` follows one by default. The Home
+// Assistant call carries a long-lived token and the Google Books calls carry the
+// owner's API key in the query string, so a followed redirect hands a credential
+// to whatever the first host names next. Three of these said `redirect: 'error'`
+// and four did not; the hosts are fixed, so nothing could aim them anywhere, but
+// the one-line habit is cheaper than knowing that stays true.
+//
+// This reads the source rather than making a request: the thing being checked is
+// that nobody writes the next one without saying.
+const outbound = [];
+for (const file of fs.readdirSync(path.join(ROOT, 'server')).filter((f) => f.endsWith('.js'))) {
+  const lines = fs.readFileSync(path.join(ROOT, 'server', file), 'utf8').split(/\r?\n/);
+  lines.forEach((line, i) => {
+    if (!/\bfetch\s*\(/.test(line)) return;
+    // the options of a call are within a dozen lines of its first
+    const near = lines.slice(i, i + 14).join('\n');
+    if (!/redirect:\s*'(error|manual)'/.test(near)) outbound.push(`${file}:${i + 1}`);
+  });
+}
+check('every outbound call refuses to follow a redirect', outbound, []);
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
