@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { parseFile } from 'music-metadata';
+import { parseFile, parseStream } from 'music-metadata';
 import { db, getLibraries, DATA_DIR } from './db.js';
 import { lane, pool } from './pool.js';
+import { id3Skip } from './id3.js';
 
 const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 const COVER = /^(cover|folder|front)\.(jpg|jpeg|png)$/i;
@@ -128,9 +129,46 @@ const localCover = (bookPath) => {
 
 const NOT_AUDIO = 'nothing in it that a reader recognises as audio';
 
+// Reading one file's tags, with one second chance.
+//
+// The reader starts at the first byte, and a tagger meant for MP3 may have put
+// an ID3 tag there on a file that is not one. It will not look past it: no
+// container, no length, no tags — which this app reads as a file with no audio
+// in it, and which left four of Frank's `.ogg` books showing a length of 0 for
+// weeks. `convert.js` learned to step over that tag in 2.3.40 and said so in a
+// comment — "and so it does from the scan, which is why such a book shows no
+// length either" — and the scan was never taught the same thing. It is here now.
+//
+// Only ever a second attempt: a file that reads normally is never opened twice,
+// and a tag at the front of an MP3 belongs there (`id3Skip` returns 0 for one).
+async function tagsOf(file) {
+  const tags = await lane(() => parseFile(file));
+  if (tags.format?.container) return tags;
+  const skip = id3Skip(file);
+  if (!skip) return tags;
+  try {
+    const past = await lane(() => parseStream(
+      fs.createReadStream(file, { start: skip }),
+      { mimeType: kindOfFile(file) },
+    ));
+    return past.format?.container ? past : tags;
+  } catch {
+    // the first answer is the honest one: this file is unreadable, and the
+    // caller says so in the words the first attempt gave it
+    return tags;
+  }
+}
+
+// What to tell the reader the stream is, when it can no longer see the name.
+const KINDS = {
+  '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.opus': 'audio/ogg',
+  '.flac': 'audio/flac', '.m4a': 'audio/mp4', '.m4b': 'audio/mp4', '.mp3': 'audio/mpeg',
+};
+const kindOfFile = (file) => KINDS[path.extname(file).toLowerCase()] || 'audio/ogg';
+
 async function firstFileTells(file) {
   try {
-    const tags = await lane(() => parseFile(file));
+    const tags = await tagsOf(file);
     // a rescan takes this path for every book whose files have not changed, so
     // swallowing it here is what kept an unreadable book quiet for ever
     return { ...firstFileMeta(tags), unreadable: tags.format?.container ? '' : NOT_AUDIO };
@@ -180,7 +218,7 @@ async function readMeta(files, bookPath) {
     // No { duration: true }: that scans every frame of every file (~4s per MP3).
     // Duration is only used for a badge, so take it when the header offers it for free.
     try {
-      tags = await lane(() => parseFile(file));
+      tags = await tagsOf(file);
       // The reader does not throw on a file it makes nothing of — it answers with
       // an empty result — so "did it throw" was never the question. A container is
       // what says it read audio, which is the same test the disk check uses.

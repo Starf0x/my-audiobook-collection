@@ -24,6 +24,7 @@ const PORTABLE = [
   'accounts',
   'levels',
   'book-bar',
+  'ogg-lengths',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten

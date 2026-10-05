@@ -391,6 +391,34 @@ And two rules for a cheap check that shares a list with an expensive one: only
 clear the verdicts you wrote yourself (`WHERE reason = 'unreadable'`), and when you
 have read one file of forty, you may add what that file showed and clear nothing.
 
+### The comment named the second half of the bug and nobody read it (2.8.56)
+
+2.3.40 taught the converter to step over an ID3 tag bolted onto an `.ogg`, and
+wrote this into the code while doing it:
+
+> …and `music-metadata` fails the same way, **which is why such a book also
+> shows no length**.
+
+That clause is a second bug, stated plainly, in the commit that fixed the first.
+It stayed for two years and five minor versions. Those books kept a length of 0,
+their player bar had nothing to measure, and they sat on *Broken on disk* as
+"nothing in it that a reader recognises as audio" — all from the same tag the
+converter had already learned to skip.
+
+**Fixed** by giving the scan one second chance: no container and an ID3 tag in
+front means read it again from past the tag. `id3Skip` moved into `id3.js`
+because `convert.js` imports `scan.js` and the dependency cannot go both ways.
+
+**Rule:** a comment that explains *another* thing that is broken is a bug report
+filed where nobody will look for it. When writing one, either fix that too or put
+it somewhere a person reads on purpose. And when reading code for a cause, the
+sentence that says "this is also why X" is the most valuable line in the file.
+
+The check builds the case rather than describing it — a real Ogg from ffmpeg,
+then the same bytes with a tag bolted on — and run against the old code it
+reproduces both halves at once: the book comes out half as long, and the file is
+written down as unreadable.
+
 ### Three fixes for a fault that was never in the app (2.3.64 → 2.4.0)
 
 "Google Books is busy", over and over. In one afternoon I changed the pacing of
