@@ -46,6 +46,13 @@ header {
   box-shadow: 0 10px 26px -22px #000;
 }
 header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; cursor: pointer; }
+/* The app's own mark, where a headphones emoji used to be: the same drawing the
+   container is listed under, so the tab, the Unraid tile and the page all show
+   one thing. Sized in `em` so it follows the heading it sits in — the header's
+   16px and the sign-in card's 17px — and nudged down to sit on the text's
+   baseline rather than its top. The artwork brings its own rounded dark square,
+   so nothing here draws a background or a radius. */
+.mark { width: 1.6em; height: 1.6em; vertical-align: -.42em; }
 /* the search box: wide enough for a title and an author, and it may grow */
 .search { width: 300px; max-width: 34vw; margin-left: 14px; }
 .search::placeholder { color: var(--dim); }
