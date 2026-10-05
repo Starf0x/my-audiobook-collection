@@ -5,6 +5,7 @@ import { writeTag } from './tagpool.js';
 import { db, googleKey, googleCountry, DATA_DIR } from './db.js';
 import { coverFile, storedCover } from './safepath.js';
 import { picture } from './outbound.js';
+import { pictureKind } from './covers.js';
 
 // Google Books answers 503 when it will not serve a request, and on some keys it
 // does that to three requests out of four, at random, whatever the spacing. Short
@@ -617,9 +618,21 @@ async function apply_(book, pick, writeTags, progress) {
     // timeout and a ceiling. This was the one outbound call in the app with no
     // timeout at all.
     const got = await picture(pick.thumbnail.replace('http://', 'https://'));
-    if (got.bytes) {
-      cover = crypto.createHash('md5').update(got.bytes).digest('hex')
-        + (got.kind === 'image/png' ? '.png' : '.jpg');
+    // Named for what the bytes are, not for what came with them. This read the
+    // Content-Type and called everything that was not `image/png` a `.jpg`, so a
+    // WebP — which is what a thumbnail is increasingly served as, and which
+    // `picture()` accepts along with every other `image/*` — was written into
+    // covers/ under a name that lied about it twice over: Express types that
+    // route's answer from the extension, and the tidy-up keeps `.jpg` and
+    // `.png` and would have swept it up as neither.
+    //
+    // The same test the paste route uses, so the two ways a cover can arrive are
+    // answered alike: JPEG or PNG, decided by the magic bytes, and anything else
+    // is not kept. A picture that cannot be used is the case the line below already
+    // covers — the metadata is worth saving without it.
+    const kind = got.bytes ? pictureKind(got.bytes) : null;
+    if (kind && kind.ext) {
+      cover = crypto.createHash('md5').update(got.bytes).digest('hex') + kind.ext;
       fs.writeFileSync(path.join(DATA_DIR, 'covers', cover), got.bytes);
     }
     // `got.error` is not raised: the metadata is worth saving without the picture

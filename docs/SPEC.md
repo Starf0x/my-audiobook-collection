@@ -101,20 +101,20 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1514 | Express app: every route, and nothing else |
+| `server/index.js` | 1500 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 197 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 565 | walking the library, reading tags, filing books |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
-| `server/google.js` | 718 | Google Books lookup, and writing tags into files |
+| `server/google.js` | 731 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
 | `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
 | `server/tagall.js` | 141 | the resumable whole-collection tag run |
 | `server/import.js` | 459 | import candidates, quality comparison, filing |
 | `server/trash.js` | 180 | move, delete to trash, restore, purge |
 | `server/validate.js` | 119 | checking every book against the disk |
-| `server/covers.js` | 67 | tidying unused cover files, zipping them |
+| `server/covers.js` | 88 | tidying unused cover files, zipping them |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
@@ -1035,6 +1035,17 @@ refused by name** — `covers.js` only keeps `.jpg` and `.png`, so a WebP would 
 invisible to the tidy-up, and it is not a picture an MP3 tag carries. The refusal
 says which of the two it wanted and why, because "that does not look like a
 picture" about a picture is a lie.
+
+**And the thumbnail a lookup offers is held to the same rule.** It was not: it
+read the answer's Content-Type and called everything that was not `image/png` a
+`.jpg`. `outbound.js` accepts any `image/*`, so a WebP thumbnail — which is what
+these are increasingly served as — was written into `covers/` under a name that
+lied about it twice: `GET /api/cover/:id` ends in `res.sendFile`, which types the
+answer from the extension, and the tidy-up that keeps `.jpg` and `.png` would
+have passed over it as neither. `pictureKind` lives in `covers.js` for that
+reason — both ways a cover can arrive ask it now — and a thumbnail that is
+neither JPEG nor PNG is simply not kept, which is the case the next line already
+covered: the metadata is worth saving without the picture.
 
 **The paste is taken wherever it lands in the dialog.** The listener is on
 `#edit`, so the field with focus does not matter — a clipboard carrying a picture
@@ -2763,6 +2774,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.48 | a looked-up cover is named for what its bytes are, the way a pasted one always was: it read the Content-Type and called everything that was not a PNG a `.jpg`, so a WebP thumbnail landed in `covers/` under a name two things then believed |
 | 2.8.40 | every outbound call refuses to follow a redirect, including the four that did not say and so would have handed the Home Assistant token or the Google key to wherever the first host pointed; both workflows ask for a read-only token |
 | 2.8.32 | `plays-on` runs on the build machine too: it finds whatever Chromium-family browser is there instead of naming one path on one machine, and has a job of its own in Checks |
 | 2.8.24 | `plays-on` drives the app as it is: it signs in at the gate, and its 22 checks pass for the first time since accounts arrived — the only automated cover the three pages have |

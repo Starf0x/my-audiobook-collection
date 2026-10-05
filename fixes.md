@@ -263,6 +263,25 @@ says where its content came from; ask for the file before naming a cause, and re
 all of it. And when something used to work, the first question is what changed on the
 machine — not what is wrong with the code.
 
+### One route sniffed the bytes and the other believed the header (2.8.48)
+
+Pasting a cover has always decided what a picture is from its magic bytes, and
+refused WebP and GIF by name with a sentence saying why. The thumbnail a Google
+lookup offers went down a different path a few lines away: it read the answer's
+Content-Type and named the file `.png` if that said `image/png` and `.jpg` for
+everything else. `outbound.js` accepts any `image/*`, so a WebP arrived as a
+`.jpg` — a name wrong in two directions at once, since `GET /api/cover/:id` ends
+in `res.sendFile` and types the answer from the extension, and the tidy-up keeps
+`.jpg` and `.png` and would have swept past it as neither.
+
+**Fixed** by moving `pictureKind` out of `index.js` into `covers.js`, where the
+rule about what a cover file may be already lived, and having both routes ask it.
+
+**Rule:** when two paths produce the same kind of thing, they answer the same
+question or they drift. The careful one here was written second, for the route
+somebody was looking at; the older one a few lines away kept its guess, and
+nothing pointed at the difference because each looked right on its own.
+
 ### A narrator that was really the author (2.2.32)
 
 The scan read the narrator as `composer || artist`. In an audiobook the artist *is*
