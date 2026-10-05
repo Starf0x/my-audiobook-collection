@@ -137,25 +137,80 @@ const clock = (s) => {
 // the yellow runs to where you are; the rest is the track behind it
 const paint = (el, fraction) => el.style.setProperty('--played', `${(fraction * 100).toFixed(2)}%`);
 
+// How far into the *book*, not into the file that happens to be playing. A book
+// is usually many files, and a bar that fills up and starts again five times
+// says nothing about the book: it is the mistake the tiles made in 2.1.48, the
+// other way round. The track lengths arrive with the book, so the ones before
+// this track are how far in it starts.
+//
+// Returns null when the sum cannot be trusted — a book of one file, where the
+// two are the same thing anyway, or a track whose length the scan never read
+// (an unreadable file reports 0). One missing length makes the total a lie, and
+// the bar then shows the one thing still certainly true: where you are in this
+// file. The numbers beside it say which of the two is being shown.
+const bookTime = () => {
+  const tracks = (state.book && state.book.tracks) || [];
+  if (tracks.length < 2) return null;
+  let behind = 0;
+  let total = 0;
+  for (let i = 0; i < tracks.length; i++) {
+    const d = Number(tracks[i].duration);
+    if (!isFinite(d) || d <= 0) return null;
+    if (i < state.track) behind += d;
+    total += d;
+  }
+  return { behind, total, tracks };
+};
+
+// Which file holds a given second of the book, and how far into that file it
+// falls. Walks rather than divides, because the files are not the same length.
+// The last track keeps whatever is left over, so a second past the end of the
+// book lands at the end of the book and not in a track that is not there.
+const trackAt = (seconds, tracks) => {
+  let left = Math.max(0, Number(seconds) || 0);
+  let idx = 0;
+  while (idx < tracks.length - 1 && left >= Number(tracks[idx].duration)) {
+    left -= Number(tracks[idx].duration);
+    idx++;
+  }
+  return { idx, offset: left };
+};
+
 let dragging = false;
 const drawTime = () => {
-  const total = audio.duration;
-  $('#pAt').textContent = clock(audio.currentTime);
+  const book = bookTime();
+  const total = book ? book.total : audio.duration;
+  const at = book ? book.behind + (audio.currentTime || 0) : audio.currentTime;
+  $('#pAt').textContent = clock(at);
   $('#pOf').textContent = isFinite(total) ? clock(total) : '—';
   if (dragging) return;
-  const at = isFinite(total) && total > 0 ? audio.currentTime / total : 0;
-  $('#seek').value = String(Math.round(at * 1000));
-  paint($('#seek'), at);
+  const f = isFinite(total) && total > 0 ? at / total : 0;
+  $('#seek').value = String(Math.round(f * 1000));
+  paint($('#seek'), f);
 };
 audio.addEventListener('timeupdate', drawTime);
 audio.addEventListener('durationchange', drawTime);
 audio.addEventListener('loadedmetadata', drawTime);
 audio.addEventListener('emptied', drawTime);
 
+// Dragging the bar now means a place in the book, so it may land in another
+// file: walk the tracks until the seconds left fit inside one, and load it at
+// that offset. Whether it then plays is whatever it was doing before — seeking
+// a paused book is still a paused book.
 const seekTo = () => {
-  const at = Number($('#seek').value) / 1000;
-  paint($('#seek'), at);
-  if (isFinite(audio.duration)) audio.currentTime = at * audio.duration;
+  const f = Number($('#seek').value) / 1000;
+  paint($('#seek'), f);
+  const book = bookTime();
+  if (!book) {
+    if (isFinite(audio.duration)) audio.currentTime = f * audio.duration;
+    return;
+  }
+  // half a second short of the end, so dragging to the far right lands inside
+  // the last track rather than on the edge that ends the book
+  const target = Math.max(0, Math.min(f * book.total, book.total - 0.5));
+  const { idx, offset } = trackAt(target, book.tracks);
+  if (idx === state.track) { audio.currentTime = offset; return; }
+  playTrack(idx, offset, !audio.paused);
 };
 $('#seek').oninput = () => { dragging = true; paint($('#seek'), Number($('#seek').value) / 1000); };
 $('#seek').onchange = () => { dragging = false; seekTo(); };

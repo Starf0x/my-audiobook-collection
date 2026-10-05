@@ -23,6 +23,7 @@ const PORTABLE = [
   'one-at-a-time',
   'accounts',
   'levels',
+  'book-bar',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten

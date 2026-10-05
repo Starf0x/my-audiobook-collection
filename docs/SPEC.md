@@ -133,7 +133,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 170 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 320 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 375 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 247 | browsing the collection: what both pages do the same way, in one copy |
@@ -2013,6 +2013,26 @@ browser felt like, on a light slab in a dark interface. So `<audio>` carries no
 footer holds `#pPlay` (▶/⏸, lit while playing), `#pAt`, `#seek`, `#pOf`,
 `#pVolBtn` and `#vol`, then the track select and `#pClose`.
 
+**That bar measures the book, not the file playing.** It read
+`audio.currentTime / audio.duration`, which is the one file: on a book of many
+it filled up and started again at every track, and `#pAt` / `#pOf` counted the
+same way — a book an hour long, two minutes in, said *"0:40 of 3:11"*. It is the
+2.1.48 scar the other way round, where a tile counted tracks and a single-file
+book stood full from its first minute. `bookTime()` sums the lengths that came
+with the book: those before this track are where it starts, all of them are how
+long the book is. Because the bar is now a place in the *book*, dragging it may
+land in another file, so `trackAt(seconds, tracks)` walks the tracks — they are
+not the same length, so dividing would miss — and `playTrack` loads that one at
+the offset, playing only if it was playing before.
+
+Both are their own small pure functions so that `book-bar.mjs` can lift them out
+of `player.js` and run them, rather than keeping a copy in step by hand; the
+suite refuses outright if either is renamed, instead of quietly testing nothing.
+`bookTime()` answers **null** — and the bar falls back to the file, which is
+then the only thing certainly true — for a book of one file, where the two are
+the same anyway, and for any book with a track whose length the scan never read,
+because one missing length makes the total a lie.
+
 **The bar is there only while something is being listened to.** `<footer
 id="player">` ships `hidden`; `playBook` is the only thing that shows it, and
 `closePlayer()` is the only thing that puts it back:
@@ -2555,13 +2575,13 @@ not the same as not kept.
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These eleven are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the nine that run
+leans on could not be run by anybody who had only the spec. These twelve are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the ten that run
 anywhere:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows |
 | `plays-on` | drives headless Edge, so it is run by hand — and **does not pass**: it starts the app again since 2.8.0 fixed a path that had been two levels wrong since `tests/` was committed, but it still waits for the *"who is listening?"* dialog that 2.7.0 removed, so it is written against the app as it was before accounts |
 
@@ -2719,6 +2739,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.16 | the player's bar measures the book rather than the file playing — on a book of many files it filled up and started again at every track — and dragging it now seeks across files |
 | 2.8.8 | a throw nothing caught answered with the stack trace as an HTML page — absolute server paths, to any approved listener; one handler behind every route now logs the reason and tells the asker only that there was one, and `/api/books` and `/api/authors` say what was missing instead of crashing |
 | 2.8.0 | the browsing half of the two pages is one file: twenty-two byte-identical declarations out of `shelf.js` and `app.js` into `browse.js`, with checks that it loads first on both and that no name is declared twice |
 | 2.7.72 | the reason box shows an example of what to write, which is what the two copied-hint requests actually needed; the machinery built for the autofill that was never happening is out again |
