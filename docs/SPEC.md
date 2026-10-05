@@ -2582,8 +2582,8 @@ anywhere:
 | In the repository | |
 | --- | --- |
 | `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
-| `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows |
-| `plays-on` | drives headless Edge, so it is run by hand — and **does not pass**: it starts the app again since 2.8.0 fixed a path that had been two levels wrong since `tests/` was committed, but it still waits for the *"who is listening?"* dialog that 2.7.0 removed, so it is written against the app as it was before accounts |
+| `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
+| `plays-on` | drives headless Edge at a Windows path, so it is run by hand: `npm run test:ui`. 22 checks, all passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 
 The rest of the table below is a record of what was checked while the app was
 built, kept because it says what each rule is *for* — but those scripts are not
@@ -2739,6 +2739,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.24 | `plays-on` drives the app as it is: it signs in at the gate, and its 22 checks pass for the first time since accounts arrived — the only automated cover the three pages have |
 | 2.8.16 | the player's bar measures the book rather than the file playing — on a book of many files it filled up and started again at every track — and dragging it now seeks across files |
 | 2.8.8 | a throw nothing caught answered with the stack trace as an HTML page — absolute server paths, to any approved listener; one handler behind every route now logs the reason and tells the asker only that there was one, and `/api/books` and `/api/authors` say what was missing instead of crashing |
 | 2.8.0 | the browsing half of the two pages is one file: twenty-two byte-identical declarations out of `shelf.js` and `app.js` into `browse.js`, with checks that it loads first on both and that no name is declared twice |
