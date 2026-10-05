@@ -55,7 +55,13 @@ jobs:
       # 2.3.0 and this runner does not, so without this the suite says "nothing
       # checked" and the run goes green having checked nothing — which is how a
       # suite comes to exist and cover nothing, the way plays-on did.
+      #
+      # Given four minutes and no more: a slow Debian mirror hung this step for
+      # over fifteen on v2.9.24, and a step with no limit of its own gets the
+      # job's six hours. Four is generous — it normally takes under one — and a
+      # run that is going to fail should say so while somebody is still looking.
       - name: ffmpeg, for the suite that makes an Ogg
+        timeout-minutes: 4
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       # `npm ci` needs the lock to match package.json, which is also the check
       # that nothing was installed into the tree by hand
