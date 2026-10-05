@@ -97,5 +97,58 @@ check('a sixth level is still too deep, and is not read as a book',
 check('and the reader is told where it is',
   lastSkipped().some((s) => s.reason === 'deeper' && /Odd Movement/.test(s.path)), true);
 
+// --- and a book in a part can be given its number -------------------------
+// `/api/books/:id` tells the edit dialog which series folder a book sits in, and
+// it answered with the second folder from the top — the series *above* the part.
+// `applyMetadata` only writes a book number when that field still names the
+// series the book is in, so for every book in a part the two disagreed and the
+// number was dropped without a word: typed in, saved, gone.
+process.env.PORT = '8545';
+process.env.ADMIN_USER = 'tester';
+process.env.ADMIN_PASSWORD = 'a very good password';
+await import('../server/index.js');
+await new Promise((r) => setTimeout(r, 700));
+const BASE = 'http://127.0.0.1:8545';
+
+const signin = await fetch(`${BASE}/api/account/signin`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'tester', password: 'a very good password' }),
+});
+const cookie = (signin.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+const ask = (where) => fetch(BASE + where, { headers: { Cookie: cookie } }).then((r) => r.json());
+
+const idOf = (title) => db.prepare('SELECT id FROM books WHERE title = ?').get(title).id;
+const partBook = await ask(`/api/books/${idOf('Book One')}`);
+check('the dialog is told the folder the book is in, not the one above it',
+  partBook.folderSeries, 'First Movement');
+const plainBook = await ask(`/api/books/${idOf('Volume One')}`);
+check('and for a book not in a part that is its series, as it always was',
+  plainBook.folderSeries, 'A Plain Series');
+
+const saved = await fetch(`${BASE}/api/apply/${idOf('Book One')}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Cookie: cookie },
+  // what the dialog sends when somebody types a number into it and saves
+  body: JSON.stringify({ pick: { title: 'Book One', series: partBook.folderSeries, seriesNo: 2 } }),
+});
+check('saving a number on a book in a part is accepted', saved.status, 200);
+check('and the number is really on the book',
+  db.prepare('SELECT series_no FROM books WHERE title = ?').get('Book One').series_no, 2);
+check('and it did not leave the part it was in',
+  db.prepare('SELECT series, parent_series FROM books WHERE title = ?').get('Book One'),
+  { series: 'First Movement', parent_series: 'The Great Cycle' });
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
+
+// A moment before going, and not for the checks' sake: they are all done.
+//
+// This is the first suite that both scans a library — which starts the worker
+// threads the tag pool keeps — and runs the server, and `process.exit()` with
+// those still closing makes libuv assert on Windows:
+//   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\win\async.c
+// The process then leaves with 127 having printed every check as passed, which
+// `run-all` reads as a failed suite and nobody reading the output would believe.
+// Letting the loop turn first settles it.
+await new Promise((r) => setTimeout(r, 300));
 process.exit(failed ? 1 : 0);
