@@ -105,7 +105,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 197 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
-| `server/scan.js` | 565 | walking the library, reading tags, filing books |
+| `server/scan.js` | 603 | walking the library, reading tags, filing books |
+| `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
 | `server/google.js` | 731 | Google Books lookup, and writing tags into files |
 | `server/tagpool.js` | 51 | worker-thread pool for tag writes |
@@ -125,7 +126,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/notify.js` | 142 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
-| `server/convert.js` | 359 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
+| `server/convert.js` | 335 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
@@ -1125,6 +1126,19 @@ book also shows no length. `id3Skip(file)` reads the length out of the ID3 heade
 (four seven-bit bytes plus ten) and every ffprobe and ffmpeg call gets
 `-skip_initial_bytes` **before `-i`**. An `.mp3` is never skipped: there the tag
 belongs where it is.
+
+**And the scan steps over it too, which for two years it did not.** The sentence
+above — "which is why such a book also shows no length" — stood in a comment from
+2.3.40 describing a fault nobody then went and fixed: converting learned to skip
+the tag and reading never did, so those books kept a length of 0 *and* were
+written into `broken` as having nothing in them a reader recognises as audio.
+`scan.js` now gives one file one second chance: when `parseFile` comes back with
+no container and `id3Skip` says there is a tag, it reads the same file again from
+past it with `parseStream`, telling the reader what the stream is since it can no
+longer see the name. A file that reads normally is never opened twice, and if the
+second attempt fails as well the first answer stands, because its words are the
+honest ones. `id3.js` holds that one function for both: `convert.js` imports
+`scan.js`, so `scan.js` cannot import back.
 
 And `ffprobe` runs with `-v error`, never `-v quiet`: quiet throws away the one
 line that says what is wrong, leaving "ffprobe exited 1", which sends nobody
@@ -2610,13 +2624,15 @@ whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These twelve are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the ten that run
-anywhere:
+leans on could not be run by anybody who had only the spec. These thirteen are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the eleven that run
+anywhere — `ogg-lengths` among them, which needs `ffmpeg` to make the Ogg it
+checks and says so and checks nothing where there is none, rather than passing
+quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -2774,6 +2790,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.8.56 | the scan steps over an ID3 tag bolted onto an `.ogg` the way converting has since 2.3.40: those books had no length, nothing for the player's bar to measure, and a place on *Broken on disk* — all from a tag the app already knew how to skip |
 | 2.8.48 | a looked-up cover is named for what its bytes are, the way a pasted one always was: it read the Content-Type and called everything that was not a PNG a `.jpg`, so a WebP thumbnail landed in `covers/` under a name two things then believed |
 | 2.8.40 | every outbound call refuses to follow a redirect, including the four that did not say and so would have handed the Home Assistant token or the Google key to wherever the first host pointed; both workflows ask for a read-only token |
 | 2.8.32 | `plays-on` runs on the build machine too: it finds whatever Chromium-family browser is there instead of naming one path on one machine, and has a job of its own in Checks |
