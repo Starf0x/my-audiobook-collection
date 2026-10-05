@@ -349,6 +349,18 @@ Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`. Both workflows declare
 the image goes to Docker Hub on credentials of its own — and a token that may
 write is a write that any action in the job could make.
 
+**Every `uses:` names a commit.** `actions/checkout@v4` is a branch somebody else
+moves: whoever controls that repository can change what runs on the machine
+holding this project's Docker Hub token, without a line here changing. A
+40-character sha is the one part of a `uses:` that cannot be repointed. The
+version each pin *is* goes in the comment beside it, because a sha says nothing
+to a person reading the file — and a pin nobody can read is a pin nobody will
+move. `outward.mjs` fails on a `uses:` that is not a sha, and on a sha with no
+version named beside it. The cost is that they no longer update themselves:
+moving one means looking up what its major tag points at now
+(`gh api repos/<repo>/git/ref/tags/v4 --jq .object.sha`) and changing the sha and
+the comment together.
+
 **Tags only, and that is the fix for a race.** It used to run on `main` as well,
 and since `metadata-action` counts a tag as the default branch, a tagged release
 fired twice and **both runs pushed `:latest`**. The two images came from one
@@ -2859,6 +2871,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.24 | every action the build machine runs is pinned to a commit rather than to a tag somebody else can move, with the version it is named beside it |
 | 2.9.16 | the header carries the app's own mark instead of a headphones emoji, so the tab, the Unraid tile and the page all show one drawing |
 | 2.9.8 | *Move…* opens on an install that has never imported: it asked `/api/import` for a list of genres, which throws without an import folder, and an inline handler swallowed that — the button did nothing at all |
 | 2.9.0 | an author who writes in parts: `Auteur / Serie / Onderdeel / Boek` is read, with the part as the series and the one above it kept beside to group by — those books used to be passed over as "deeper than the layout reads" and never appeared at all |

@@ -123,5 +123,29 @@ for (const file of fs.readdirSync(path.join(ROOT, 'server')).filter((f) => f.end
 }
 check('every outbound call refuses to follow a redirect', outbound, []);
 
+// --- and every action the build machine runs is a commit ------------------
+// `uses: actions/checkout@v4` is a branch somebody else moves. Whoever controls
+// that repository can change what runs on the machine holding this project's
+// Docker Hub credentials, without a line of this repository changing. A
+// 40-character sha is the one part of a `uses:` that cannot be repointed.
+//
+// The cost is that they stop updating themselves, which is why the version each
+// pin is sits in a comment beside it — a sha says nothing to a person reading
+// the file, and a pin nobody can read is a pin nobody will move.
+const flows = path.join(ROOT, '.github', 'workflows');
+const onATag = [];
+const unnamed = [];
+for (const file of fs.readdirSync(flows).filter((f) => /\.ya?ml$/.test(f))) {
+  const text = fs.readFileSync(path.join(flows, file), 'utf8');
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*-?\s*uses:\s*(\S+)@(\S+)/);
+    if (!m) continue;
+    if (!/^[0-9a-f]{40}$/.test(m[2])) onATag.push(`${file}: ${m[1]}@${m[2]}`);
+    else if (!/#\s*v?\d/.test(line)) unnamed.push(`${file}: ${m[1]}`);
+  }
+}
+check('every action is pinned to a commit', onATag, []);
+check('and each pin says which version it is', unnamed, []);
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
