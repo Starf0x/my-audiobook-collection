@@ -23,6 +23,17 @@ name: Checks
 permissions:
   contents: read
 
+# Every `uses:` names a commit, not a tag. `@v4` is a branch that somebody else
+# moves: whoever controls that repository can change what runs here, on a machine
+# holding this project's Docker Hub credentials, without anything in this file
+# changing. A 40-character sha is the one thing in a `uses:` that cannot be
+# repointed. The version each one *is* goes in the comment beside it, because a
+# sha says nothing to a person reading the file.
+#
+# The cost is that they no longer update themselves. To move one: look up the
+# commit its major tag points at now, change the sha and the comment together.
+#   gh api repos/actions/checkout/git/ref/tags/v4 --jq .object.sha
+
 on:
   push:
     branches: [main]
@@ -33,14 +44,12 @@ jobs:
   suites:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # the same major the image is built on, or a check can pass here and
           # fail in the container over something in node itself
           node-version: '26'
-      # `npm ci` needs the lock to match package.json, which is also the check
-      # that nothing was installed into the tree by hand
       # `ogg-lengths` encodes a real Ogg Vorbis file to check that the scan reads
       # past an ID3 tag bolted on the front of one. The image has ffmpeg from
       # 2.3.0 and this runner does not, so without this the suite says "nothing
@@ -48,14 +57,16 @@ jobs:
       # suite comes to exist and cover nothing, the way plays-on did.
       - name: ffmpeg, for the suite that makes an Ogg
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      # `npm ci` needs the lock to match package.json, which is also the check
+      # that nothing was installed into the tree by hand
       - run: npm ci --omit=dev
       - run: npm test
 
   browser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '26'
       - run: npm ci --omit=dev
