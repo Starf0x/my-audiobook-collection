@@ -544,11 +544,24 @@ the platform it is on now, takes `PLAYS_ON_BROWSER` for one kept elsewhere, and
 runs as its own job in the Checks workflow. Chromium is tried last because the
 unbranded build has no MP3 decoder and this suite plays MP3s.
 
+It then failed on the runner at the first attempt with *"the browser never opened
+its debugging port"* — and that was all it could say, because the browser was
+spawned with `stdio: 'ignore'`. The cause turned out to be the wait: fifteen
+seconds is enough for a browser that has been started before on a desktop, and
+not enough for a cold one on a build machine. Thirty seconds, and it passes —
+22 checks on `ubuntu-latest`. The diagnostic that was added to find out never
+got to speak, and is kept anyway: the next failure will not be this one.
+
 **Rule:** a suite that is not run is not a suite, the same way one that is not in
 the repository is not — and when it cannot run somewhere, fix *that* before
 writing a rule about discipline. One absolute path kept the only coverage of
 three pages off the build machine, and two major features and a refactor of both
 pages went by untested while the spec called it "run by hand".
+
+And: a timeout that was chosen on the machine it was written on is a guess about
+every other machine. When something external has to start — a browser, a server,
+a container — give it room, and make the failure say what the thing itself said
+rather than only that the wait ran out.
 
 ### The default error page handed out the server's paths (2.8.8)
 
