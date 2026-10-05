@@ -282,6 +282,32 @@ question or they drift. The careful one here was written second, for the route
 somebody was looking at; the older one a few lines away kept its guess, and
 nothing pointed at the difference because each looked right on its own.
 
+### Move… was dead on any install that had never imported (2.9.8)
+
+The dialog asked `GET /api/import` for the list of genres. That route walks the
+import folder and throws when there is none set — *"No import folder set yet"* —
+or when there is one and the share it names is not mounted. Moving a book has
+nothing to do with importing; it wanted a dropdown.
+
+`moveBook` is an inline `onclick`, so the throw became an unhandled rejection in
+the console and nothing else. **The button did nothing.** No message, no dialog,
+no sign that anything had been tried — on every install that had never set an
+import folder, and on any install whose import share was offline that minute.
+
+**Fixed** by asking `/api/genrefolders`, which reads the libraries setting and
+touches no import folder, and by catching that too: the genre the book already
+has is put in the list either way, so the dialog opens and a move within a genre
+works even if that call fails as well.
+
+**Rule:** a feature must not depend on a route that answers for something else.
+This one wanted *the genres*, and reached for an endpoint whose job is *the
+import folder* because the list happened to be in the reply. When the endpoint
+failed for its own reasons, a feature with no connection to it died.
+
+And: an inline `onclick` that calls an `async` function swallows everything it
+throws. Any handler wired that way either cannot fail or has to catch and say so
+— otherwise the whole of the evidence is a line in a console nobody has open.
+
 ### A narrator that was really the author (2.2.32)
 
 The scan read the narrator as `composer || artist`. In an audiobook the artist *is*
