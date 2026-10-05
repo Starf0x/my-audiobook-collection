@@ -10,6 +10,27 @@ const coversDir = () => path.join(DATA_DIR, 'covers');
 const dupesDir = () => path.join(coversDir(), 'duplicates');
 const isImage = (name) => /\.(jpe?g|png)$/i.test(name);
 
+// What a cover file may be, decided by the bytes rather than by anything that
+// came with them. This file keeps `.jpg` and `.png` and nothing else — `isImage`
+// just above is the same rule — and those are the two an MP3 tag takes without
+// argument, so anything else is named rather than renamed: a WebP written into
+// covers/ would be passed over by the tidy-up and shrug its way into a tag no
+// player would draw.
+//
+// It lives here rather than beside either of the two routes that need it,
+// because both have to answer the same way: one takes a picture pasted by the
+// admin, the other a thumbnail a lookup offered, and for a while only the first
+// of them asked.
+export const pictureKind = (b) => {
+  const starts = (n, ...bytes) => b.length > n && bytes.every((v, i) => b[i] === v);
+  if (starts(3, 0xff, 0xd8, 0xff)) return { ext: '.jpg', what: 'JPEG' };
+  if (starts(8, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return { ext: '.png', what: 'PNG' };
+  if (b.length > 12 && b.subarray(0, 4).toString('latin1') === 'RIFF'
+    && b.subarray(8, 12).toString('latin1') === 'WEBP') return { what: 'WebP' };
+  if (b.length > 4 && b.subarray(0, 3).toString('latin1') === 'GIF') return { what: 'GIF' };
+  return null;
+};
+
 const ZIP_AT = 1000;
 
 const loose = () => (fs.existsSync(dupesDir())

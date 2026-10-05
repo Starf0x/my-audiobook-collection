@@ -18,7 +18,7 @@ import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats,
 import { levelOf, mayDownload, LEVELS, TOP } from './levels.js';
 import { askedForAnAccount, signedIn, startedListening, stoppedListening, tookTheBook,
   reachedALevel, saveWebhook, webhookSet, lastSaid } from './notify.js';
-import { tidyCovers, deleteDuplicates, zipDuplicates } from './covers.js';
+import { tidyCovers, deleteDuplicates, zipDuplicates, pictureKind } from './covers.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
@@ -907,20 +907,6 @@ app.get('/api/books/:id', (req, res) => {
   });
   res.json(book);
 });
-
-// What a cover file may be. covers.js keeps `.jpg` and `.png` and nothing else,
-// and those are the two an MP3 tag takes without argument, so anything else is
-// refused by name — a WebP written into covers/ would be ignored by the tidy-up
-// and shrug its way into a tag no player would draw.
-const pictureKind = (b) => {
-  const starts = (n, ...bytes) => b.length > n && bytes.every((v, i) => b[i] === v);
-  if (starts(3, 0xff, 0xd8, 0xff)) return { ext: '.jpg', what: 'JPEG' };
-  if (starts(8, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return { ext: '.png', what: 'PNG' };
-  if (b.length > 12 && b.subarray(0, 4).toString('latin1') === 'RIFF'
-    && b.subarray(8, 12).toString('latin1') === 'WEBP') return { what: 'WebP' };
-  if (b.length > 4 && b.subarray(0, 3).toString('latin1') === 'GIF') return { what: 'GIF' };
-  return null;
-};
 
 // A picture pasted into Edit metadata. It is written into covers/ and its name
 // handed back, and no book is touched: the dialog's Save is what adopts it, so

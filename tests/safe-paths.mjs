@@ -206,5 +206,36 @@ check('no libraries at all removes no books', titles().includes('Gunslinger'), t
 check('and nobody loses their place',
   db.prepare("SELECT position FROM progress WHERE user = 'Frank'").get()?.position, 42);
 
+// --- what a cover file may be ---------------------------------------------
+// A cover is named for what its bytes are. The paste route always asked; the
+// thumbnail a lookup offers did not — it read the Content-Type and called
+// everything that was not `image/png` a `.jpg`. `picture()` accepts any
+// `image/*`, so a WebP thumbnail landed in covers/ named `.jpg`, where the
+// route's answer is typed from the extension and the tidy-up, which keeps
+// `.jpg` and `.png`, would have passed over it as neither.
+const { pictureKind } = await import('../server/covers.js');
+
+const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0]);
+const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP'), Buffer.alloc(8)]);
+const gif = Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(8)]);
+
+check('a JPEG is kept, and named one', pictureKind(jpeg), { ext: '.jpg', what: 'JPEG' });
+check('a PNG is kept, and named one', pictureKind(png), { ext: '.png', what: 'PNG' });
+// named but not kept: the two an MP3 tag will not carry
+check('a WebP is recognised and given no name', pictureKind(webp), { what: 'WebP' });
+check('a GIF the same', pictureKind(gif), { what: 'GIF' });
+check('and something that is not a picture at all is nothing',
+  pictureKind(Buffer.from('<!DOCTYPE html><html>')), null);
+check('nor does an empty body fool it', pictureKind(Buffer.alloc(0)), null);
+
+// The thumbnail path must ask that question rather than the old one. Both ways
+// a cover arrives are meant to answer alike, and for a while only one did.
+const applying = fs.readFileSync(path.join(ROOT, 'server', 'google.js'), 'utf8');
+check('the looked-up cover is named from its bytes',
+  /pictureKind\(got\.bytes\)/.test(applying), true);
+check('and no longer from the type that came with it',
+  /got\.kind === 'image\/png'/.test(applying), false);
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
