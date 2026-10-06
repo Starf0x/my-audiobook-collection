@@ -140,7 +140,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 170 | its behaviour — the statistics and the two ticks |
+| `public/accounts.js` | 178 | its behaviour — the statistics and the two ticks |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 375 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
@@ -1789,6 +1789,16 @@ same reason the Home Assistant page is one: a row per person with numbers on it
 is read rather than browsed, and wants width and stillness that the column beside
 a library has not got.
 
+**Two of the numbers count finished books, and they are not the same count.**
+*Played to the end* is `completions` — what the app watched happen, which is what
+a level is built on (§7.12b). *Ticked* is `progress.done`, which is that plus
+every book somebody marked by hand. A listener's own **Books you've listened to**
+lists the ticked ones, so that list and the first number differ by however many
+were ticked rather than heard — four against one, in the case that was reported
+as a fault. The data was right and the page said nothing, so each number now
+carries a sentence saying which question it answers. `levels.mjs` holds the two
+apart at the moment they are furthest apart, and pins the list to *ticked*.
+
 **What a row says**, in the order somebody reads it: the name with the level's
 icon beside it, then the level in words and how many books to the next one, then
 when they were last here, then what they are playing *at this moment* if
@@ -2898,6 +2908,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.80 | each number on an account's row says which question it answers: *played to the end* and *ticked* both count finished books and are not the same count, which read as a fault |
 | 2.9.72 | the tag is the last step: push, wait for Checks, then tag — three faults this session were found after a tag had gone out and the work called finished |
 | 2.9.64 | the README and the wiki know about a series published in parts: six pages, including the one called *How your folders are read*, still said the app could not do what 2.9.0 taught it |
 | 2.9.56 | the two suites that spawn a server refuse to run when something already answers on their port, and wait for their own to die rather than orphaning it there |
