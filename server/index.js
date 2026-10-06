@@ -554,12 +554,28 @@ app.get('/api/untagged', requireAdmin, (req, res) => {
 });
 
 // the landing view: what this user was listening to, and what turned up last
-// A book is finished when the tick says so, or when the place kept in it sits at
-// the end of its last track: pressing Resume on one of those plays its last
+// Three things in this app mean "finished", and they are not the same thing.
+// They were all called some version of the word, which is how four books in one
+// list and one in a count next to it read as a fault rather than as an answer:
+//
+//   * `progress.done` — **ticked**. Somebody said they are done with this book,
+//     by hand or by playing it out. It can be taken off again.
+//   * `completions`   — **played to the end**. What this app watched happen, kept
+//     for ever and never rewritten (§7.12b). Levels are counted from it, so
+//     ticking a book by hand cannot earn one.
+//   * `countsAsRead()`, below — **ticked, or sitting at the end anyway**. What a
+//     shelf should draw as done. Not stored: asked of a row as it is served.
+//
+// This one used to be called `isFinished`, which is the name Audiobookshelf uses
+// on the wire for something else — its field is the tick alone — so the same
+// word meant two things one file apart, in `abs.js` and here.
+//
+// A book counts as read when the tick says so, or when the place kept in it sits
+// at the end of its last track: pressing Resume on one of those plays its last
 // seconds and stops, so it is offered again from the top instead. The grace is a
 // tenth of the track and never more than a minute — a player rarely stops on the
 // second, and a flat minute would call the whole of a short track the end of it.
-const isFinished = (b) => !!b.done
+const countsAsRead = (b) => !!b.done
   || (b.track_idx >= b.tracks - 1 && b.trackSeconds > 0
       && b.position >= b.trackSeconds - Math.min(60, b.trackSeconds / 10));
 // what the listener is in the middle of, the track they are on, and the seconds
@@ -582,7 +598,7 @@ const keptBooks = (user) => db.prepare(`SELECT b.id, b.title, b.author, b.genre,
                                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
                                         ORDER BY p.updated DESC`).all(user || '')
   .map(({ trackSeconds, behindSeconds, ...b }) => {
-    const finished = isFinished({ ...b, trackSeconds });
+    const finished = countsAsRead({ ...b, trackSeconds });
     const into = (behindSeconds || 0) + (b.position || 0);
     return {
       ...b,
@@ -776,7 +792,7 @@ app.get('/api/books', (req, res) => {
       .all(req.query.user || '', req.query.genre, req.query.parent);
     return res.json({
       books: rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
-        finished: isFinished({ ...b, trackSeconds }) })),
+        finished: countsAsRead({ ...b, trackSeconds }) })),
       series: [...new Set(rows.map((b) => b.series).filter(Boolean))]
         .map((name) => seriesState(req.query.genre, name)),
     });
@@ -795,7 +811,7 @@ app.get('/api/books', (req, res) => {
     .all(req.query.user || '', req.query.genre, within);
   return res.json({
     books: rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
-      finished: isFinished({ ...b, trackSeconds }) })),
+      finished: countsAsRead({ ...b, trackSeconds }) })),
     series: [...new Set(rows.map((b) => b.series).filter(Boolean))]
       .map((name) => seriesState(req.query.genre, name)),
   });
@@ -821,7 +837,7 @@ app.get('/api/search', (req, res) => {
                            LIMIT 200`)
     .all(req.query.user || '', ...words.map((w) => `%${w}%`), `%${words[0]}%`, `%${words[0]}%`);
   res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
-    finished: isFinished({ ...b, trackSeconds }) })));
+    finished: countsAsRead({ ...b, trackSeconds }) })));
 });
 
 app.post('/api/listened', (req, res) => {
@@ -867,7 +883,7 @@ app.get('/api/favourites', (req, res) => {
                            WHERE f.user = ?
                            ORDER BY b.author, series, b.series_no, b.title`).all(user, user);
   res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
-    finished: isFinished({ ...b, trackSeconds }), favourite: true })));
+    finished: countsAsRead({ ...b, trackSeconds }), favourite: true })));
 });
 
 app.post('/api/favourites/:id', wrap(async (req, res) => {
@@ -944,7 +960,7 @@ app.get('/api/books/:id', (req, res) => {
   }
   // the same question for the player: a finished book starts at the top
   const on = book.progress ? book.tracks[book.progress.track_idx] : null;
-  book.finished = !!book.progress && isFinished({
+  book.finished = !!book.progress && countsAsRead({
     done: book.progress.done, track_idx: book.progress.track_idx,
     position: book.progress.position, tracks: book.tracks.length,
     trackSeconds: on ? on.duration : 0,
@@ -1396,7 +1412,7 @@ app.get('/api/stream/:trackId', (req, res) => {
 });
 
 // What a listener has done with one book, and the track they are on: the same
-// four numbers `isFinished` asks for.
+// four numbers `countsAsRead` asks for.
 const keptOne = db.prepare(`SELECT p.done, p.track_idx, p.position,
     (SELECT COUNT(*) FROM tracks t WHERE t.book_id = p.book_id) AS tracks,
     (SELECT t.duration FROM tracks t WHERE t.book_id = p.book_id AND t.idx = p.track_idx) AS trackSeconds
@@ -1427,13 +1443,13 @@ app.post('/api/progress', (req, res) => {
   // only ever set here: taking it off again is unticking it, or starting the book
   // over, both of which say so outright.
   const kept = keptOne.get(user, Number(bookId));
-  if (kept && !kept.done && isFinished(kept)) {
+  if (kept && !kept.done && countsAsRead(kept)) {
     tickIt.run(user, Number(bookId));
     // the place arrived at the end of the last track: the app watched this book
     // finish, which is what a level is made of
     finishedABook(user, Number(bookId));
   }
-  res.json({ ok: true, done: !!(kept && (kept.done || isFinished(kept))) });
+  res.json({ ok: true, done: !!(kept && (kept.done || countsAsRead(kept))) });
 });
 
 // --- metadata lookup ---------------------------------------------------
@@ -1539,7 +1555,7 @@ for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position,
       (SELECT COUNT(*) FROM tracks t WHERE t.book_id = p.book_id) AS tracks,
       (SELECT t.duration FROM tracks t WHERE t.book_id = p.book_id AND t.idx = p.track_idx) AS trackSeconds
     FROM progress p WHERE p.done = 0`).all()) {
-  if (isFinished(row)) tickIt.run(row.user, row.book_id);
+  if (countsAsRead(row)) tickIt.run(row.user, row.book_id);
 }
 
 // a container that was already set up keeps pushing to Home Assistant on its own
