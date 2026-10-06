@@ -745,6 +745,15 @@ here:
   working copy here, and multi-line patches then match nothing.
 * **Nonsense answers mean the port is someone else's.** 8884 on that machine is a
   Dell service, and a suite pointed there got its JSON.
+* **And a suite that spawns a server has to look before it listens, and wait for
+  it to die after.** Of the three that spawn one, only `plays-on` checked the
+  port was free — the two that did not would meet a server left behind by an
+  earlier run and either time out waiting for their own, or worse, get real
+  answers out of somebody else's database. They kill the child now and wait for
+  it to go, rather than exiting and orphaning it on the port the next run needs.
+  Said plainly: this was found while looking for an intermittent failure that
+  was **never reproduced** — thirteen full runs after it, all green. What is
+  fixed is a mechanism that would produce exactly that symptom, not a diagnosis.
 * **When a rule changes, update the suites that encoded the old one deliberately.**
   Ticking is what "listened" means, and only unticking or playing a book again
   takes it off — a position reported by Home Assistant does not. An older suite
