@@ -139,6 +139,16 @@ const second = db.prepare('SELECT id FROM books ORDER BY id').all()[1].id;
 track.run(second, 0, silence.replace(/\.mp3$/, '.m4b'), 'Part One', 10);
 track.run(second, 1, silence.replace(/\.mp3$/, '.flac'), 'Part Two', 10);
 
+// Nobody else's port, first. A server left behind by an earlier run — or a demo
+// somebody started on this one — answers out of its own database, and the suite
+// then reports the app broken over somebody else's data. That has happened on
+// exactly this port: the accounts demo took 8533 and this suite believed it.
+const inUse = await fetch(BASE, { signal: AbortSignal.timeout(700) }).then(() => true).catch(() => false);
+if (inUse) {
+  console.log(`FAIL something is already answering on ${PORT}, and its answers are not this suite's`);
+  process.exit(1);
+}
+
 const server = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')],
   { env: { ...process.env, DATA_DIR: DATA, PORT: String(PORT), MA_TOKEN: TOKEN }, stdio: 'inherit' });
 
@@ -506,7 +516,14 @@ try {
   const anon = await fetch(`${BASE}/api/libraries`);
   check('no token, no answer', anon.status, 401);
 } finally {
+  // Gone before this process is, or it is orphaned still holding the port and
+  // the next run of this suite meets it instead of its own server.
   server.kill();
+  await new Promise((done) => {
+    if (server.exitCode !== null || server.signalCode !== null) return done();
+    server.on('exit', done);
+    return setTimeout(done, 2000).unref?.();
+  });
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
