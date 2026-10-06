@@ -726,6 +726,30 @@ worked exactly as intended.
 say it is done. "Done, and now three more things" is not a report, it is a
 retraction.
 
+### The browser was up, and the suite had already given up (2.9.80)
+
+`plays-on` started failing with *"the browser never opened its debugging port
+(exit 0)"* — while the port was open and answering, Edge 154 on the other end of
+it. Both halves were mine.
+
+**It gave up too early.** The wait stopped on `!gone`, and `gone` was set by any
+exit at all. The process that is spawned is a *launcher*: recent Edge starts the
+browser proper in a tree of its own and lets the launcher return 0 immediately,
+so the suite quit at the very moment the hand-over happened. Only a non-zero exit
+means no browser is coming.
+
+**And it left the browser running.** `child.kill()` kills the launcher, which by
+then has usually gone, and the renderer, GPU and network processes carry on —
+holding the profile folder and the debugging port. Nine had piled up over a
+session before one of them held the port and a run could not start. They are
+found by the profile folder on their own command line now, which is this suite's
+own under `fixtures/`, so nothing the owner is using can match. Two runs
+back to back: both pass, nothing left behind.
+
+**Rule:** a process that exits is not a thing that failed — a launcher exiting is
+a hand-over. And killing what you spawned is not killing what it started: on
+Windows, find the tree by something it carries, not by the pid you have.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

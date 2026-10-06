@@ -7,7 +7,7 @@
 //
 // Run:  node plays-on.mjs            (headless)
 //       node plays-on.mjs --window   (watch it happen)
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -230,8 +230,16 @@ async function startBrowser() {
   const edge = spawn(browser, [...theseArgs, 'about:blank'], { stdio: ['ignore', 'pipe', 'pipe'] });
   const said = [];
   for (const pipe of [edge.stdout, edge.stderr]) pipe.on('data', (d) => said.push(String(d)));
+  // Only a *failed* exit means give up. The process that is spawned is a
+  // launcher: recent Edge starts the browser proper in a tree of its own and
+  // lets the launcher return 0 straight away, so "it exited" says nothing about
+  // whether a browser is coming. Treating any exit as failure stopped the wait
+  // the instant the hand-over happened, and the suite reported a browser that
+  // never opened its port while the port was open and answering.
   let gone = null;
-  edge.on('exit', (code, signal) => { gone = `exit ${code}${signal ? ` on ${signal}` : ''}`; });
+  edge.on('exit', (code, signal) => {
+    if (code !== 0 || signal) gone = `exit ${code}${signal ? ` on ${signal}` : ''}`;
+  });
 
   // Ninety seconds, which is not generosity but arithmetic: on the build machine
   // a cold Edge took 28 seconds to open its port on the run that passed and more
@@ -256,7 +264,7 @@ async function startBrowser() {
   if (!url) {
     // it may still be running even though it never answered, and leaving it
     // would hold the profile folder and break the next run the same way
-    edge.kill();
+    killTree(edge);
     throw new Error(`the browser never opened its debugging port${gone ? ` (${gone})` : ''}`
       + `\n  ran: ${browser} ${theseArgs.join(' ')}`
       + `\n  it said: ${said.join('').trim().slice(0, 1500) || '(nothing at all)'}`);
@@ -286,6 +294,30 @@ async function startBrowser() {
   await send('Log.enable');
   return edge;
 }
+
+// A browser is a tree of processes — the one that was spawned, then a renderer,
+// a GPU process, a network service and more. `child.kill()` kills the one that
+// was spawned and leaves the rest, which go on holding the profile folder and
+// the debugging port. Nine of them had piled up across one session before a run
+// finally could not open its port and said the browser had never answered.
+// And the tree cannot be reached through the launcher, which has usually gone by
+// then. What every one of those processes does carry is the profile folder on
+// its command line — this suite's own, under fixtures — so that is what they are
+// found by. Nothing outside that folder is touched, so a browser the owner is
+// using is never a candidate.
+const killTree = (child) => {
+  child.kill();
+  if (process.platform !== 'win32') {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+    return;
+  }
+  const mine = PROFILE.replace(/\\/g, '\\\\');
+  spawnSync('powershell', ['-NoProfile', '-Command',
+    `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" `
+    + `| Where-Object { $_.CommandLine -like '*${mine.split('\\').pop()}*' } `
+    + '| ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'],
+  { stdio: 'ignore' });
+};
 
 const send = (method, params = {}) => new Promise((ok, no) => {
   const id = ++nextId;
@@ -525,7 +557,7 @@ async function run() {
     check('and not one page threw anything along the way', broke, []);
   } finally {
     ws.close();
-    edge.kill();
+    killTree(edge);
     server.kill();
   }
 }
