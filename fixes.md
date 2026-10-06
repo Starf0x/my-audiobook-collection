@@ -707,6 +707,25 @@ And two lessons about the checks, both from mutants that stayed green:
   worked, the other that a bug was still there after it was fixed. A running
   server is a snapshot of the code as it was when it started.
 
+### Three times in one session, the surprise came after the tag (2.9.72)
+
+A browser slower to start than the wait allowed. A suite that checked nothing
+because the build machine had no ffmpeg. An apt mirror that hung for a quarter of
+an hour. Each was found by watching CI *after* the tag had been pushed and the
+work reported as finished — so each turned one piece of work into two, and the
+word "done" into something that had to be taken back.
+
+None of them could have been found here: they are all faults of the machine the
+checks run on, not of the code. What could have been different is the order.
+Pushing `main` first and waiting for Checks to go green costs a minute and finds
+every one of them before a tag exists. The one time that order was used — for the
+action pinning, where five of the ten pins could only be proved by a tag — it
+worked exactly as intended.
+
+**Rule:** the tag is the last step. Push, wait for green, then tag, and only then
+say it is done. "Done, and now three more things" is not a report, it is a
+retraction.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
