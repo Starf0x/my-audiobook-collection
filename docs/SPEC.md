@@ -137,11 +137,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/player.js` | 375 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 273 | browsing the collection: what both pages do the same way, in one copy |
+| `public/browse.js` | 291 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 385 | the admin page: columns, dialogs |
-| `public/app.js` | 2389 | the admin page's behaviour |
+| `public/app.js` | 2378 | the admin page's behaviour |
 | `public/listen.html` | 133 | the listening page |
-| `public/shelf.js` | 316 | the listening page’s behaviour |
+| `public/shelf.js` | 306 | the listening page’s behaviour |
 | `public/style.css` | 826 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -1974,6 +1974,16 @@ reference that cannot be taken eagerly is `$('#brand').onclick`, which calls
 `loadHome()` rather than being handed it, since the page has not declared it yet
 when `browse.js` runs.
 
+The sweep took the declarations that were **byte-identical**, which left behind
+one that was alike but for a single line: `showSeriesOf`, where the admin page
+called a one-line `rememberOpen()` and the listening page wrote the same
+`localStorage` line out in full. It is in `browse.js` too now, with
+`rememberOpen` beside the `openGenres` it reads — two copies of a thing that must
+agree is how they come to disagree, whatever the reason they are two. What is
+left under one name on both pages differs for real reasons: `state`, `drawBooks`,
+`loadHome`, `loadGenres` and the column functions all know things only their own
+page knows.
+
 Two things about that arrangement are checked, because neither shows in
 `node --check`, which reads one file at a time: that `browse.js` is loaded first
 on both pages, and that no name is declared in both it and a page script — two
@@ -2880,6 +2890,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.48 | `showSeriesOf` joins the one copy in `browse.js`: the 2.8.0 sweep took what was byte-identical and left this behind over a single line |
 | 2.9.40 | the ffmpeg install in Checks gets four minutes rather than the job's six hours: a slow mirror hung it for fifteen and the suites never ran — the app itself is unchanged from 2.9.32 |
 | 2.9.32 | a book number can be given to a book in a part: the edit dialog was told the series *above* the part, so the guard that keeps one series' numbers out of another dropped every one of them |
 | 2.9.24 | every action the build machine runs is pinned to a commit rather than to a tag somebody else can move, with the version it is named beside it |

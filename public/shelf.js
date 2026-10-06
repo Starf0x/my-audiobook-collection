@@ -55,16 +55,6 @@ async function openInLibrary(genre, author) {
 }
 
 // --- browsing -----------------------------------------------------------
-
-function showSeriesOf(genre, open) {
-  if (open) openGenres.add(genre); else openGenres.delete(genre);
-  localStorage.openGenres = JSON.stringify([...openGenres]);
-  document.querySelectorAll(`#genres li[data-genre="${CSS.escape(genre)}"]`).forEach((li) => { li.hidden = !open; });
-  const row = [...document.querySelectorAll('#genres li[data-name]')].find((l) => l.dataset.name === genre);
-  const twist = row && row.querySelector('.twist');
-  if (twist) twist.textContent = open ? '▾' : '▸';
-}
-
 async function loadGenres() {
   const list = await api('/api/genres');
   $('#genres ul').innerHTML = list.map((g) => {

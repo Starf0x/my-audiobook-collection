@@ -78,15 +78,25 @@ const get = async (query) => {
   return r.json();
 };
 
+// Keeps whatever the last attempt said. This swallowed it, so a run that failed
+// here could only report "the server never answered" — the symptom, and nothing
+// about a port someone else holds or a server that threw on the way up. It has
+// gone wrong once, in a whole-suite run, and could not be reproduced in two
+// after it; the next time, this will say what it was rather than leave another
+// afternoon to guesswork.
+let lastSaid = '';
 const up = async () => {
   for (let i = 0; i < 50; i++) {
-    try { await fetch(`${BASE}/api/stats`); return true; } catch { await new Promise((r) => setTimeout(r, 200)); }
+    try { await fetch(`${BASE}/api/stats`); return true; } catch (e) {
+      lastSaid = `${e.name}: ${e.message}${e.cause ? ` (${e.cause.code || e.cause.message})` : ''}`;
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
   return false;
 };
 
 try {
-  if (!await up()) throw new Error(`the server never answered on ${PORT}`);
+  if (!await up()) throw new Error(`the server never answered on ${PORT} — last tried: ${lastSaid}`);
 
   const bySeries = async (name) => (await get(`genre=Fantasy&series=${encodeURIComponent(name)}`)).series[0];
   const byAuthor = async (name) => (await get(`genre=Fantasy&author=${encodeURIComponent(name)}`));
