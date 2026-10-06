@@ -1,7 +1,9 @@
 # My Audiobook Collection
 
 A small, self-hosted web app for an audiobook collection that is organised on disk
-as **Genre → Author → Book** or **Genre → Author → Series → Book**.
+as **Genre → Author → Book**, **Genre → Author → Series → Book**, or — for an
+author who publishes a series in parts — **Genre → Author → Series → Part →
+Book**.
 
 It does three things, and it does them properly:
 
@@ -52,7 +54,7 @@ The full manual, with screenshots of every part of it, is in the
 
 * Three-column interface: genres on the left, authors next to it, books with full metadata on the right
 * One search box for the lot: title, author, genre, series, narrator or a few words from the description
-* Each genre lists its series underneath it, from a series folder, from sibling volume names, or from the tags
+* Each genre lists its series underneath it, from a series folder, from sibling volume names, or from the tags — and a series published in parts lists its parts under it
 * Says under a series which volume you are missing, from the numbers it already has — no requests, no key
 * And asks **Wikidata** which volumes a series actually has, so a book you never owned is one you can be told about
 * Opens on shelves of covers: what you were listening to, with how far you are, and what was added last
@@ -76,6 +78,13 @@ The full manual, with screenshots of every part of it, is in the
 │   │       │   ├── 01-chapter.mp3
 │   │       │   └── 02-chapter.mp3
 │   │       └── The Well of Ascension
+│   ├── Jane Deep
+│   │   └── The Great Cycle           <- series
+│   │       ├── First Movement        <- part of it
+│   │       │   ├── The Opening
+│   │       │   └── The Turning
+│   │       └── Second Movement
+│   │           └── The Return
 │   └── Patrick Rothfuss
 │       └── The Name of the Wind      <- book directly under the author
 └── Thriller
@@ -91,6 +100,32 @@ How a third-level folder is read:
 | several sub-folders | a **series**, each sub-folder a book |
 | sub-folders that are all `Disc 01`, `CD 2`, `Part 3`… | **one book**, its discs played in order as one track list |
 | exactly one sub-folder | **one book**; a series of one has nothing to group |
+
+### A series published in parts
+
+Some authors write a series in parts, each part its own run of books. Put the
+parts under the series and the books under the parts, as *Jane Deep* is above.
+
+The **part is the series** — it is what the books are numbered against, what
+*Series to complete* counts, and what Music Assistant and Home Assistant report.
+The series above it groups the parts: in the genre column it is a row of its own
+with its parts indented under it, and pressing it shows the whole series at once
+with each part under its own heading.
+
+Two things decide whether a folder of folders is a part rather than a mistake:
+
+* **every** folder in it holds a book — audio of its own, or disc folders. One
+  that does not means this is something else, and the scan says so on *Walked
+  past* rather than offering you a series with a hole in it;
+* **something beside it holds two or more books.** One folder holding one book
+  reads just as well as a book filed a level too deep, so the siblings settle it
+  — and a part with a single book standing next to a fuller one is read as a part
+  too.
+
+One extra level and no more: a book any deeper is still reported as *"a folder
+deeper than the layout reads"*. And *Move…* writes four folders, so moving a book
+out of a part is possible but moving it back in is not — the dialog says so when
+you open it on one.
 
 Settings has a **Genres** section to make one: it creates the folder, and adds it
 as a library folder when your libraries are single genre folders, so the new genre
@@ -136,6 +171,13 @@ arrow beside a genre opens and closes it, while the name selects the genre and
 leaves the list as it was, and the column comes back the way you left it. Every
 book card names its series next to the cover, and so does every tile on the
 shelves.
+
+A series published in parts is a row with its parts indented under it, inside the
+genre's own fold. Pressing a part shows that part; pressing the series above it
+shows the whole thing at once, each part under its own heading — *Series · The
+Great Cycle · First Movement*. A book's number belongs to the part it is in, so
+*Edit metadata* numbers it against its own run of books rather than against the
+whole series.
 
 A series comes from any of three places:
 
