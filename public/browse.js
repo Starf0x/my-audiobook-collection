@@ -138,6 +138,24 @@ $('#brand').onclick = () => loadHome();
 // Which genres are showing their series. Kept in the browser, so the column
 // looks the same when you come back to it.
 const openGenres = new Set(JSON.parse(localStorage.openGenres || '[]'));
+const rememberOpen = () => { localStorage.openGenres = JSON.stringify([...openGenres]); };
+
+// Folding a genre open or shut. Both pages had this, alike but for one line —
+// the admin page called `rememberOpen()` where the listening page wrote the same
+// localStorage line out in full — so the 2.8.0 sweep, which took the ones that
+// were byte-identical, left it behind. Two copies of a thing that must agree is
+// how they come to disagree, whatever the reason they are two.
+//
+// The rows it hides are matched on `data-genre`, which every row under a genre
+// carries: the series, and since 2.9.0 the parts and the series above them.
+function showSeriesOf(genre, open) {
+  if (open) openGenres.add(genre); else openGenres.delete(genre);
+  rememberOpen();
+  document.querySelectorAll(`#genres li[data-genre="${CSS.escape(genre)}"]`).forEach((li) => { li.hidden = !open; });
+  const row = [...document.querySelectorAll('#genres li[data-name]')].find((l) => l.dataset.name === genre);
+  const twist = row && row.querySelector('.twist');
+  if (twist) twist.textContent = open ? '▾' : '▸';
+}
 
 // The series under a genre, and the parts under a series that has them.
 //

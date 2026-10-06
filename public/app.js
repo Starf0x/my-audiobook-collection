@@ -133,17 +133,6 @@ async function jumpToBook(id, genre, author) {
 }
 
 // --- browsing ----------------------------------------------------------
-const rememberOpen = () => { localStorage.openGenres = JSON.stringify([...openGenres]); };
-
-function showSeriesOf(genre, open) {
-  if (open) openGenres.add(genre); else openGenres.delete(genre);
-  rememberOpen();
-  document.querySelectorAll(`#genres li[data-genre="${CSS.escape(genre)}"]`).forEach((li) => { li.hidden = !open; });
-  const row = [...document.querySelectorAll('#genres li[data-name]')].find((l) => l.dataset.name === genre);
-  const twist = row && row.querySelector('.twist');
-  if (twist) twist.textContent = open ? '▾' : '▸';
-}
-
 async function loadGenres() {
   const list = await api('/api/genres');
   $('#genres ul').innerHTML = list.map((g) => {
