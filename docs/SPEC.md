@@ -2890,6 +2890,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.56 | the two suites that spawn a server refuse to run when something already answers on their port, and wait for their own to die rather than orphaning it there |
 | 2.9.48 | `showSeriesOf` joins the one copy in `browse.js`: the 2.8.0 sweep took what was byte-identical and left this behind over a single line |
 | 2.9.40 | the ffmpeg install in Checks gets four minutes rather than the job's six hours: a slow mirror hung it for fifteen and the suites never ran — the app itself is unchanged from 2.9.32 |
 | 2.9.32 | a book number can be given to a book in a part: the edit dialog was told the series *above* the part, so the guard that keeps one series' numbers out of another dropped every one of them |
