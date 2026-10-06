@@ -180,28 +180,23 @@ check('and the admin is told they are',
 check('a listener asking the admin page’s own route is refused',
   (await get('/api/accounts', bert.cookies)).status, 403);
 
-// --- one copy of the browsing half ---------------------------------------
-// browse.js holds what the two pages do the same way, and each page script
-// holds what only it decides. Two things have to hold, and neither shows up in
-// `node --check`, which reads one file at a time:
+// --- the page the server hands out is the page the suites read -------------
+// Whether browse.js loads before the page's own script, and whether the two
+// declare a name in common, is `pages` now: it loads the real scripts into a
+// real scope, so a second `const $` is the SyntaxError it would be in a browser
+// rather than a regex over the source that guesses at declarations.
 //
-//  * browse.js is loaded, and before the page's own script — both scripts share
-//    one global scope, and the page uses `$`, `api` and `esc` at its top level.
-//  * no name is declared in both. Two `const $` in one scope is a SyntaxError
-//    that stops the entire page, with nothing on the server any the wiser.
+// `pages` reads those files off the disk, though, and this suite is the one with
+// a server running. So what is checked here is the seam between them: the page
+// at this URL is the file `pages` drives. Without it the whole of `pages` could
+// be reasoning about something nobody is served.
 const scripts = (html) => [...html.matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
-const declared = (file) => new Set([...fs.readFileSync(path.join(ROOT, 'public', file), 'utf8')
-  .matchAll(/^(?:async\s+function|function|const|let|var)\s+([A-Za-z_$][\w$]*)/gm)].map((m) => m[1]));
-
-const shared = declared('browse.js');
-check('browse.js declares the browsing half', shared.size > 15, true);
-for (const [where, own] of [['/', 'shelf.js'], ['/admin', 'app.js']]) {
+for (const [where, file] of [['/', 'listen.html'], ['/admin', 'index.html']]) {
   // eslint-disable-next-line no-await-in-loop -- two pages, read one after the other
-  const loaded = scripts((await pageOf(where)).body);
-  check(`${where} loads browse.js before ${own}`,
-    loaded.indexOf('browse.js') >= 0 && loaded.indexOf('browse.js') < loaded.indexOf(own), true);
-  check(`and ${own} declares nothing browse.js already has`,
-    [...declared(own)].filter((n) => shared.has(n)), []);
+  const served = scripts((await pageOf(where)).body);
+  const onDisk = scripts(fs.readFileSync(path.join(ROOT, 'public', file), 'utf8'));
+  check(`${where} serves ${file}, scripts and order alike`, served, onDisk);
+  check(`and ${file} is one of the pages that drives`, served.includes('browse.js'), true);
 }
 
 // --- the box the reason is typed into ------------------------------------
