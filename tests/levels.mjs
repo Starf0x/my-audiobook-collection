@@ -108,9 +108,32 @@ check('and is shown no level at all', (await get('/api/account/me', ann.cookies)
 await post('/api/listened', { bookId: 6, done: true }, ann.cookies);
 check('ticking a book by hand does not count towards a level', finishedCount('Ann'), 0);
 
+// The two numbers the admin's page shows side by side, at the moment they are
+// furthest apart. Frank read "played to the end" as the count behind his own
+// "Books you've listened to" and reported them disagreeing: they are different
+// questions, and the page says which is which — but only the one on the right is
+// the list's count, and nothing else checks that it stays so.
+{
+  const { withStats } = await import('../server/listeners.js');
+  const mine = () => withStats().find((u) => u.name === 'Ann');
+  const listed = (await get('/api/listened?user=Ann', ann.cookies)).body;
+  check('one ticked by hand is in their own Listened list', listed.length, 1);
+  check('and is counted as ticked, not as played to the end',
+    [mine().finished, mine().completed], [1, 0]);
+}
+
 // the player saying the last track ran out does
 await post('/api/listened', { bookId: 5, done: true, played: true }, ann.cookies);
 check('a book the app watched run out does', finishedCount('Ann'), 1);
+{
+  const { withStats } = await import('../server/listeners.js');
+  const mine = () => withStats().find((u) => u.name === 'Ann');
+  const listed = (await get('/api/listened?user=Ann', ann.cookies)).body;
+  check('the Listened list counts the ticked ones, whichever way they were ticked',
+    listed.length, mine().finished);
+  check('and played-to-the-end is the smaller number, being only what was watched',
+    [mine().completed, mine().finished], [1, 2]);
+}
 await post('/api/listened', { bookId: 5, done: true, played: true }, ann.cookies);
 check('and finishing the same book twice is one accomplishment', finishedCount('Ann'), 1);
 

@@ -67,13 +67,21 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
       ${a.reason ? `<div class="sub said">“${esc(a.reason)}”<br>says they ${a.knowsAdmin ? 'know' : '<strong>do not know</strong>'} you${a.requestedAt ? ` · asked ${esc(when(a.requestedAt))}` : ''}</div>` : ''}
     </div>
 
+    <!-- Two of these count finished books and they are not the same count, which
+         reads as a fault unless each says what it is. *Played to the end* is what
+         the app watched happen and is what a level is built on; *ticked* is that
+         plus every book somebody marked by hand. The listener's own "Books you've
+         listened to" shows the ticked ones, so that list and the first number
+         here differ by however many were ticked rather than heard. -->
     <div class="numbers">
-      <div><strong>${a.completed}</strong><span>played to the end</span></div>
-      <div><strong>${a.started}</strong><span>started</span></div>
-      <div><strong>${a.finished}</strong><span>ticked</span></div>
-      <div><strong>${a.hours}</strong><span>hours</span></div>
-      <div><strong>${a.favourites}</strong><span>♥</span></div>
-      <div><strong>${a.downloads.length}</strong><span>downloads</span></div>
+      <div title="Books this app watched run out. A level is counted from these, so ticking a book by hand cannot earn one.">
+        <strong>${a.completed}</strong><span>played to the end</span></div>
+      <div title="Books with a place kept in them: begun, whether or not they were finished."><strong>${a.started}</strong><span>started</span></div>
+      <div title="Books marked as listened — by hand, or by playing them out. This is what their own “Books you’ve listened to” lists.">
+        <strong>${a.finished}</strong><span>ticked</span></div>
+      <div title="Time listened, from where each place sits in its book."><strong>${a.hours}</strong><span>hours</span></div>
+      <div title="Books they have hearted."><strong>${a.favourites}</strong><span>♥</span></div>
+      <div title="Whole books they have downloaded."><strong>${a.downloads.length}</strong><span>downloads</span></div>
     </div>
 
     <div class="allowed">
