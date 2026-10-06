@@ -19,6 +19,7 @@ import { levelOf, mayDownload, LEVELS, TOP } from './levels.js';
 import { askedForAnAccount, signedIn, startedListening, stoppedListening, tookTheBook,
   reachedALevel, saveWebhook, webhookSet, lastSaid } from './notify.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates, pictureKind } from './covers.js';
+import { scheduleBackups, listBackups, backupNow, KEEP as BACKUPS_KEPT } from './backup.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
@@ -477,6 +478,15 @@ app.post('/api/trash/:id', requireAdmin, wrap(async (req, res) =>
 app.post('/api/trash/:id/restore', requireAdmin, wrap(async (req, res) =>
   res.json(await alone('Putting the book back', () => restoreFromTrash(req.params.id)))));
 app.post('/api/trash/:id/purge', requireAdmin, wrap(async (req, res) => res.json(purge(req.params.id))));
+
+// --- the database's own copies -----------------------------------------
+// A backup nobody can see is half a backup: it fails silently and is believed
+// for months. Settings says when the last one was taken and how many are kept,
+// and the button is there for the moment before doing something drastic.
+app.get('/api/backups', requireAdmin, (req, res) => res.json({
+  folder: path.join(DATA_DIR, 'backups'), keep: BACKUPS_KEPT, items: listBackups(),
+}));
+app.post('/api/backups', requireAdmin, (req, res) => res.json(backupNow()));
 
 app.post('/api/scan', requireAdmin, (req, res) => {
   if (!progress.running) scan(req.body.path || '');
@@ -1516,6 +1526,11 @@ app.use((err, req, res, next) => {
 settleTagAll();
 purgeExpired(Date.now());
 setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
+
+// A copy of the database, beside it, once a day. The books survive anything;
+// where everybody is in them does not, and lived in one file with no second
+// copy anywhere.
+scheduleBackups();
 
 // Places that were already at the end of a last track before the tick was set
 // for them: those books have been listened to, and every count and list reads the

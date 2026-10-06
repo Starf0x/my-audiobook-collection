@@ -63,6 +63,7 @@ The full manual, with screenshots of every part of it, is in the
 * Files new audiobooks from an **import folder** into the right genre, author and series
 * Moves a book to another genre, author or series, and deletes one to a trash it keeps for 30 days
 * Says which books it could not read, and which folders it walked past, rather than quietly finding fewer
+* Keeps a copy of its database beside it, daily — your books are on your share, but where everybody is in them is not
 * The page itself, and the covers drawn for books with no art of their own, turn their colours every day
 * Works on a phone: one column at a time, thumb-sized rows, full-screen dialogs, the player across the bottom
 * Runs as a single Docker container, SQLite storage, no external services

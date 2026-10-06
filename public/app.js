@@ -851,6 +851,27 @@ async function loadAccounts() {
 // count because that is the one thing worth seeing without going to look.
 $('#accountList').onclick = () => { location.href = '/accounts'; };
 
+// --- the database's own copies --------------------------------------------
+// Said out loud, because a backup that fails quietly is believed for months and
+// then is not there. The newest one's date is the whole of the answer.
+async function loadBackups() {
+  const d = await api('/api/backups').catch(() => ({ items: [] }));
+  const items = d.items || [];
+  const newest = items[items.length - 1];
+  const kB = (n) => `${Math.max(1, Math.round(n / 1024)).toLocaleString()} kB`;
+  $('#backupState').innerHTML = newest
+    ? `<strong class="ok">Last copy ${esc(new Date(newest.at).toLocaleString())}</strong>, `
+      + `${kB(newest.bytes)} — ${items.length} kept of ${d.keep}, in <code>${esc(d.folder)}</code>.`
+    : '<strong class="warn">No copy yet.</strong> One is taken when the app starts and once a day '
+      + 'after that; if this stays empty, the server log says why.';
+}
+
+$('#backupNow').onclick = () => work($('#backupNow'), 'Backing up', async () => {
+  const r = await post('/api/backups', {});
+  await loadBackups();
+  return r.error ? `It could not: ${r.error}` : `Copied to ${r.name}.`;
+});
+
 // --- telling Discord ------------------------------------------------------
 async function loadHook() {
   const d = await api('/api/notify').catch(() => ({ set: false, last: {} }));
@@ -2215,6 +2236,9 @@ $('#openSettings').onclick = async () => {
   await showTagAll();
   // whether a Discord webhook is saved, and how the last line went
   await loadHook();
+  // and when the database was last copied, which is the one thing nobody thinks
+  // to look at until the day it matters
+  await loadBackups();
   renderLibs();
   await loadGenreFolders();
   $('#browser').hidden = true;
