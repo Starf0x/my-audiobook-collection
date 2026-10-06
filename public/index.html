@@ -172,6 +172,17 @@
   <button id="checkPerms" class="ghost">Check folder permissions</button>
   <div id="permsOut"></div>
 
+  <label>The database's own copies</label>
+  <p class="hint">Your audiobooks are on your share and survive almost anything. Where everybody
+    is in each book, the accounts, the levels, the hearts — all of that is in one file beside
+    them, and this keeps a copy of it once a day. They go in <code>backups</code> next to the
+    database, so whatever you already keep of your appdata takes them with it. Restoring one is
+    stopping the container, putting the copy back as <code>library.db</code>, and starting it.</p>
+  <p class="hint" id="backupState"></p>
+  <div class="row">
+    <button id="backupNow" class="ghost">Back up now</button>
+  </div>
+
   <label>Telling Discord</label>
   <p class="hint">A webhook address from a Discord channel — <em>Channel settings → Integrations →
     Webhooks</em>. With one saved, this app posts a line there when somebody asks for an account,
