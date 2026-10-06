@@ -291,5 +291,68 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('which the page knows how to answer', typeof window.showUntagged, 'function');
 }
 
+// --- the two halves app.js was split into ---------------------------------
+// `maint.js` and `edit.js` came out of a 2402-line `app.js` in 2.10.24, and the
+// seam is the thing worth checking: each calls into `app.js` at the moment a
+// button is pressed — `fileWork`, `backToView`, `state`, `toClipboard` — and
+// `app.js` reaches back only through `editMeta` and `findMeta`, which are also
+// reached from a button. A name left behind on the wrong side of that line is a
+// handler that throws on the first click and nowhere else.
+
+// maint.js: a maintenance list draws its rows, and the actions on them
+{
+  const { document } = await open('index.html', {
+    '/api/trash': {
+      keepDays: 30,
+      items: [
+        { id: 1, title: 'Gone One', genre: 'Fantasy', author: 'An Author', files: 3, onDisk: true, daysLeft: 12, deleted_at: '2026-10-01T09:30:00Z' },
+        { id: 2, title: 'Gone Two', genre: 'Fantasy', author: 'An Author', files: 1, onDisk: false, daysLeft: 0, deleted_at: '2026-09-02T11:00:00Z' },
+      ],
+    },
+  });
+  document.querySelector('#trashList').click();
+  await settle(140);
+  check('the trash lists what is in it',
+    [...document.querySelectorAll('#books .fix strong')].map((e) => e.textContent), ['Gone One', 'Gone Two']);
+  check('and says how long each has',
+    /12 day\(s\) left/.test(document.querySelector('#books .list').textContent), true);
+  check('a book whose files are already gone cannot be put back, only dropped',
+    [...document.querySelectorAll('#books .fix')].map((f) => [...f.querySelectorAll('.actions button')]
+      .map((b) => b.textContent.trim())),
+    [['Put back', 'Delete now'], ['Delete now']]);
+  check('and emptying it is offered with the count on it',
+    document.querySelector('#emptyTrash')?.textContent, 'Empty trash (2)');
+}
+
+// edit.js: the dialog opens filled from the book
+{
+  const { window, document } = await open('index.html', {
+    '/api/books': {
+      id: 9, title: 'A Book', author: 'An Author', genre: 'Fantasy', series: 'A Series',
+      folderSeries: 'A Series', series_no: 3, narrator: 'A Narrator', year: '1998',
+      description: 'What it is about.', path: '/audiobooks/Fantasy/An Author/A Series/A Book',
+      tracks: [{ id: 1 }, { id: 2 }],
+    },
+  });
+  await drive('Edit runs to the end', () => window.editMeta(9));
+  await settle();
+  check('Edit opens', document.querySelector('#edit').open, true);
+  check('filled in from the book', [
+    document.querySelector('#eTitle').value, document.querySelector('#eAuthor').value,
+    document.querySelector('#eSeries').value, document.querySelector('#eSeriesNo').value,
+    document.querySelector('#eNarrator').value, document.querySelector('#eYear').value,
+  ], ['A Book', 'An Author', 'A Series', '3', 'A Narrator', '1998']);
+  check('and saying where it lives and what it is made of',
+    document.querySelector('#ePath').textContent,
+    '/audiobooks/Fantasy/An Author/A Series/A Book · 2 files');
+  // The number the sub-series work dropped on save: a result that names none
+  // must leave the one the book has, rather than clearing the field (2.9.56).
+  await drive('Edit runs to the end over a result', () => window.editMeta(9, { title: 'From Google' }));
+  await settle();
+  check('a lookup result that names no number leaves the book its own',
+    [document.querySelector('#eTitle').value, document.querySelector('#eSeriesNo').value],
+    ['From Google', '3']);
+}
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
