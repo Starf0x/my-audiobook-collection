@@ -2748,10 +2748,51 @@ thread (workers). Do not use threads for the reads or lanes for the writes.
 Test scripts are standalone `.mjs` files run with plain `node`, each building its
 own fixture library of real (silent) MPEG frames, starting the server on its own
 port with its own `DATA_DIR`, asserting with a one-line `check(label, got, want)`,
-and printing `all checks passed`. UI suites drive headless Edge over CDP
+and printing `all checks passed`. UI suites drive a headless browser over CDP
 (`--headless=new --remote-debugging-port=9222`) and evaluate expressions in the
 page. `.dockerignore` keeps them out of the image; they are not shipped, which is
 not the same as not kept.
+
+**The page's own logic, without a browser.** Everything above the `plays-on` line
+checks the server. The faults that have actually reached Frank were in the page:
+*Move…* that did nothing because the route it asked threw (2.9.8), Favourites
+with an empty Authors column (2.7.64), a book number dropped on save. Every one
+was found by hand, because the only thing that could drive a page needed a
+browser. `pages` loads `index.html` and `listen.html` into **jsdom** with their
+real scripts and a `fetch` it answers for, then drives handlers and reads the
+DOM — no server, no browser, under a second. Three things make it work and each
+is a trap worth naming:
+
+* The scripts go in as real `<script>` elements, **not** `window.eval`. A classic
+  script's `const` lands in the window's lexical scope and the next script sees
+  it; an `eval` keeps it to itself, so `browse.js` would define `$` and `app.js`
+  would not find it.
+* They are appended **after** the window is fitted with what jsdom has not got
+  (`showModal`, `close`, `scrollIntoView`) and with the stub `fetch`. The page's
+  own `<script src>` tags are stripped from the HTML first, or they would run
+  before any of that was in place.
+* Which scripts, and in which order, is **read off the page**, not listed in the
+  suite. The order is the point — a second copy of the list would be a thing to
+  keep in step.
+
+A route the suite has not been told about **refuses**, so the page's own
+`.catch(() => …)` supplies the empty shape, which is what it does when a route is
+off or a share is not mounted. A route that gains a caller with no fallback shows
+up as a fault instead of passing on a `{}` nobody reads. Loading the scripts is
+itself a check: two of them declaring one name is a SyntaxError that stops a page
+dead, and that now shows up as the page failing to load rather than as a regex
+over the source guessing at declarations — which is what `accounts` did until
+2.10.16. What `accounts` keeps is the seam the disk-reading suite cannot reach:
+the page served at `/admin` is the file `pages` drives.
+
+`jsdom` is this project's one **dev dependency**. The image is built
+`--omit=dev`, so none of it ships; the workflow's `suites` job runs `npm ci`
+rather than `npm ci --omit=dev` for that reason, and `pages` says so plainly if
+it is run without. That job also runs `npm audit --omit=dev --audit-level=high`:
+`proxy-addr` went critical overnight in 2.10.8 and was noticed only because an
+install happened to be running for another reason. Only what ships is asked
+about, and only high and above fails — a moderate advisory in a test tool is not
+a reason to stop a release of something else.
 
 **The browser it drives is whichever one is there.** `plays-on` named one path —
 Edge, in `Program Files (x86)`, on the machine this was written on — which is
@@ -2767,15 +2808,15 @@ whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These fifteen are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the thirteen that run
+leans on could not be run by anybody who had only the spec. These sixteen are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the fourteen that run
 anywhere — `ogg-lengths` among them, which needs `ffmpeg` to make the Ogg it
 checks and says so and checks nothing where there is none, rather than passing
 quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -2933,6 +2974,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.16 | the pages have a suite of their own: `pages` loads both of them into jsdom with their real scripts and drives the handlers, so *Move…* dying on a route that throws, an empty Authors column and a dropped book number are checks rather than things Frank finds. Two scripts declaring one name is now a page that will not load instead of a regex over the source; and the workflow asks `npm audit` about what ships on every run |
 | 2.10.8 | `proxy-addr` 2.0.8, for a critical advisory published since the last release — it is what Express works `req.ip` out with, and `req.ip` is what the sign-in backoff counts against; and the helper that asked "is this book finished" is `countsAsRead`, since `isFinished` is Audiobookshelf's name for something else |
 | 2.10.0 | the database keeps copies of itself — one file held every listening position, account, level and heart, with no second copy anywhere — and the routes that move and delete books have a suite at last |
 | 2.9.80 | each number on an account's row says which question it answers: *played to the end* and *ticked* both count finished books and are not the same count, which read as a fault |
