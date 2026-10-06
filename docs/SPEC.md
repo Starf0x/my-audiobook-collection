@@ -74,6 +74,14 @@ any feature does.
   in four of them (`2.3.80 → 2.4.0`), which the tags are the record of; `.80` is
   the furthest it has ever gone. Every shipped change gets a bump, a commit, a
   tag `vX.Y.Z`, and a push.
+* **Push to `main` first, wait for Checks to be green, and only then tag.** A tag
+  publishes the image, so a tag is the last step and not the first. Some faults
+  exist only on the build machine and cannot be found here: a browser slower to
+  start than the wait allowed, a suite that checked nothing for want of ffmpeg,
+  an apt mirror that hung for fifteen minutes. Each of those was found *after* a
+  tag had gone out and reported as finished, which turns one piece of work into
+  two and makes "done" mean nothing. Nothing is called done until the run that
+  proves it has finished.
 * **The real collection is read-only during development.** Test against generated
   fixtures. Never import, move, delete or write tags against the owner's share.
 * **Secrets are never typed by the assistant.** API keys, tokens and passwords are
@@ -2890,6 +2898,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.9.72 | the tag is the last step: push, wait for Checks, then tag — three faults this session were found after a tag had gone out and the work called finished |
 | 2.9.64 | the README and the wiki know about a series published in parts: six pages, including the one called *How your folders are read*, still said the app could not do what 2.9.0 taught it |
 | 2.9.56 | the two suites that spawn a server refuse to run when something already answers on their port, and wait for their own to die rather than orphaning it there |
 | 2.9.48 | `showSeriesOf` joins the one copy in `browse.js`: the 2.8.0 sweep took what was byte-identical and left this behind over a single line |
