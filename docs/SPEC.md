@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1534 | Express app: every route, and nothing else |
+| `server/index.js` | 1549 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 205 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -124,6 +124,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/trash.js` | 180 | move, delete to trash, restore, purge |
 | `server/validate.js` | 119 | checking every book against the disk |
 | `server/covers.js` | 88 | tidying unused cover files, zipping them |
+| `server/backup.js` | 80 | a copy of the database beside it, once a day, the oldest dropped |
 | `server/placeholder.js` | 115 | the cover drawn for a book that has none |
 | `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
@@ -146,8 +147,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 291 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 385 | the admin page: columns, dialogs |
-| `public/app.js` | 2378 | the admin page's behaviour |
+| `public/index.html` | 396 | the admin page: columns, dialogs |
+| `public/app.js` | 2402 | the admin page's behaviour |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 306 | the listening page’s behaviour |
 | `public/style.css` | 826 | the whole look, every page, phone included |
@@ -169,6 +170,30 @@ being listened to goes on playing while its owner is in there setting it up.
 
 `DATA_DIR` (default `/data`) holds `library.db` and a `covers/` folder, both
 created at import time of `db.js`. `PRAGMA journal_mode = WAL`.
+
+**And `backups/`, because that file was the only copy of everything.** The
+audiobooks are on a share and survive almost anything; where each person is in
+each book, the accounts and their passwords, the completions a level is counted
+from, the hearts and the downloads are in `library.db` and nowhere else, and the
+files on disk cannot rebuild any of it. `backup.js` writes
+`backups/library-YYYY-MM-DD.db` when the app starts and once a day after,
+keeping the last **7** and dropping the rest.
+
+It is `VACUUM INTO`, not a file copy: a copy taken while the app is running can
+catch a half-written page and produce a file that opens and is *wrong*, which is
+worse than no backup at all. `VACUUM INTO` is a transaction, so what it writes is
+the database as it stood at one moment — and compact, which is why a backup is
+smaller than the original. It writes to `…db.writing` and renames, so a copy
+interrupted half way does not replace the good one, and it never throws: a backup
+that cannot be written must not stop the app serving books, so the reason goes to
+the log.
+
+They sit beside the database on the same volume, which is the loss this is for —
+a file going wrong, not a disk going away. Settings says when the last one was
+taken and how many are kept, because a backup nobody can see is one that fails
+quietly and is believed for months; *Back up now* is there for the moment before
+doing something drastic. Restoring is stopping the container, putting the copy
+back as `library.db`, and starting it.
 
 ```sql
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
@@ -2742,15 +2767,15 @@ whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These fourteen are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the twelve that run
+leans on could not be run by anybody who had only the spec. These fifteen are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the thirteen that run
 anywhere — `ogg-lengths` among them, which needs `ffmpeg` to make the Ogg it
 checks and says so and checks nothing where there is none, rather than passing
 quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -2908,6 +2933,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.0 | the database keeps copies of itself — one file held every listening position, account, level and heart, with no second copy anywhere — and the routes that move and delete books have a suite at last |
 | 2.9.80 | each number on an account's row says which question it answers: *played to the end* and *ticked* both count finished books and are not the same count, which read as a fault |
 | 2.9.72 | the tag is the last step: push, wait for Checks, then tag — three faults this session were found after a tag had gone out and the work called finished |
 | 2.9.64 | the README and the wiki know about a series published in parts: six pages, including the one called *How your folders are read*, still said the app could not do what 2.9.0 taught it |

@@ -26,6 +26,7 @@ const PORTABLE = [
   'book-bar',
   'ogg-lengths',
   'sub-series',
+  'moving',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten
