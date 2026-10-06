@@ -64,8 +64,18 @@ jobs:
         timeout-minutes: 4
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       # `npm ci` needs the lock to match package.json, which is also the check
-      # that nothing was installed into the tree by hand
-      - run: npm ci --omit=dev
+      # that nothing was installed into the tree by hand. Dev dependencies are
+      # installed here and nowhere else: the suites need jsdom, and the Dockerfile
+      # keeps `--omit=dev`, so none of it reaches the image.
+      - run: npm ci
+      # An advisory against something that ships is news on the day it is
+      # published, not whenever somebody happens to run this. proxy-addr went
+      # critical overnight and was found only because a install was being done
+      # for another reason. Only what ships is asked about, and only high and
+      # above fails: a moderate advisory in a test tool is not a reason to stop
+      # a release of something else.
+      - name: Nothing shipped has a known hole in it
+        run: npm audit --omit=dev --audit-level=high
       - run: npm test
 
   browser:

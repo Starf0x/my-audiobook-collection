@@ -1,9 +1,13 @@
 // Every suite that runs anywhere, one after another. `npm test` is this.
 //
-// Not every suite is in here. The ones that drive a headless browser need Edge
-// with a debugging port, and `covers-zip` asks PowerShell to unpack the archive
-// it made — both are worth having and neither belongs in a run that has to work
-// on a build machine, so they are named below rather than quietly left out.
+// Not every suite is in here. `plays-on` needs a real browser and takes longer
+// than everything else together, and `covers-zip` asks PowerShell to unpack the
+// archive it made — both are worth having and neither belongs in a run that has
+// to work anywhere, so they are named below rather than quietly left out.
+//
+// `pages` is the middle ground between them: it drives the real page scripts,
+// in jsdom, with no browser and no server. It needs the dev dependencies, which
+// is why the workflow installs them for this job and the image does not.
 //
 // Suites run one at a time on purpose: several of them start a server on a fixed
 // port and build a fixture library in a folder of their own.
@@ -27,12 +31,13 @@ const PORTABLE = [
   'ogg-lengths',
   'sub-series',
   'moving',
+  'pages',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten
 const ELSEWHERE = {
   'covers-zip': 'unpacks with PowerShell, so it needs Windows',
-  'plays-on': 'drives headless Edge over CDP',
+  'plays-on': 'drives a real browser over CDP — `npm run test:ui`, and its own job in CI',
 };
 
 const one = (name) => new Promise((done) => {
