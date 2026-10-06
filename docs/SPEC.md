@@ -147,8 +147,10 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 291 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 396 | the admin page: columns, dialogs |
-| `public/app.js` | 2402 | the admin page's behaviour |
+| `public/index.html` | 400 | the admin page: columns, dialogs |
+| `public/app.js` | 1517 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/maint.js` | 564 | the maintenance column, and the moving and deleting it leads to |
+| `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 306 | the listening page’s behaviour |
 | `public/style.css` | 826 | the whole look, every page, phone included |
@@ -162,7 +164,17 @@ the address, and old links still work. `app.use(express.json({ limit: '1mb' }))`
 
 All three pages end with their own script and then `player.js`, in that order:
 the player leans on the `$`, `api`, `post`, `toast`, `esc` and `state` each page
-declares, so it has to be parsed after them. Each page carries the same
+declares, so it has to be parsed after them.
+
+**The admin page's own script is three files, in a fixed order.** `browse.js`
+first, because `app.js` uses `$`, `api` and `esc` in its own top-level code; then
+`app.js`, which declares `state` and the helpers the other two call; then
+`maint.js` and `edit.js`, which only hang handlers on elements the page already
+has. They share one lexical scope — they are classic scripts, not modules — so
+a name declared in two of them is a SyntaxError that stops the whole page, and
+`pages` catches that by loading them (§11). `app.js` was 2402 lines until 2.10.24
+and the split is along what each part touches: what crosses the seam does so when
+a button is pressed, never at load. Each page carries the same
 `<footer id="player">` markup — the Home Assistant page included, because a book
 being listened to goes on playing while its owner is in there setting it up.
 
@@ -2974,6 +2986,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.24 | `app.js` was 2402 lines and is now three files: the maintenance column and its file operations are `maint.js`, the edit dialog with its cover and lookup is `edit.js`, and what both of them call stays in `app.js`. The split is along what each part touches, and `pages` is what made it safe to make |
 | 2.10.16 | the pages have a suite of their own: `pages` loads both of them into jsdom with their real scripts and drives the handlers, so *Move…* dying on a route that throws, an empty Authors column and a dropped book number are checks rather than things Frank finds. Two scripts declaring one name is now a page that will not load instead of a regex over the source; and the workflow asks `npm audit` about what ships on every run |
 | 2.10.8 | `proxy-addr` 2.0.8, for a critical advisory published since the last release — it is what Express works `req.ip` out with, and `req.ip` is what the sign-in backoff counts against; and the helper that asked "is this book finished" is `countsAsRead`, since `isFinished` is Audiobookshelf's name for something else |
 | 2.10.0 | the database keeps copies of itself — one file held every listening position, account, level and heart, with no second copy anywhere — and the routes that move and delete books have a suite at last |
