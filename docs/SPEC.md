@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1549 | Express app: every route, and nothing else |
+| `server/index.js` | 1565 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 205 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -2933,6 +2933,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.8 | `proxy-addr` 2.0.8, for a critical advisory published since the last release — it is what Express works `req.ip` out with, and `req.ip` is what the sign-in backoff counts against; and the helper that asked "is this book finished" is `countsAsRead`, since `isFinished` is Audiobookshelf's name for something else |
 | 2.10.0 | the database keeps copies of itself — one file held every listening position, account, level and heart, with no second copy anywhere — and the routes that move and delete books have a suite at last |
 | 2.9.80 | each number on an account's row says which question it answers: *played to the end* and *ticked* both count finished books and are not the same count, which read as a fault |
 | 2.9.72 | the tag is the last step: push, wait for Checks, then tag — three faults this session were found after a tag had gone out and the work called finished |
