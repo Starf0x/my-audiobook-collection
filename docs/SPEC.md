@@ -109,9 +109,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1612 | Express app: every route, and nothing else |
+| `server/index.js` | 1627 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 205 | schema, migrations, settings, library list |
+| `server/db.js` | 212 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 650 | walking the library, reading tags, filing books |
 | `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
@@ -131,7 +131,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
 | `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
 | `server/finished.js` | 67 | what "finished" means: the three senses of the word, and the one every count asks |
-| `server/listeners.js` | 366 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/listeners.js` | 369 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
 | `server/notify.js` | 142 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
@@ -139,22 +139,22 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/convert.js` | 335 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 467 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
-| `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 199 | its behaviour — the statistics, the two ticks, and the administrator's own row |
+| `public/accounts.js` | 209 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 375 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 291 | browsing the collection: what both pages do the same way, in one copy |
+| `public/browse.js` | 310 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 400 | the admin page: columns, dialogs |
 | `public/app.js` | 1517 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 564 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 306 | the listening page’s behaviour |
-| `public/style.css` | 826 | the whole look, every page, phone included |
+| `public/style.css` | 831 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -231,6 +231,9 @@ CREATE INDEX tracks_book ON tracks (book_id);
 CREATE TABLE progress (
   user TEXT, book_id INTEGER, track_idx INTEGER, position REAL, updated TEXT,
   done INTEGER DEFAULT 0,
+  -- which face kept this place: page, music-assistant, home-assistant, or
+  -- empty for a row from before 2.10.72
+  via TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (user, book_id)
 );
 
@@ -1927,6 +1930,22 @@ write into another's, which is the whole thing accounts were added for. With no
 install the app has always supported, and there the name in the request is all
 there is.
 
+**And where did a place come from.** A player signs in as **one** listener and
+writes every position it keeps against that name, whoever is actually in the
+room: that is what the username in `/login` is for (§7.14). So a book somebody
+else was listening to appears on your own shelf, correctly, under your own name
+— and nothing anywhere said so. Frank had one, asked whether to get the other
+person to tick it off, and answering "whose is this?" meant reading the source
+to work out which faces can write a place at all. The answer was never the other
+person's to give: the row is yours, and unticking it on your own page is what
+removes it.
+
+`progress.via` records the face: `page`, `music-assistant`, `home-assistant`, or
+empty for a row kept before 2.10.72. The tiles and the accounts page say it
+**only when it was not the page** — a place the page kept needs no label, and one
+a player kept is the case worth naming. It does not change who a place belongs
+to; it says how it got there, which is the question that could not be answered.
+
 **And whose read is it** — the same question, not asked until 2.10.40. Writing
 was closed when accounts arrived and reading was left open: every shelf, the
 Listened section, the line of numbers, the cards and one book's own progress took
@@ -3056,6 +3075,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.72 | a kept place says which face kept it. Frank had a book on his own *Continue listening* that somebody else was listening to — correctly under his name, because a player signs in as one listener and writes every position against that name — and asked whether to get the other person to tick it off. Nothing in the app could answer "whose is this?", and the answer was never theirs to give. `progress.via` records `page`, `music-assistant` or `home-assistant`, and the tiles and the accounts page say it only when it was not the page |
 | 2.10.64 | *May download* reaches the administrator, asked for outright after 2.10.40 explained why it did not. Downloading is a thing a row on the accounts page allows, so that row allows it for them; an administrator with no row of their own keeps what they had, because a rule there is no key to would be a lock. `mayTakeABook` is the one expression of it, read by the route **and** by the page that decides whether to offer the button — those were two, and they disagreed. Two checks written for this in 2.10.40 turn out to have asked about a book the fixture does not have, so both got a 404 and could not have failed |
 | 2.10.56 | a failing suite says why again under the tally, instead of forty lines of `ok` scrolling over the one sentence that explains it — the `FAIL` lines and their `got`/`want`, or whatever threw, with the stack frames left out. `series-complete` failed once and was never diagnosed because its own careful message was filtered away by the `grep` the run was piped through |
 | 2.10.48 | the same leak, on the Home Assistant route: `forHA` passes a request through when no `HA_TOKEN` is set, so a signed-in listener could ask `/api/ha?user=` for somebody else's places and `continue.m3u` would hand over the book and the second they stopped at. Found by going back over the rest of the app after 2.10.40 rather than by anybody hitting it. The Audiobookshelf face was already right |

@@ -48,6 +48,24 @@ async function loadStats() {
 // --- shelves and their tiles ---------------------------------------------
 // A book with no art of its own gets a cover drawn from its title, so every
 // tile in the row is a cover.
+// Where a kept place came from, said only when it was not this page.
+//
+// A player signs in as one listener and writes every position it keeps against
+// that name, whoever is actually in the room — so a book somebody else was
+// listening to turns up on your own shelf, under your own name, with nothing to
+// explain it. Frank had one and answering "whose is this?" meant reading the
+// source. A place kept by the page needs no label; one kept by a player is the
+// case worth naming, so only that is drawn.
+const PLACED_BY = {
+  'music-assistant': ['Music Assistant', 'A player wrote this place, not this page. Music Assistant signs in as one '
+    + 'listener and keeps every position against that name, whoever is listening.'],
+  'home-assistant': ['Home Assistant', 'Home Assistant wrote this place, not this page.'],
+};
+const placedBy = (b) => {
+  const said = PLACED_BY[b.via];
+  return said ? `<div class="a via" title="${esc(said[1])}">↷ ${esc(said[0])}</div>` : '';
+};
+
 const tile = (b, resumable) => {
   const at = Math.min(b.track_idx + 1, b.tracks || 1);
   // how far in, in time: counting tracks would stand full from the first minute
@@ -66,6 +84,7 @@ const tile = (b, resumable) => {
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
       <div class="a">${how}</div>
+      ${placedBy(b)}
       <button class="tplay" data-play="${b.id}" data-resume="1"${b.finished ? ' data-again="1"' : ''}>${b.finished ? '▶ Play again' : '▶ Resume'}</button>` : ''}
   </div>`;
 };

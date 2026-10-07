@@ -122,6 +122,13 @@ try { db.exec("ALTER TABLE books ADD COLUMN tagged TEXT DEFAULT ''"); } catch { 
 try { db.exec("ALTER TABLE books ADD COLUMN tag_series TEXT DEFAULT ''"); } catch { /* already there */ }
 try { db.exec('ALTER TABLE books ADD COLUMN series_no INTEGER DEFAULT 0'); } catch { /* already there */ }
 try { db.exec("ALTER TABLE books ADD COLUMN parent_series TEXT DEFAULT ''"); } catch { /* already there */ }
+// Which face wrote this place. A player is signed in as one listener and writes
+// every position it keeps against that name, whoever is actually in the room —
+// so a book somebody else was listening to can appear on your own shelf, with
+// nothing anywhere to say where it came from. Frank had one and it took reading
+// the source to answer "whose is this?". One of `page`, `music-assistant`,
+// `home-assistant`, or empty for a row kept before 2.10.72.
+try { db.exec("ALTER TABLE progress ADD COLUMN via TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
 
 // A listener became an account in 2.7.0. Every name that was already there is
 // approved — locking the household out of its own listening history to add a

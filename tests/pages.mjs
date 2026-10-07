@@ -378,8 +378,10 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     '/api/accounts': {
       accounts: [
         { ...base, name: 'FrankyB', isAdmin: true, hasPassword: false, lastSeen: day(0), daysAgo: 0, granted: true },
-        { ...base, name: 'Donna', isAdmin: false, hasPassword: true, lastSeen: day(12), daysAgo: 12, granted: false },
-        { ...base, name: 'Newcomer', isAdmin: false, hasPassword: false, lastSeen: '', daysAgo: null },
+        { ...base, name: 'Donna', isAdmin: false, hasPassword: true, lastSeen: day(12), daysAgo: 12, granted: false,
+          listening: [{ title: 'Abyss', author: 'Troy Denning', percent: 1, hours: 0.2, updated: day(1), via: 'music-assistant' }] },
+        { ...base, name: 'Newcomer', isAdmin: false, hasPassword: false, lastSeen: '', daysAgo: null,
+          listening: [{ title: 'A Book', author: 'An Author', percent: 40, hours: 2, updated: day(1), via: 'page' }] },
       ],
     },
   });
@@ -404,6 +406,15 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('and are on a listener’s',
     [...rowOf('Donna').querySelectorAll('.allowed input')].map((i) => i.dataset.mayListen !== undefined
       || i.dataset.mayDownload !== undefined), [true, true]);
+  // Where a kept place came from. Frank had a book on his own Continue
+  // listening that somebody else was listening to — correctly under his name,
+  // because a player signs in as one listener and writes every position against
+  // that name — and nothing on the page said so.
+  check('a place a player kept is named as theirs',
+    /↷ Music Assistant/.test(rowOf('Donna').textContent), true);
+  check('and one kept by the page is not labelled at all, since that is the usual case',
+    /↷/.test(rowOf('Newcomer').textContent), false);
+
   // the date, which is the thing that was missing
   check('Last here carries the date, not only how long ago',
     /Last here: 12 days ago · \d/.test(rowOf('Donna').textContent), true);

@@ -310,7 +310,7 @@ export function withStats() {
     // the end. Newest first, because "what are they listening to" means the last
     // one they touched — and with how far in, which is the same sum the shelves
     // and Home Assistant use, so the three cannot disagree.
-    const listening = db.prepare(`SELECT b.title, b.author, b.duration, p.position, p.track_idx, p.updated,
+    const listening = db.prepare(`SELECT b.title, b.author, b.duration, p.position, p.track_idx, p.updated, p.via,
         (SELECT COALESCE(SUM(t.duration), 0) FROM tracks t
            WHERE t.book_id = b.id AND t.idx < p.track_idx) AS behind
       FROM progress p JOIN books b ON b.id = p.book_id
@@ -324,6 +324,9 @@ export function withStats() {
           percent: b.duration ? Math.max(0, Math.min(100, Math.round((into / b.duration) * 100))) : 0,
           hours: Math.round((into / 3600) * 10) / 10,
           updated: b.updated || '',
+          // which face kept this place, so a book on somebody's row that they do
+          // not recognise can be traced to the player that wrote it
+          via: b.via || '',
         };
       });
     const sessions = db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE name = ?').get(u.name).n;

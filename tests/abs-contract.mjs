@@ -299,6 +299,14 @@ try {
   check('finishing it there ticks it here', finished.status, 200);
   check('the book is marked listened',
     db.prepare('SELECT done FROM progress WHERE user = ? AND book_id = ?').get('Frank', first).done, 1);
+  // Which face kept this place, written down beside it. Music Assistant signs in
+  // as one listener and writes every position against that name, whoever is
+  // actually in the room — so a book turns up on somebody's own shelf, correctly
+  // under their own name, and until 2.10.72 nothing anywhere said where it came
+  // from. Frank had one and answering "whose is this?" meant reading the source.
+  check('and the place says a player kept it, not the page',
+    db.prepare('SELECT via FROM progress WHERE user = ? AND book_id = ?').get('Frank', first).via,
+    'music-assistant');
   check('and it now shows up on the user', (await get('/api/me')).mediaProgress.length, 1);
   parses('as a progress row', at((await get('/api/me')).mediaProgress), 'MediaProgress');
 

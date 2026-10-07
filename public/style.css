@@ -406,6 +406,11 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
 .card .sub.series-of { color: var(--accent2); }
 .tile .a.series-of { color: var(--accent2); opacity: .85; }
 
+/* Where a kept place came from, when it was not this page. Quieter than the
+   title and the author — it answers a question nobody asks until a book they do
+   not recognise is on their shelf, and then it is the only thing they want. */
+.tile .a.via, .card .sub.via { color: var(--accent2); opacity: .75; font-style: italic; }
+
 /* the step-back button in a column heading: only a phone shows one column at a
    time, so only a phone needs it */
 .back { display: none; }

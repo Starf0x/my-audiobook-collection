@@ -175,6 +175,11 @@ check('but the admin list does not', (await get('/api/accounts', bert.cookies)).
   await post('/api/progress', { bookId: 3, trackIdx: 0, position: 1 }, bert.cookies);
   const asBert = (await get('/api/home', bert.cookies)).body;
   check('Bert has a book on the go', asBert.continue.map((b) => b.id), [3]);
+  // and the place says the page kept it, which is what makes one a player kept
+  // worth drawing attention to — see `abs-contract` for the other side
+  check('and the place says this page kept it',
+    [db.prepare("SELECT via FROM progress WHERE user = 'Bert' AND book_id = 3").get().via,
+      asBert.continue[0].via], ['page', 'page']);
 
   // and now the admin asks for it by name
   const asked = (await get('/api/home?user=Bert', admin.cookies)).body;

@@ -335,6 +335,20 @@ const mayTakeABook = (who, amAdmin) => {
   return mayDownload(finishedCount(who), row && row.may_download);
 };
 
+// Which face a place came in on, kept beside the place itself.
+//
+// A player is signed in as one listener and writes every position it keeps
+// against that name, whoever is actually in the room. So a book somebody else
+// was listening to turns up on your own shelf, correctly, under your own name —
+// and there was nothing anywhere to say where it came from. Frank had one and
+// answering "whose is this?" meant reading the source.
+//
+// A cookie session is the page. The two machines hold a token of their own and
+// `whoIsAsking` never set a listener on them, so an undefined one is the Home
+// Assistant token; `abs.js` writes its own, since Music Assistant comes in
+// through the Audiobookshelf face and not through here.
+const cameFrom = (req) => (req.listener === undefined ? 'home-assistant' : 'page');
+
 const whoReads = (req) => (adminRequired()
   ? (req.listener === undefined ? asName(req.query.user) : (req.listener || ''))
   : asName(req.query.user));
@@ -631,7 +645,7 @@ app.get('/api/untagged', requireAdmin, (req, res) => {
 // of the tracks already behind them — so how far into a book a place is can be
 // said in time rather than in tracks, which is the only honest way to say it for a
 // book that is one long file
-const KEPT = `p.track_idx, p.position, p.done,
+const KEPT = `p.track_idx, p.position, p.done, p.via, p.updated,
   (SELECT COALESCE(SUM(t.duration), 0) FROM tracks t
      WHERE t.book_id = b.id AND t.idx < p.track_idx) AS behindSeconds,
   (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks,
@@ -904,10 +918,10 @@ app.post('/api/listened', (req, res) => {
   if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
     return res.status(404).json({ error: 'No such book' });
   }
-  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated)
-    VALUES (?, ?, 0, 0, 1, datetime('now'))
-    ON CONFLICT(user, book_id) DO UPDATE SET done = 1, updated = excluded.updated`)
-    .run(user, bookId);
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated, via)
+    VALUES (?, ?, 0, 0, 1, datetime('now'), ?)
+    ON CONFLICT(user, book_id) DO UPDATE SET done = 1, updated = excluded.updated, via = excluded.via`)
+    .run(user, bookId, cameFrom(req));
   // `played` is the player saying the last track ran out. A tick pressed by hand
   // is a statement — a useful one — and this counts what the app watched happen,
   // so only the first of those two adds to somebody's finished books.
@@ -1481,10 +1495,11 @@ app.post('/api/progress', (req, res) => {
   if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
     return res.status(404).json({ error: 'No such book' });
   }
-  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated) VALUES (?, ?, ?, ?, datetime('now'))
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, via)
+      VALUES (?, ?, ?, ?, datetime('now'), ?)
     ON CONFLICT(user, book_id) DO UPDATE SET track_idx = excluded.track_idx,
-      position = excluded.position, updated = excluded.updated`)
-    .run(user, bookId, trackIdx, position);
+      position = excluded.position, updated = excluded.updated, via = excluded.via`)
+    .run(user, bookId, trackIdx, position, cameFrom(req));
   // A place at the end of the last track means the book has been listened to, so
   // the tick says so — whoever moved it there, the player or Home Assistant. It is
   // only ever set here: taking it off again is unticking it, or starting the book
