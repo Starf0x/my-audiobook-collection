@@ -155,5 +155,33 @@ check('but the genres can still be had', asksGenres.status, 200);
 // the wrong reason. The two checks above stay, because they are what makes the
 // answers `pages` stubs the answers this server really gives.
 
+// --- converting is started, not awaited ----------------------------------
+// It used to be awaited inside the request: the page held one HTTP call open for
+// the whole conversion, which runs for minutes. Anything that dropped that call
+// — a proxy's idle timeout, a laptop asleep, a blip — read as the conversion
+// failing. Frank watched the bar say so and vanish, *Convert to MP3* come back,
+// and ffmpeg carry on in the container behind it.
+//
+// So the request starts the work and answers, and what it is doing is the
+// status. Book 7 has no files at all, so this one fails almost at once — which
+// is the point: the failure has to arrive through the status, because the
+// request that asked for it is long gone either way.
+{
+  const go = await post('/api/convert/7', {});
+  check('asking for a conversion is answered at once, not when it is over',
+    [go.status, go.body], [200, { started: true }]);
+
+  let said = {};
+  for (let i = 0; i < 50 && (said.running !== false || !said.error); i++) {
+    // eslint-disable-next-line no-await-in-loop -- polling is the shape of this
+    await new Promise((r) => setTimeout(r, 100));
+    said = await fetch(`${BASE}/api/convert/status`).then((r) => r.json()).catch(() => ({}));
+  }
+  check('and what went wrong arrives in the status instead',
+    [said.running, /\S/.test(said.error || '')], [false, true]);
+  check('which is where the page reads it, so a reload during one loses nothing',
+    typeof said.files, 'number');
+}
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);

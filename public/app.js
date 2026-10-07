@@ -1514,4 +1514,8 @@ window.begin = async () => {
   if (scanning && scanning.running) {
     work($('#scan'), 'The scan', async () => finishScan(null, await trackProgress('/api/scan/status', 'Looking for books…')));
   }
+  // and a conversion, for the same reason: it runs for minutes, so the page is
+  // reloaded during one far more often than during anything else here
+  const converting = await api('/api/convert/status').catch(() => null);
+  if (converting && converting.running) window.followConvert?.();
 };

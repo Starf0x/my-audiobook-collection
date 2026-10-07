@@ -143,8 +143,22 @@ async function probe(file) {
 // a chapter title becomes a file name, so it may hold nothing a path cannot
 const safeName = (s) => s.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70);
 
+// What a conversion is doing, and what the last one did.
+//
+// This is the whole account of it now, not a by-product of one. A conversion
+// runs for minutes and used to be awaited inside the request that asked for it,
+// so the page held one HTTP call open the whole time — and anything that dropped
+// that call (a proxy's idle timeout, a laptop going to sleep, a blip) read as
+// the conversion failing: the bar said so and went, the button came back, and
+// ffmpeg carried on in the container with nobody watching. The request starts
+// the work and returns; this is what is followed, the way the scan already is.
+//
+// So `files` and `kept` live here as well: the answer has to survive the request
+// that asked for it, or a page that rejoins a conversion in progress has no way
+// to say how it went.
 export const convertProgress = {
   running: false, done: 0, total: 0, current: '', error: '', book: 0,
+  files: 0, kept: '', finishedAt: '',
 };
 
 // Every book whose files are not all MP3: what the list in the column offers, and
@@ -258,10 +272,16 @@ export async function convertBook(id) {
   if (convertProgress.running) {
     throw new Error('A book is being converted already. Wait for it to finish.');
   }
+  // the last run's outcome goes now, not when the next one ends: a page asking
+  // the status a moment after pressing Convert must not be shown the one before
+  Object.assign(convertProgress, { error: '', files: 0, kept: '', finishedAt: '' });
   convertProgress.running = true;
   try {
-    return await convert_(id);
+    const out = await convert_(id);
+    Object.assign(convertProgress, { files: out.files, kept: out.kept });
+    return out;
   } finally {
+    convertProgress.finishedAt = new Date().toISOString();
     convertProgress.running = false;
   }
 }

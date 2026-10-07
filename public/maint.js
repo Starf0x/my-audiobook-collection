@@ -276,17 +276,38 @@ async function loadConverted() {
 }
 
 // One book, with the bar at the bottom following the minutes of audio through it
+// Converting one book, followed to the end.
+//
+// It used to hold the request open for the whole conversion and treat that
+// request as the job: `until.finished` was set when the POST came back, so
+// anything that dropped the call — a proxy's idle timeout, a laptop asleep, a
+// blip — ended the bar with "Converting failed" and let the button go, while
+// ffmpeg carried on in the container. Frank watched exactly that: the bar gone,
+// *Convert to MP3* clickable again, and the conversion still running behind it.
+//
+// The request now only starts the work. What is followed is the status, which is
+// a short request however long the conversion takes, and the outcome is read
+// from there — so a page that joins a conversion already in progress, or comes
+// back to one after a reload, is in exactly the same position as the page that
+// started it.
 async function runConvert(id) {
-  const until = { finished: false };
-  const request = post(`/api/convert/${id}`, {}).catch((e) => ({ error: e.message }))
-    .then((r) => { until.finished = true; return r; });
-  const p = await trackProgress('/api/convert/status', 'Converting', until);
-  const r = await request;
-  const failure = r.error || p.error;
-  p.bar.say(failure ? `Converting failed: ${failure}` : `Converted: ${r.files} file(s) kept under Converted.`, !!failure);
+  const go = await post(`/api/convert/${id}`, {}).catch((e) => ({ error: e.message }));
+  if (go.error) return toast(go.error);
+  return followConvert();
+}
+
+// Watching a conversion, whoever asked for it. `trackProgress` with no `until`
+// waits for the server to say it has stopped, which is the only thing that
+// actually knows.
+async function followConvert() {
+  const p = await trackProgress('/api/convert/status', 'Converting');
+  const failure = p.error;
+  p.bar.say(failure ? `Converting failed: ${failure}`
+    : `Converted: ${p.files} file(s) kept under Converted.`, !!failure);
   p.bar.done(failure ? 15000 : 4000);
   await refreshLibrary();
 }
+window.followConvert = followConvert;
 
 $('#convertList').onclick = async () => {
   document.body.classList.add('maintenance');

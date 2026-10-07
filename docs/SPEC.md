@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1627 | Express app: every route, and nothing else |
+| `server/index.js` | 1651 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 212 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -136,7 +136,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/notify.js` | 142 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
-| `server/convert.js` | 335 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
+| `server/convert.js` | 355 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 467 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
@@ -149,8 +149,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 351 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 400 | the admin page: columns, dialogs |
-| `public/app.js` | 1517 | the admin page's spine: the columns, browsing, import, the scan, settings |
-| `public/maint.js` | 564 | the maintenance column, and the moving and deleting it leads to |
+| `public/app.js` | 1521 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/maint.js` | 585 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 306 | the listening page’s behaviour |
@@ -1200,6 +1200,30 @@ readers drifts (§7.10a says the same about the series sentence).
 Books whose files are not MP3 play but cannot be tagged, so they never leave
 *Needs tags*. `convertible()` is every book with a track that is not `.mp3`, with
 how many and of what kind; `convertBook(id)` turns them.
+
+**It is started, not awaited** — the same shape as `/api/scan`, since 2.10.88.
+`POST /api/convert/:id` used to answer only when the conversion was over, so the
+page held one HTTP request open for the length of an m4b: minutes. Anything that
+dropped that request — a reverse proxy's idle timeout, a laptop going to sleep, a
+blip — reached the page as the conversion *failing*. The bar said so and left,
+*Convert to MP3* came back enabled, and ffmpeg carried on in the container with
+nobody watching. Both halves of that are what Frank reported, and they were one
+cause.
+
+The route answers `{started: true}`, or **409** when one is already running,
+because that refusal belongs to the press. Everything else is
+`GET /api/convert/status`, which is a short request however long the work is, and
+which carries the outcome — `files` and `kept` on success, `error` on failure —
+precisely so it outlives the request that asked. The page follows it with
+`trackProgress` and no `until`, and `window.begin` rejoins a conversion already
+running, the way it already rejoined a scan: a page reloaded during one is in the
+same position as the page that started it.
+
+The lock stays inside `convertBook`, taken before the first await (§ below). The
+route's own check is a second reading of it on purpose — it exists to answer the
+press — and a lost race between the two is caught: `convertBook` throws, and the
+route records that only when nothing is running, so a complaint about a press
+can never overwrite a live conversion's state.
 
 **The tools ship with the image.** `apk add --no-cache ffmpeg` in the Dockerfile,
 which brings ffprobe with it and is by definition the build that image is for, so
@@ -3109,6 +3133,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.88 | converting is started, not awaited. `POST /api/convert/:id` answered only when the conversion was over, so the page held one request open for the length of an m4b — and anything that dropped it reached the page as the conversion failing: the bar left, *Convert to MP3* came back, and ffmpeg carried on in the container. Both halves of what Frank saw, one cause. The route answers at once and the status carries the outcome, so a reload during one rejoins it |
 | 2.10.80 | listening on a phone shows up on the desktop. A place lives on the server and nothing on a page ever read it again, so a desktop left open showed where you were when you opened it — and, open and paused, would overwrite a place the phone had moved on, because a press resumes from that tab's own clock. The page picks the place up when it comes back, and redraws *Continue listening* when that is what is on screen |
 | 2.10.72 | a kept place says which face kept it. Frank had a book on his own *Continue listening* that somebody else was listening to — correctly under his name, because a player signs in as one listener and writes every position against that name — and asked whether to get the other person to tick it off. Nothing in the app could answer "whose is this?", and the answer was never theirs to give. `progress.via` records `page`, `music-assistant` or `home-assistant`, and the tiles and the accounts page say it only when it was not the page |
 | 2.10.64 | *May download* reaches the administrator, asked for outright after 2.10.40 explained why it did not. Downloading is a thing a row on the accounts page allows, so that row allows it for them; an administrator with no row of their own keeps what they had, because a rule there is no key to would be a lock. `mayTakeABook` is the one expression of it, read by the route **and** by the page that decides whether to offer the button — those were two, and they disagreed. Two checks written for this in 2.10.40 turn out to have asked about a book the fixture does not have, so both got a 404 and could not have failed |
