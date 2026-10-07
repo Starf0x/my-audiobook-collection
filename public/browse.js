@@ -93,6 +93,17 @@ const shelf = (title, items, resumable) => !items.length ? '' :
   `<div class="shelf" data-shelf="${esc(title)}"><div class="shelf-title">${title}</div>
      <div class="tiles">${items.map((b) => tile(b, resumable)).join('')}</div></div>`;
 
+// Which series a book is in — or, just as usefully, that it is in none.
+//
+// This drew the line only when there was a series, so a standalone book showed
+// nothing there at all. Cards stack, and the eye reads the last series it was
+// told about as still applying: Frank had *Warbreaker* sitting under
+// *Oathbringer*'s "The Stormlight Archive · book 3" and the page gave him no
+// reason to think otherwise. Absence is not a statement. Saying *Standalone* is.
+const seriesLine = (b) => (b.series
+  ? `<div class="sub series-of">Series · ${esc(b.series)}${b.series_no ? ` · book ${b.series_no}` : ''}</div>`
+  : '<div class="sub standalone" title="This book is not part of a series">Standalone</div>');
+
 // --- coming back, after listening somewhere else --------------------------
 // A place in a book is kept on the server, so listening on a phone moves it for
 // every page — but nothing here ever read it again. The player wrote every ten

@@ -220,6 +220,29 @@ check('but the admin list does not', (await get('/api/accounts', bert.cookies)).
   db.prepare("DELETE FROM users WHERE name = 'Donna'").run();
 }
 
+// --- Unabridged is the book's, not a listener's ---------------------------
+// It sits under *Listened* on the card and is a different kind of thing:
+// Listened is each listener's own, Unabridged is a fact about the book. So the
+// admin states it and everybody sees it, which is the model — a listener changes
+// nothing about the collection (§7.12).
+{
+  check('a book says nothing about it until somebody does',
+    (await get('/api/books/3', admin.cookies)).body.unabridged, 0);
+  check('the admin can say so',
+    (await post('/api/books/3/unabridged', { on: true }, admin.cookies)).body,
+    { ok: true, unabridged: true });
+  check('and it is what the card is then built from',
+    (await get('/api/books/3', admin.cookies)).body.unabridged, 1);
+  check('a listener cannot say it',
+    (await post('/api/books/3/unabridged', { on: false }, bert.cookies)).status, 403);
+  check('and the book still says what the admin said',
+    (await get('/api/books/3', admin.cookies)).body.unabridged, 1);
+  check('taking it off again is the same one route',
+    (await post('/api/books/3/unabridged', { on: false }, admin.cookies)).body.unabridged, false);
+  check('and a book that is not there is not there',
+    (await post('/api/books/999/unabridged', { on: true }, admin.cookies)).status, 404);
+}
+
 // --- the page the admin reads them on ------------------------------------
 const pageOf = async (where, cookie) => {
   const r = await realFetch(`${BASE}${where}`, { headers: cookie ? { Cookie: cookie } : {} });
@@ -460,6 +483,7 @@ for (let i = 0; i < 7; i++) {
   if (r.status === 429) refused++;
 }
 check('guessing starts costing after a handful of tries', refused > 0, true);
+
 
 // --- the administrator's own name, on the page of accounts ----------------
 // Frank turned *May download* off on his own row and went on downloading, and

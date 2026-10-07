@@ -171,11 +171,14 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
               title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
           ${esc(b.title)}</h3>
         <div class="sub">${esc(author)}</div>
-        ${b.series ? `<div class="sub series-of">Series · ${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
+        ${seriesLine(b)}
         <div class="sub" style="margin-top:6px">
           ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
           ${b.duration ? `<span class="badge">${hms(b.duration)}</span>` : ''}
+          <!-- a fact about the book, so it is shown here and set on the admin
+               page: nothing a listener touches changes the collection -->
+          ${b.unabridged ? '<span class="badge" title="The whole book, not a shortened reading of it">Unabridged</span>' : ''}
         </div>
         <div class="desc">${esc(b.description) || 'No description.'}</div>
       </div>

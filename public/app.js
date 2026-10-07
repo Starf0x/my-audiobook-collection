@@ -263,13 +263,19 @@ async function drawBooks(books, heading, kind = 'Series', states = []) {
         <label class="listened">
           <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
         </label>
+        <!-- Listened is this listener's; Unabridged is the book's, so only the
+             admin page offers it. Off means nobody has said so, not "abridged". -->
+        <label class="listened unabridged"
+          title="The whole book, not a shortened reading of it. Nothing in the files says this, so it is yours to state.">
+          <input type="checkbox" ${b.unabridged ? 'checked' : ''} onchange="setUnabridged(${b.id}, this)"> Unabridged
+        </label>
       </div>
       <div>
         <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
               title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
           ${esc(b.title)}</h3>
         <div class="sub">${esc(author)}</div>
-        ${b.series ? `<div class="sub series-of">Series · ${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
+        ${seriesLine(b)}
         <div class="sub" style="margin-top:6px">
           ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
@@ -394,6 +400,19 @@ onMenu('edit', () => { const id = Number(coverMenu.dataset.id); hideCoverMenu();
 onMenu('find', () => { const id = Number(coverMenu.dataset.id); hideCoverMenu(); findMeta(id); });
 
 // --- metadata lookup ---------------------------------------------------
+// The book's own, not a listener's: it changes the collection, so only this page
+// offers it and only the admin may post it. The box says so at once and the
+// server decides, putting it back if it disagrees — the same way a heart does.
+window.setUnabridged = async function (id, box) {
+  const on = box.checked;
+  try {
+    await post(`/api/books/${id}/unabridged`, { on });
+  } catch (e) {
+    box.checked = !on;
+    toast(e.message);
+  }
+};
+
 window.setListened = async function (id, box) {
   if (!state.user) { box.checked = !box.checked; return toast('Create or select a user first.'); }
   try {
@@ -450,7 +469,13 @@ async function write_(id, pick, genre, title) {
   // `why` is the case where nothing threw and the files still were not written:
   // the answer carries it, because the bar may have stopped polling before the
   // progress object learned of it
-  const failure = r.error || p.error || r.why;
+  //
+  // The request that did the work decides. `p.error` is only ever a complaint
+  // about *following* it — and it used to come first, so a write that finished
+  // perfectly was reported as "Writing tags failed: lost contact with the
+  // server" because one status poll out of hundreds went unanswered. It is read
+  // now only when the request itself came back with nothing to say.
+  const failure = r.error || r.why || (r.written === undefined ? p.error : '');
   p.bar.say(failure ? `Writing tags failed${title ? ' · ' + title : ''}: ${failure}`
     : `${title ? title + ': ' : ''}${r.written} MP3 file(s) tagged.`, !!failure);
   p.bar.done(failure ? 15000 : 3000);
@@ -1252,7 +1277,9 @@ async function fileWork(url, body, label) {
     .then((r) => { until.finished = true; return r; });
   const p = await trackProgress('/api/files/status', label, until);
   const r = await request;
-  const failure = r.error || p.error;
+  // the request that did the work decides; `p.error` only ever complains about
+  // following it, so it is read when the request itself said nothing at all
+  const failure = r.error || (r && Object.keys(r).length ? '' : p.error);
   p.bar.say(failure ? `${label} failed: ${failure}` : `${label} done.`, !!failure);
   p.bar.done(failure ? 15000 : 3000);
   return { ok: !failure, r, bar: p.bar };
@@ -1430,14 +1457,35 @@ function newBar(label) {
   };
 }
 
+// How many polls in a row may go unanswered before the bar gives up: six
+// seconds' worth. One was enough before, and one is nothing — a reverse proxy
+// hiccup, a moment of wifi, a request that arrived while the server was busy.
+// The work is on the server and carries on whatever this page can reach, so a
+// failure to *read* the progress is not the job failing. Frank saw "Writing tags
+// failed: lost contact with the server" on a tag write that had almost certainly
+// finished perfectly well.
+const KEEP_ASKING = 20;
+
 async function trackProgress(statusUrl, label, until) {
   const bar = newBar(label);
   let started = false;
   let waited = 0;
+  let missed = 0;
   for (;;) {
     await new Promise((r) => setTimeout(r, 300));
     const p = await api(statusUrl).catch(() => null);
-    if (!p) return { error: 'lost contact with the server', bar };
+    if (!p) {
+      // The request that is doing the work came back while this was failing:
+      // it has the answer, and there is nothing left to follow.
+      if (until && until.finished) return { bar };
+      if ((missed += 1) < KEEP_ASKING) {
+        bar.say(`${label} — the server is not answering, still trying…`);
+        // eslint-disable-next-line no-continue -- the loop is the retry
+        continue;
+      }
+      return { error: 'lost contact with the server', bar };
+    }
+    missed = 0;
     if (p.running) started = true;
     if (p.total) {
       bar.at((p.done / p.total) * 100);

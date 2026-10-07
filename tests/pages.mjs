@@ -438,6 +438,122 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     /Last here: never signed in/.test(rowOf('Newcomer').textContent), true);
 }
 
+// --- following a job the server is doing ---------------------------------
+// Frank got "Writing tags failed: lost contact with the server" on a tag write
+// that had almost certainly finished perfectly well. Two faults, one shape:
+// `trackProgress` gave up on the *first* status poll that went unanswered, and
+// `write_` then put that complaint ahead of the answer from the request that had
+// actually done the work. The work is on the server and carries on whatever this
+// page can reach — failing to *read* the progress is not the job failing.
+{
+  // a few polls refused, then answers: the common case, and it used to end here
+  {
+    let polls = 0;
+    const { window } = await open('index.html', {
+      '/api/apply/status': () => {
+        polls += 1;
+        if (polls <= 3) return { __status: 502, error: 'the proxy had a moment' };
+        return { running: polls < 6, done: polls, total: 6, current: 'a file' };
+      },
+    });
+    const p = await window.eval('trackProgress("/api/apply/status", "Writing tags")');
+    check('a few unanswered polls are waited through, not treated as the job failing',
+      [p.error || null, p.running, polls >= 6], [null, false, true]);
+  }
+
+  // the request that is doing the work comes back while the polls are failing
+  {
+    const { window } = await open('index.html', {
+      '/api/apply/status': { __status: 502, error: 'the proxy had a moment' },
+    });
+    const p = await window.eval(`(async () => {
+      const until = { finished: false };
+      setTimeout(() => { until.finished = true; }, 400);
+      return trackProgress('/api/apply/status', 'Writing tags', until);
+    })()`);
+    check('and when the work reports back, there is nothing left to follow',
+      p.error || null, null);
+  }
+
+  // a server that really has gone: it gives up, rather than spinning for ever
+  {
+    const { window } = await open('index.html', {
+      '/api/apply/status': { __status: 502, error: 'gone' },
+    });
+    const p = await window.eval('trackProgress("/api/apply/status", "Writing tags")');
+    check('but a server that never answers is given up on, not waited for for ever',
+      p.error, 'lost contact with the server');
+  }
+
+  // And the ordering that mislabelled Frank's write. It only shows when the
+  // status is unreachable long enough for the bar to give up *and* the work
+  // still finishes — a long write through an outage — so that is what this is:
+  // the status never answers, and the write reports back after the bar has
+  // stopped following it. Reading the bar's complaint first said the write
+  // failed, which would have Frank run it again over files already written.
+  {
+    const { window, document } = await open('index.html', {
+      '/api/apply/status': { __status: 502, error: 'gone the whole time' },
+      '/api/apply': async () => {
+        await new Promise((r) => setTimeout(r, 6800));
+        return { written: 3 };
+      },
+    });
+    await window.eval('write_(5, {}, "", "A Book")');
+    await settle(150);
+    const said = document.querySelector('#progress .say')?.textContent || '';
+    check('a write that finished is reported as finishing, however the following went',
+      [/3 MP3 file\(s\) tagged/.test(said), /failed/.test(said)], [true, false]);
+  }
+}
+
+// --- what a card says about a book --------------------------------------
+// Frank had *Warbreaker* drawn under *Oathbringer*'s "Series · The Stormlight
+// Archive · book 3" and read it as part of that series. It is not: it has no
+// series, so the card drew nothing where the series line goes. Cards stack, and
+// an empty slot reads as the last thing said still applying. Absence is not a
+// statement, so the card makes one.
+//
+// And *Unabridged*, which is a fact about the book rather than about a listener
+// — so the admin page sets it and the listening page only shows it.
+{
+  const SOME = [
+    { id: 1, title: 'Oathbringer', author: 'Brandon Sanderson', genre: 'Fantasy', series: 'The Stormlight Archive', series_no: 3, year: '2017', narrator: 'Graphic Audio', duration: 145440, description: 'A book.', unabridged: 1, tracks: 1 },
+    { id: 2, title: 'Warbreaker', author: 'Brandon Sanderson', genre: 'Fantasy', series: '', series_no: 0, year: '2011', narrator: 'Brandon Sanderson', duration: 89760, description: 'Another.', unabridged: 0, tracks: 1 },
+  ];
+  for (const [page, sets] of [['index.html', true], ['listen.html', false]]) {
+    // eslint-disable-next-line no-await-in-loop -- two pages, one after the other
+    const { window, document } = await open(page);
+    window.eval(`drawBooks(${JSON.stringify(SOME)}, '', 'Series', [])`);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    const card = (id) => document.querySelector(`.card[data-id="${id}"]`);
+    check(`${page}: a book in a series says which, and where in it`,
+      card(1).querySelector('.series-of')?.textContent,
+      'Series · The Stormlight Archive · book 3');
+    check(`${page}: and a book in none says so, rather than leaving the slot empty`,
+      card(2).querySelector('.standalone')?.textContent, 'Standalone');
+    check(`${page}: so the two cards never read as one run of books`,
+      [!!card(1).querySelector('.standalone'), !!card(2).querySelector('.series-of')], [false, false]);
+
+    const boxes = (id) => [...card(id).querySelectorAll('.listened')].map((l) => l.textContent.trim());
+    if (sets) {
+      check(`${page}: the admin page offers Unabridged under Listened`,
+        boxes(1), ['Listened', 'Unabridged']);
+      check('and each box shows what the book says',
+        [card(1).querySelector('.unabridged input').checked,
+          card(2).querySelector('.unabridged input').checked], [true, false]);
+      check('and it hands over an id and the box, like every other inline handler',
+        card(1).querySelector('.unabridged input').getAttribute('onchange'), 'setUnabridged(1, this)');
+    } else {
+      check(`${page}: the listening page does not offer it — a listener changes nothing`,
+        boxes(1), ['Listened']);
+      check('but is told, when the book says so',
+        [/Unabridged/.test(card(1).textContent), /Unabridged/.test(card(2).textContent)], [true, false]);
+    }
+  }
+}
+
 // --- coming back after listening somewhere else ---------------------------
 // A place is kept on the server, so listening on a phone moves it for every
 // page — and nothing here ever read it again. A desktop left open showed where

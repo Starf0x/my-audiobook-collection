@@ -109,9 +109,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1651 | Express app: every route, and nothing else |
+| `server/index.js` | 1668 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 212 | schema, migrations, settings, library list |
+| `server/db.js` | 217 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
 | `server/scan.js` | 650 | walking the library, reading tags, filing books |
 | `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
@@ -147,14 +147,14 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/player.js` | 402 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 351 | browsing the collection: what both pages do the same way, in one copy |
+| `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 400 | the admin page: columns, dialogs |
-| `public/app.js` | 1521 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/app.js` | 1569 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 585 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
-| `public/shelf.js` | 306 | the listening page’s behaviour |
-| `public/style.css` | 831 | the whole look, every page, phone included |
+| `public/shelf.js` | 309 | the listening page’s behaviour |
+| `public/style.css` | 842 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -219,7 +219,10 @@ CREATE TABLE books (
   duration REAL DEFAULT 0,
   tagged TEXT DEFAULT '',                -- which tags the FILES carry, comma list
   tag_series TEXT DEFAULT '',            -- series the files claim (never moves files)
-  series_no INTEGER DEFAULT 0
+  series_no INTEGER DEFAULT 0,
+  -- the whole book rather than a shortened reading; stated by the admin, since
+  -- no file says it. 0 is "nobody has said", not "abridged"
+  unabridged INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE tracks (
@@ -522,6 +525,7 @@ and an empty genre is a fair question with an empty answer.
 | `GET /api/listened` | — | every book that listener has finished, the Listened section's own list |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
+| `POST /api/books/:id/unabridged` | admin | `{on}`: the whole book, or a shortened reading. A fact about the book, so the admin states it and everybody sees it |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
 | `POST /api/cover` | admin | raw image bytes in, `{cover, bytes, what}` out — a pasted cover, written to `covers/` and adopted by the next Save |
 | `GET /api/drawn-cover?title=&author=` | — | a drawn cover for a book that is **not** in the library: the volumes Wikidata says are missing are shown as cards |
@@ -1954,6 +1958,40 @@ write into another's, which is the whole thing accounts were added for. With no
 install the app has always supported, and there the name in the request is all
 there is.
 
+**Failing to read a job's progress is not the job failing.** `trackProgress`
+polls a status route every 300ms while something long runs, and gave up on the
+**first** poll that went unanswered — one hiccup from a reverse proxy, a moment
+of wifi, a request arriving while the server was busy. Worse, the caller then put
+that complaint ahead of the answer from the request that had actually done the
+work: `r.error || p.error`. Frank got *"Writing tags failed: lost contact with
+the server"* on a write that had almost certainly finished, which invites running
+it again over files already written.
+
+Twenty unanswered polls in a row — six seconds — before it gives up, and it stops
+at once if the request doing the work has already come back, since there is then
+nothing left to follow. The request is the authority on whether the work
+succeeded; `p.error` only ever complains about *watching* it, and is read only
+when the request itself said nothing at all. The work is on the server and goes
+on whatever this page can reach.
+
+**A card says which series a book is in, or that it is in none.** The series line
+used to be drawn only when there was a series, so a standalone book showed
+nothing at all where it goes. Cards stack, and the eye reads the last series it
+was told about as still applying: Frank had *Warbreaker* sitting under
+*Oathbringer*'s "The Stormlight Archive · book 3" and nothing on the page gave
+him reason to think otherwise. Absence is not a statement, so the card makes one
+— *Standalone*, in the same slot, quieter than a series because it is the lack of
+one. `seriesLine(b)` in `browse.js`, one copy for both pages.
+
+**And whether it is the whole book.** *Unabridged* sits under *Listened* on the
+admin card and is a different kind of thing: *Listened* is each listener's own,
+*Unabridged* is a fact about the book. So the admin states it
+(`POST /api/books/:id/unabridged`, refused to a listener) and the listening page
+only shows it, as a badge — a listener changes nothing about the collection
+(§7.12). Nothing in a file says it reliably: there is no tag for it, and a
+publisher who abridges rarely puts it in the title. Off means **nobody has
+said**, not "abridged", which is why it is a tick and not a three-way field.
+
 **Listening somewhere else moves the place here too.** A place lives on the
 server, so a phone moves it for every page — and nothing on a page ever read it
 again. The player wrote every ten seconds and no shelf was ever redrawn, so a
@@ -3133,6 +3171,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.0 | failing to read a job's progress is no longer the job failing: `trackProgress` gave up on the first unanswered poll, and the caller put that complaint ahead of the answer from the request that did the work, so a tag write that finished reported *"Writing tags failed: lost contact with the server"*. And a card says which series a book is in **or that it is in none**. The line was drawn only when there was a series, and cards stack, so *Warbreaker* under *Oathbringer*'s "The Stormlight Archive · book 3" read as part of it — absence is not a statement, so the card says *Standalone*. And *Unabridged*, under *Listened* and a different kind of thing: *Listened* is each listener's, this is the book's, so the admin states it and the listening page only shows it |
 | 2.10.88 | converting is started, not awaited. `POST /api/convert/:id` answered only when the conversion was over, so the page held one request open for the length of an m4b — and anything that dropped it reached the page as the conversion failing: the bar left, *Convert to MP3* came back, and ffmpeg carried on in the container. Both halves of what Frank saw, one cause. The route answers at once and the status carries the outcome, so a reload during one rejoins it |
 | 2.10.80 | listening on a phone shows up on the desktop. A place lives on the server and nothing on a page ever read it again, so a desktop left open showed where you were when you opened it — and, open and paused, would overwrite a place the phone had moved on, because a press resumes from that tab's own clock. The page picks the place up when it comes back, and redraws *Continue listening* when that is what is on screen |
 | 2.10.72 | a kept place says which face kept it. Frank had a book on his own *Continue listening* that somebody else was listening to — correctly under his name, because a player signs in as one listener and writes every position against that name — and asked whether to get the other person to tick it off. Nothing in the app could answer "whose is this?", and the answer was never theirs to give. `progress.via` records `page`, `music-assistant` or `home-assistant`, and the tiles and the accounts page say it only when it was not the page |
