@@ -23,7 +23,7 @@
 // played out, or re-scanned since so a track's real duration moved the end of it
 // under a place already kept, has rows where the two disagree — and then a page
 // that counts ticks and a list that counts reads sit on one screen saying four
-// and one, with nothing to say which is right. That is 2.10.32: `/api/stats` and
+// and one, with nothing to say which is right. That is 2.10.40: `/api/stats` and
 // the accounts page both asked the stored question, and both now ask this one.
 //
 // This file imports nothing but the database, so both `index.js` and
