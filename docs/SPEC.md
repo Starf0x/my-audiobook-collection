@@ -2869,6 +2869,21 @@ quietly on an empty library:
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
+**A failing suite says why again at the end.** `run-all` streams each suite's
+output as it always has, and now keeps what a failing one said and repeats it
+under the tally — the `FAIL` lines with their `got`/`want`, or whatever threw.
+Not a tail: a suite that fails its third check and passes forty more has the
+answer at the top, so the last lines of its output are forty `ok`s. Stack frames
+are dropped, because a throw prints its sentence and then twenty lines of node's
+own plumbing, which would push the sentence out.
+
+This is from losing one. `series-complete` failed once in a whole-suite run and
+passed every time after; it prints a careful paragraph about what it tried and
+what answered, and that went by unread because the run was piped through a
+`grep` keeping only the lines the reader thought mattered. Instrumentation that
+only pays out if nobody filters the output is instrumentation that does not pay
+out.
+
 The rest of the table below is a record of what was checked while the app was
 built, kept because it says what each rule is *for* — but those scripts are not
 here, and a row in it is not a check anybody can run.
@@ -3023,6 +3038,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.56 | a failing suite says why again under the tally, instead of forty lines of `ok` scrolling over the one sentence that explains it — the `FAIL` lines and their `got`/`want`, or whatever threw, with the stack frames left out. `series-complete` failed once and was never diagnosed because its own careful message was filtered away by the `grep` the run was piped through |
 | 2.10.48 | the same leak, on the Home Assistant route: `forHA` passes a request through when no `HA_TOKEN` is set, so a signed-in listener could ask `/api/ha?user=` for somebody else's places and `continue.m3u` would hand over the book and the second they stopped at. Found by going back over the rest of the app after 2.10.40 rather than by anybody hitting it. The Audiobookshelf face was already right |
 | 2.10.40 | a place in a book belongs to whoever kept it, on the way out as well as in. Eight routes took the listener from `?user=` — the page naming itself — so anybody signed in could read anybody else's shelves, finished books and hearts by typing a name into the address, and a browser still carrying a name from before accounts put somebody else's book in Frank's *Continue listening*. `whoReads` is the twin of `whoWrites`: the session, and only the session |
 | ″ | "finished" has one home. `countsAsRead` moved to `finished.js` with the other two senses of the word written out beside it, and the line of numbers under every page and the accounts page both ask it now — they counted the stored tick, which drifts from it on any database old enough or re-scanned since, so a list of four sat under a 1. And the administrator's own name, when it is also a row on the accounts page, is marked as theirs: the password badge and the two ticks are about a listener account and govern nothing the administrator does, which read as *May download* being broken. Their visits are recorded, so that row stops saying "never signed in", and *Last here* carries the date at last |
