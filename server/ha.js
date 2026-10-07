@@ -88,11 +88,20 @@ const BOOK = `SELECT b.id, b.title, b.author, b.genre, b.duration,
   NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')), '') AS series, b.series_no,
   (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS tracks`;
 
-export function haState(req, version = '') {
+// `who` is who the answer is about, decided by the caller. The route passes
+// `whoReads(req)`, so a browser that has signed in gets its own listening and
+// nothing else — this read `?user=` straight off the request, and `forHA` lets a
+// request through when no `HA_TOKEN` is set, which is the common install. A
+// signed-in listener could then ask `/api/ha?user=` for somebody else's places,
+// and `continue.m3u` would hand over the book and the second they stopped at.
+// Left null for the pushes below, which build a request of their own carrying
+// the listener from Settings.
+export function haState(req, version = '', who = null) {
   const base = baseUrl(req);
   const users = db.prepare('SELECT name FROM users ORDER BY name').all().map((u) => u.name);
   // one listener asked for, or the only one there is, or nobody
-  const user = (req.query.user || '').trim() || (users.length === 1 ? users[0] : '');
+  const user = String(who === null ? (req.query.user || '') : (who || '')).trim()
+    || (users.length === 1 ? users[0] : '');
   const totals = db.prepare(`SELECT
       (SELECT COUNT(*) FROM books) AS books,
       (SELECT COUNT(*) FROM tracks) AS files,

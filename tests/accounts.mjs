@@ -180,6 +180,30 @@ check('but the admin list does not', (await get('/api/accounts', bert.cookies)).
   // and a listener cannot reach across either, which is the direction that matters
   check('and a listener asking after the administrator gets their own answer',
     (await get('/api/home?user=frank', bert.cookies)).body.continue.map((b) => b.id), [3]);
+
+  // Home Assistant's route asked the same question the same way, and `forHA`
+  // lets a request through when no HA_TOKEN is set — which is most installs. So
+  // a signed-in listener could ask it for somebody else's places, and
+  // `continue.m3u` would hand over the book and the second they stopped at.
+  //
+  // A second listener is needed to check it at all: with exactly one in the app
+  // `haState` answers for them whatever is asked, so a single-listener fixture
+  // would pass this without the fix.
+  // The second listener and her place are put back afterwards: everything below
+  // counts rows, and a fixture one check leaves behind is a later check failing
+  // for a reason that has nothing to do with it. (Which is what happened.)
+  db.prepare("INSERT OR IGNORE INTO users (name, state) VALUES ('Donna', 'approved')").run();
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated)
+              VALUES ('Donna', 3, 0, 30, 0, datetime('now'))
+              ON CONFLICT(user, book_id) DO UPDATE SET position = excluded.position`).run();
+  const ha = (await get('/api/ha?user=Donna', bert.cookies)).body;
+  check('the Home Assistant answer is about whoever asked, not whoever was named',
+    ha.continue.map((b) => Math.round(b.position)), [1]);
+  // `continue.m3u` hands over the same book from the same `haState`, so it is
+  // the one fix and this is where it is checked; the playlist itself needs a
+  // book with files, which `plays-on` has and this fixture does not.
+  db.prepare("DELETE FROM progress WHERE user = 'Donna'").run();
+  db.prepare("DELETE FROM users WHERE name = 'Donna'").run();
 }
 
 // --- the page the admin reads them on ------------------------------------

@@ -137,7 +137,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 335 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
-| `server/ha.js` | 458 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/ha.js` | 467 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
@@ -1313,8 +1313,11 @@ SUM(CASE WHEN p.done = 1 THEN b.duration ELSE
             WHERE t.book_id = b.id AND t.idx < p.track_idx), 0) + p.position END)
 ```
 
-`?user=` picks whose progress is reported; with exactly one listener in the app it
-is that one, and with none named the sums cover everybody.
+`?user=` picks whose progress is reported **for the machine holding the token**;
+with exactly one listener in the app it is that one, and with none named the sums
+cover everybody. A browser that has signed in gets its own listening whatever the
+address says — `forHA` lets a request through when no `HA_TOKEN` is set, so until
+2.10.48 this was a way for one listener to read another's (§ *whose read is it*).
 
 **Carrying a book on to a media player** is the part that needed design. A player
 cannot be told "play book 412 from 2h24m", but it takes a URL, and most players
@@ -1937,7 +1940,17 @@ in `localStorage` from the picker that came before accounts, the page sent it,
 and the server believed it. One cause, two faces — a leak outward and somebody
 else's reading on your own screen.
 
-`whoReads` is now the twin of `whoWrites` and is used by all eight: with a
+Home Assistant's own route had it too, and worse. `forHA` passes a request
+through when no `HA_TOKEN` is set — the common install — so a signed-in listener
+could ask `GET /api/ha?user=` for somebody else's places, and
+`/api/ha/continue.m3u?user=` would hand over the book and the second they
+stopped at. `haState` takes who the answer is about from its caller now; the
+route passes `whoReads(req)`, and the pushes inside `ha.js` go on naming the
+listener from Settings, which is theirs to name. The Audiobookshelf face was
+already right: `abs.js` reads the listener out of the token itself and answers
+nobody without one.
+
+`whoReads` is now the twin of `whoWrites` and is used by all ten: with a
 password set it is the session and only the session. The pages still send
 `?user=`, and must, because the password-less install has no session to ask and
 the name in the request is still all there is — so the parameter stays, and is
@@ -3010,6 +3023,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.48 | the same leak, on the Home Assistant route: `forHA` passes a request through when no `HA_TOKEN` is set, so a signed-in listener could ask `/api/ha?user=` for somebody else's places and `continue.m3u` would hand over the book and the second they stopped at. Found by going back over the rest of the app after 2.10.40 rather than by anybody hitting it. The Audiobookshelf face was already right |
 | 2.10.40 | a place in a book belongs to whoever kept it, on the way out as well as in. Eight routes took the listener from `?user=` — the page naming itself — so anybody signed in could read anybody else's shelves, finished books and hearts by typing a name into the address, and a browser still carrying a name from before accounts put somebody else's book in Frank's *Continue listening*. `whoReads` is the twin of `whoWrites`: the session, and only the session |
 | ″ | "finished" has one home. `countsAsRead` moved to `finished.js` with the other two senses of the word written out beside it, and the line of numbers under every page and the accounts page both ask it now — they counted the stored tick, which drifts from it on any database old enough or re-scanned since, so a list of four sat under a 1. And the administrator's own name, when it is also a row on the accounts page, is marked as theirs: the password badge and the two ticks are about a listener account and govern nothing the administrator does, which read as *May download* being broken. Their visits are recorded, so that row stops saying "never signed in", and *Last here* carries the date at last |
 | 2.10.24 | `app.js` was 2402 lines and is now three files: the maintenance column and its file operations are `maint.js`, the edit dialog with its cover and lookup is `edit.js`, and what both of them call stays in `app.js`. The split is along what each part touches, and `pages` is what made it safe to make |
