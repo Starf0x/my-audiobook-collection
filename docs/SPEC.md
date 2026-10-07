@@ -144,10 +144,10 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 209 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 375 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 402 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 310 | browsing the collection: what both pages do the same way, in one copy |
+| `public/browse.js` | 351 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 400 | the admin page: columns, dialogs |
 | `public/app.js` | 1517 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 564 | the maintenance column, and the moving and deleting it leads to |
@@ -1930,6 +1930,30 @@ write into another's, which is the whole thing accounts were added for. With no
 install the app has always supported, and there the name in the request is all
 there is.
 
+**Listening somewhere else moves the place here too.** A place lives on the
+server, so a phone moves it for every page — and nothing on a page ever read it
+again. The player wrote every ten seconds and no shelf was ever redrawn, so a
+desktop left open showed where you were when you opened it, for as long as you
+left it open. Worse than stale: `playBook` short-circuits for the book already in
+the bar and plays from that tab's own `currentTime`, which is then written back,
+so a desktop open and paused would overwrite a place the phone had moved on.
+
+`comingBack` in `browse.js` fires on `visibilitychange` and on `focus` — the
+first is the phone and the switched tab, the second the desktop window behind
+another window, where the tab never stopped being visible. It calls
+`placeMayHaveMoved` in `player.js`, which re-reads the book in the bar and takes
+the server's place **only while this tab is paused**: a tab still playing is the
+one moving the place, and taking the server's would drag it backwards under the
+listener. It does not start playing — returning to a page is not a press. The
+shelves are redrawn only when *Continue listening* is what is on screen;
+somewhere else in the library is where the reader put themselves.
+
+Three guards, each for a fault it had: **a few seconds between** returns, because
+the two events fire together as often as not; **only after actually going away**,
+because a page that has just loaded gets a `focus` of its own and that is the
+page starting, not somebody returning — without it the carried book was read over
+and silenced on every move between pages; and **paused only**, above.
+
 **And where did a place come from.** A player signs in as **one** listener and
 writes every position it keeps against that name, whoever is actually in the
 room: that is what the username in `/login` is for (§7.14). So a book somebody
@@ -3075,6 +3099,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.80 | listening on a phone shows up on the desktop. A place lives on the server and nothing on a page ever read it again, so a desktop left open showed where you were when you opened it — and, open and paused, would overwrite a place the phone had moved on, because a press resumes from that tab's own clock. The page picks the place up when it comes back, and redraws *Continue listening* when that is what is on screen |
 | 2.10.72 | a kept place says which face kept it. Frank had a book on his own *Continue listening* that somebody else was listening to — correctly under his name, because a player signs in as one listener and writes every position against that name — and asked whether to get the other person to tick it off. Nothing in the app could answer "whose is this?", and the answer was never theirs to give. `progress.via` records `page`, `music-assistant` or `home-assistant`, and the tiles and the accounts page say it only when it was not the page |
 | 2.10.64 | *May download* reaches the administrator, asked for outright after 2.10.40 explained why it did not. Downloading is a thing a row on the accounts page allows, so that row allows it for them; an administrator with no row of their own keeps what they had, because a rule there is no key to would be a lock. `mayTakeABook` is the one expression of it, read by the route **and** by the page that decides whether to offer the button — those were two, and they disagreed. Two checks written for this in 2.10.40 turn out to have asked about a book the fixture does not have, so both got a 404 and could not have failed |
 | 2.10.56 | a failing suite says why again under the tally, instead of forty lines of `ok` scrolling over the one sentence that explains it — the `FAIL` lines and their `got`/`want`, or whatever threw, with the stack frames left out. `series-complete` failed once and was never diagnosed because its own careful message was filtered away by the `grep` the run was piped through |

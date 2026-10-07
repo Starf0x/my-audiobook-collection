@@ -325,6 +325,33 @@ window.addEventListener('pagehide', () => { if (announced) nowPlaying(false, 'le
 audio.onpause = () => saveProgress();
 setInterval(() => { if (!audio.paused) saveProgress(); }, 10000);
 
+// The place this book is at on the server, taken up again by this tab.
+//
+// Called by `browse.js` when the page comes back to the foreground, which is
+// when somebody has been listening on their phone and has come back to the
+// desktop. Only while this tab is paused: a tab that is still playing is the one
+// moving the place, and taking the server's would drag it backwards.
+//
+// This matters before a press, not after. `playBook` short-circuits for the book
+// already in the bar and plays from this tab's own `currentTime` — so a desktop
+// left open and paused would resume at its own stale place and write that back
+// over the phone's. Picking the place up here is what stops that.
+window.placeMayHaveMoved = async () => {
+  if (!state.book || !audio.paused) return;
+  const fresh = await api(`/api/books/${state.book.id}`).catch(() => null);
+  const place = fresh && fresh.progress;
+  if (!place) return;
+  const here = { idx: state.track, at: audio.currentTime || 0 };
+  const there = { idx: place.track_idx || 0, at: place.position || 0 };
+  // A second either way is the same place said twice — this tab wrote it a
+  // moment ago — and seeking on that would fight the player's own saves.
+  if (there.idx === here.idx && Math.abs(there.at - here.at) < 2) return;
+  state.book = fresh;
+  // not played: the reader came back to the page, which is not a press
+  playTrack(there.idx, there.at, false);
+  toast('Picked up where you left off elsewhere.');
+};
+
 function saveProgress(leaving) {
   if (!state.book || !state.user || !audio.currentTime) return;
   const place = { user: state.user, bookId: state.book.id, trackIdx: state.track, position: audio.currentTime };

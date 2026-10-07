@@ -90,8 +90,49 @@ const tile = (b, resumable) => {
 };
 
 const shelf = (title, items, resumable) => !items.length ? '' :
-  `<div class="shelf"><div class="shelf-title">${title}</div>
+  `<div class="shelf" data-shelf="${esc(title)}"><div class="shelf-title">${title}</div>
      <div class="tiles">${items.map((b) => tile(b, resumable)).join('')}</div></div>`;
+
+// --- coming back, after listening somewhere else --------------------------
+// A place in a book is kept on the server, so listening on a phone moves it for
+// every page — but nothing here ever read it again. The player wrote every ten
+// seconds and no shelf was redrawn, so a desktop left open showed where you were
+// when you opened it, for as long as you left it open.
+//
+// Worse than stale: `playBook` short-circuits for the book already in the bar
+// and plays from this tab's own `currentTime`, which is then written back. A
+// desktop with a book open, paused, would overwrite a place the phone had moved
+// on. So the place is picked up *before* a press can happen, not after.
+//
+// `visibilitychange` is the phone and the switched tab; `focus` is the desktop
+// window behind another window, where the tab never stopped being visible. Both,
+// and a few seconds between, because they fire together as often as not.
+//
+// **Only after actually going away.** A page that has just loaded gets a `focus`
+// of its own, and that is not somebody returning — it is the page starting. The
+// player carries a book from one page of the app to the next and starts it
+// playing, and at the moment that focus arrives the audio has not begun, so this
+// read the server's place and called `playTrack(…, false)` over the top of it:
+// the book went silent on every move between pages. `plays-on` caught it, which
+// is what a real browser is for.
+let wentAway = false;
+let lookedBack = 0;
+const comingBack = () => {
+  if (document.hidden || !wentAway || Date.now() - lookedBack < 3000) return;
+  wentAway = false;
+  lookedBack = Date.now();
+  // the bar first: it owns the book, and it is what a press would act on
+  window.placeMayHaveMoved?.();
+  // and the shelves, only when they are what is on screen. Somewhere else in
+  // the library is where the reader put themselves, and redrawing over that
+  // would be this page taking the view back off them.
+  if ($('#books .list')?.querySelector('[data-shelf="Continue listening"]')) window.loadHome?.();
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) wentAway = true; else comingBack();
+});
+window.addEventListener('blur', () => { wentAway = true; });
+window.addEventListener('focus', comingBack);
 
 // --- what has been listened to -------------------------------------------
 // A section of its own in the column beside the genres: the row is not there

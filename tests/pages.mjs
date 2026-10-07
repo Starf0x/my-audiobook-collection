@@ -121,6 +121,20 @@ async function open(page, replies = {}) {
   window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   window.Element.prototype.scrollIntoView = function () {};
   window.confirm = () => true;
+  // jsdom has no media playback, and `play()` there throws — which every caller
+  // in the app catches, so "did it start playing?" cannot be asked of `paused`.
+  // It is asked of this instead.
+  window.HTMLMediaElement.prototype.play = function () {
+    this.pressedPlay = (this.pressedPlay || 0) + 1;
+    return Promise.resolve();
+  };
+  window.HTMLMediaElement.prototype.pause = function () {};
+  // jsdom calls a fresh document `prerender`, and so `hidden`. A page somebody
+  // is looking at says `visible`, and the code that picks a place back up when
+  // the reader returns asks exactly that — left alone, every such check would
+  // pass by never running.
+  Object.defineProperty(window.document, 'visibilityState', { value: 'visible', configurable: true });
+  Object.defineProperty(window.document, 'hidden', { value: false, configurable: true });
 
   for (const file of scripts) {
     const tag = window.document.createElement('script');
@@ -422,6 +436,104 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     /Last here: here today at \d\d?:\d\d/.test(rowOf('FrankyB').textContent), true);
   check('while never is still never',
     /Last here: never signed in/.test(rowOf('Newcomer').textContent), true);
+}
+
+// --- coming back after listening somewhere else ---------------------------
+// A place is kept on the server, so listening on a phone moves it for every
+// page — and nothing here ever read it again. A desktop left open showed where
+// you were when you opened it, however long ago that was.
+//
+// And `playBook` short-circuits for the book already in the bar, playing from
+// this tab's own `currentTime` and writing that back: a desktop open and paused
+// would overwrite the place the phone had moved on. So the place is picked up
+// when the page comes back, before a press can act on the stale one.
+{
+  const BOOK = {
+    id: 4, title: 'A Book', author: 'An Author', genre: 'Fantasy', coverV: 0,
+    tracks: [{ id: 41, idx: 0, title: 'One', duration: 600 },
+      { id: 42, idx: 1, title: 'Two', duration: 600 },
+      { id: 43, idx: 2, title: 'Three', duration: 600 }],
+  };
+  const openAt = async (progress) => {
+    const page = await open('listen.html', {
+      '/api/books': { ...BOOK, progress },
+    });
+    page.window.eval('state.user = "tester"; state.book = null;');
+    return page;
+  };
+
+  // the bar holding track 1, paused, while the phone has moved on to track 3
+  {
+    const { window, document } = await openAt({ track_idx: 2, position: 30, done: 0 });
+    window.eval(`state.book = ${JSON.stringify(BOOK)}; state.track = 0;`);
+    await window.placeMayHaveMoved();
+    await settle();
+    check('the place moved elsewhere is picked up',
+      [window.eval('state.track'), document.querySelector('#pTrack').textContent],
+      [2, '3/3 · Three']);
+    check('and it is not started playing — coming back to a page is not a press',
+      document.querySelector('#audio').pressedPlay, undefined);
+  }
+
+  // the same place, said twice: this tab wrote it a moment ago
+  {
+    const { window } = await openAt({ track_idx: 0, position: 0, done: 0 });
+    window.eval(`state.book = ${JSON.stringify(BOOK)}; state.track = 0;`);
+    const before = window.eval('document.querySelector("#audio").src');
+    await window.placeMayHaveMoved();
+    await settle();
+    check('a place that has not moved is left alone, so this does not fight the player',
+      [window.eval('state.track'), window.eval('document.querySelector("#audio").src')], [0, before]);
+  }
+
+  // this tab is the one playing: it is the one moving the place, and taking the
+  // server's would drag it backwards under the listener
+  {
+    const { window, document } = await openAt({ track_idx: 2, position: 30, done: 0 });
+    window.eval(`state.book = ${JSON.stringify(BOOK)}; state.track = 0;`);
+    Object.defineProperty(document.querySelector('#audio'), 'paused', { value: false });
+    await window.placeMayHaveMoved();
+    await settle();
+    check('a tab that is playing keeps its own place, rather than being dragged back',
+      window.eval('state.track'), 0);
+  }
+
+  // nothing in the bar at all
+  {
+    const { window } = await openAt({ track_idx: 2, position: 30, done: 0 });
+    await window.placeMayHaveMoved();
+    await settle();
+    check('and with no book in the bar there is nothing to pick up',
+      window.eval('state.book'), null);
+  }
+
+  // the shelves, which is what is actually on screen when somebody comes back
+  {
+    const { window, document } = await open('listen.html', {
+      '/api/home': { continue: [{ id: 4, title: 'A Book', author: 'An Author', genre: 'Fantasy', tracks: 3, track_idx: 0, duration: 1800, percent: 5 }], recent: [] },
+    });
+    await settle(140);
+    check('the Continue listening shelf is marked, so a refresh can tell it is on screen',
+      !!document.querySelector('[data-shelf="Continue listening"]'), true);
+    window.eval('window.loadHome = () => { window.askedAgain = (window.askedAgain || 0) + 1; };');
+    // A page that has just loaded gets a focus of its own, and that is not a
+    // return. Nothing happens until it has actually been away.
+    window.dispatchEvent(new window.Event('focus'));
+    await settle();
+    check('a page that has only just loaded is not "coming back"',
+      window.eval('window.askedAgain || 0'), 0);
+
+    window.dispatchEvent(new window.Event('blur'));
+    window.dispatchEvent(new window.Event('focus'));
+    await settle();
+    check('and coming back to the page asks for the shelves again',
+      window.eval('window.askedAgain || 0'), 1);
+    // twice in a moment is one return: these two events fire together as often
+    // as not, and two redraws of the same thing is a flicker
+    window.dispatchEvent(new window.Event('focus'));
+    await settle();
+    check('but twice in a moment is still one return', window.eval('window.askedAgain || 0'), 1);
+  }
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
