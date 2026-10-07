@@ -414,7 +414,14 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
    above it still applying. Quieter than a series — it is the absence of one, not
    a thing of its own — and in the same place, so the eye finds an answer where
    it looked for one. */
-.card .sub.standalone { color: var(--dim); font-style: italic; }
+.card .sub.no-series { color: var(--dim); font-style: italic; }
+
+/* Where a run of books in no series begins. A series gets a heading above it,
+   which is what separates one run from the next; these get none, so without this
+   the first of them sits tight against the last volume of the series above and
+   reads as more of it. The gap is a little wider than a heading's, because it is
+   doing the heading's whole job on its own. */
+.card.apart { margin-top: 22px; }
 .tile .a.series-of { color: var(--accent2); opacity: .85; }
 
 /* Where a kept place came from, when it was not this page. Quieter than the

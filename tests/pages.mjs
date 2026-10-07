@@ -519,7 +519,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
 {
   const SOME = [
     { id: 1, title: 'Oathbringer', author: 'Brandon Sanderson', genre: 'Fantasy', series: 'The Stormlight Archive', series_no: 3, year: '2017', narrator: 'Graphic Audio', duration: 145440, description: 'A book.', unabridged: 1, tracks: 1 },
-    { id: 2, title: 'Warbreaker', author: 'Brandon Sanderson', genre: 'Fantasy', series: '', series_no: 0, year: '2011', narrator: 'Brandon Sanderson', duration: 89760, description: 'Another.', unabridged: 0, tracks: 1 },
+    { id: 2, title: 'Warbreaker', author: 'Brandon Sanderson', genre: 'Fantasy', series: null, series_no: 0, year: '2011', narrator: 'Brandon Sanderson', duration: 89760, description: 'Another.', unabridged: 0, tracks: 1 },
   ];
   for (const [page, sets] of [['index.html', true], ['listen.html', false]]) {
     // eslint-disable-next-line no-await-in-loop -- two pages, one after the other
@@ -532,9 +532,25 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       card(1).querySelector('.series-of')?.textContent,
       'Series · The Stormlight Archive · book 3');
     check(`${page}: and a book in none says so, rather than leaving the slot empty`,
-      card(2).querySelector('.standalone')?.textContent, 'Standalone');
+      card(2).querySelector('.no-series')?.textContent, 'No Series');
     check(`${page}: so the two cards never read as one run of books`,
-      [!!card(1).querySelector('.standalone'), !!card(2).querySelector('.series-of')], [false, false]);
+      [!!card(1).querySelector('.no-series'), !!card(2).querySelector('.series-of')], [false, false]);
+    // A series gets a heading above it, which is what separates one run from the
+    // next. Books in no series get none, so the first of them carries the gap
+    // instead — without it, it sits tight under the last volume of the series
+    // above and reads as more of it, which is how this started.
+    check(`${page}: and the run of books in no series is set apart from the series above`,
+      [card(1).classList.contains('apart'), card(2).classList.contains('apart')], [false, true]);
+
+    // and nothing to be set apart from, at the top of a list
+    window.eval(`drawBooks(${JSON.stringify([SOME[1], SOME[0]])}, '', 'Series', [])`);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    check(`${page}: a list that opens with one is not pushed down by a gap above nothing`,
+      card(2).classList.contains('apart'), false);
+    window.eval(`drawBooks(${JSON.stringify(SOME)}, '', 'Series', [])`);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
 
     const boxes = (id) => [...card(id).querySelectorAll('.listened')].map((l) => l.textContent.trim());
     if (sets) {
