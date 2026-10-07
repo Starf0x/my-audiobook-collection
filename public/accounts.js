@@ -99,9 +99,12 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
     </div>
 
     ${a.isAdmin ? `<div class="allowed">
-      <span class="sub">The administrator signs in with the container’s password and is let through every check
-        here, so there is nothing on this row to allow or refuse. Taking the name away would not change that —
-        what it governs is in the container, not in this app.</span>
+      <label class="pick" title="This one does reach the administrator: downloading a whole book is allowed by a row
+        on this page, so this row allows it for them. Turning it off here refuses them too.">
+        <input type="checkbox" data-may-download ${a.granted ? 'checked' : ''}> May download
+      </label>
+      <span class="sub">Signing in is the container’s password, not this page, so there is no
+        <em>May listen</em> to give or take here — and deleting the name would not close that door either.</span>
     </div>` : `<div class="allowed">
       <label class="pick" title="The approval. Off means they cannot sign in.">
         <input type="checkbox" data-may-listen ${a.state === 'approved' ? 'checked' : ''}> May listen
