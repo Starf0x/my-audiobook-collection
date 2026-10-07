@@ -526,8 +526,32 @@ app.get('/api/convert/status', (req, res) => res.json(convertProgress));
 // convertBook takes the lock itself, before its first await, and refuses in the
 // same words. Checking it here as well is not a second guard — two requests can
 // both pass a check in a route — it is only a cheaper way to the same sentence.
-app.post('/api/convert/:id', requireAdmin, wrap(async (req, res) =>
-  res.json(await convertBook(req.params.id))));
+// Started, not awaited — the same shape as `/api/scan`, and for the same reason.
+// A conversion runs for minutes, and this used to answer only when it was over:
+// the page held one request open the whole time, so a proxy's idle timeout, a
+// sleeping laptop or a blip read as the conversion failing. The bar said so and
+// went, the button came back, and ffmpeg carried on in the container. What it is
+// doing is `/api/convert/status`, which is a short request however long the work
+// takes.
+//
+// A refusal still comes back here rather than only in the status, because this
+// one is about the request — you pressed Convert while a conversion was running
+// — and the answer belongs to the press.
+app.post('/api/convert/:id', requireAdmin, (req, res) => {
+  if (convertProgress.running) {
+    return res.status(409).json({ error: 'A book is being converted already. Wait for it to finish.' });
+  }
+  // The outcome is the status, so nothing is awaited — but nothing is thrown
+  // away either. A conversion that fails records its own reason inside
+  // `convert_`; what can throw past that is the lock, when two presses land
+  // together and this check and the one inside `convertBook` disagree. Then the
+  // other conversion is running and the status is its own, so writing here would
+  // overwrite a live run's state with a complaint about a press.
+  convertBook(req.params.id).catch((e) => {
+    if (!convertProgress.running) convertProgress.error = e.message;
+  });
+  return res.json({ started: true });
+});
 
 app.get('/api/converted', requireAdmin, (req, res) => res.json(listConverted()));
 // before /api/converted/:id, which would otherwise read "all" as an id
