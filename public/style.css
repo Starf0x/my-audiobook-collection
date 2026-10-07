@@ -240,6 +240,10 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 .card .cover { display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; }
 .listened { display: flex; align-items: center; gap: 6px; justify-content: center; color: var(--dim); font-size: 12px; cursor: pointer; margin-top: 2px; }
 .listened input { accent-color: #35d07f; padding: 0; width: 15px; height: 15px; cursor: pointer; }
+/* Unabridged sits under Listened and is a different kind of thing: Listened is
+   this listener's, Unabridged is the book's. A second colour says they are not
+   two of one list without a word of explanation. */
+.listened.unabridged input { accent-color: var(--accent2); }
 
 #status { display: flex; gap: 20px; padding: 7px 16px; background: #101318; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
 #status strong { color: var(--text); font-weight: 600; }
@@ -404,6 +408,13 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
 #genres li.series-in-genre.in-part::before { left: 31px; }
 /* the series a book belongs to, on its card and on its shelf tile */
 .card .sub.series-of { color: var(--accent2); }
+
+/* And a book that belongs to none, which has to be said rather than left blank:
+   cards stack, and an empty slot where the series line goes reads as the series
+   above it still applying. Quieter than a series — it is the absence of one, not
+   a thing of its own — and in the same place, so the eye finds an answer where
+   it looked for one. */
+.card .sub.standalone { color: var(--dim); font-style: italic; }
 .tile .a.series-of { color: var(--accent2); opacity: .85; }
 
 /* Where a kept place came from, when it was not this page. Quieter than the
