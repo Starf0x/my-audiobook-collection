@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1565 | Express app: every route, and nothing else |
+| `server/index.js` | 1585 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 205 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -130,7 +130,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
 | `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
-| `server/listeners.js` | 332 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/finished.js` | 67 | what "finished" means: the three senses of the word, and the one every count asks |
+| `server/listeners.js` | 366 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
 | `server/notify.js` | 142 | telling Discord: the three things worth saying, and cleaning what a person wrote |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
@@ -141,7 +142,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 178 | its behaviour — the statistics and the two ticks |
+| `public/accounts.js` | 196 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 375 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
@@ -510,14 +511,14 @@ and an empty genre is a fair question with an empty answer.
 | `GET /api/home` | — | `{continue, recent}` |
 | `GET /api/genres` | — | `[{name, books, series: [{name, books}]}]` |
 | `GET /api/authors?genre=` | — | `[{name, books}]` |
-| `GET /api/books?genre=&author=|series=&user=` | — | `{books, series}` — the cards, and for each series among them `{name, books, highest, missing, unnumbered, says}` |
+| `GET /api/books?genre=&author=|series=` | — | `{books, series}` — the cards, and for each series among them `{name, books, highest, missing, unnumbered, says}` |
 | `GET /api/series-gaps` | admin | `{looked, gaps, unnumbered}` — every series in the collection with a volume missing, biggest hole first |
 | `POST /api/series-online` | admin | starts the Wikidata check over every series (§7.10b) |
 | `GET /api/series-online/status` | admin | how far it is, and what each series came back with |
-| `GET /api/search?q=&user=` | — | cards, across everything |
-| `GET /api/listened?user=` | — | every book that listener has finished, the Listened section's own list |
+| `GET /api/search?q=` | — | cards, across everything |
+| `GET /api/listened` | — | every book that listener has finished, the Listened section's own list |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
-| `GET /api/books/:id?user=` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
+| `GET /api/books/:id` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
 | `POST /api/cover` | admin | raw image bytes in, `{cover, bytes, what}` out — a pasted cover, written to `covers/` and adopted by the next Save |
 | `GET /api/drawn-cover?title=&author=` | — | a drawn cover for a book that is **not** in the library: the volumes Wikidata says are missing are shown as cards |
@@ -1923,6 +1924,29 @@ write into another's, which is the whole thing accounts were added for. With no
 install the app has always supported, and there the name in the request is all
 there is.
 
+**And whose read is it** — the same question, not asked until 2.10.40. Writing
+was closed when accounts arrived and reading was left open: every shelf, the
+Listened section, the line of numbers, the cards and one book's own progress took
+the listener from `?user=`, the page naming itself, and the server answered for
+whatever name it was given. Anybody signed in could read anybody else's places,
+finished books and hearts by typing a name into the address.
+
+Frank found it from the other end. Signed in as the administrator, he had another
+listener's book sitting in *Continue listening*: his browser still carried a name
+in `localStorage` from the picker that came before accounts, the page sent it,
+and the server believed it. One cause, two faces — a leak outward and somebody
+else's reading on your own screen.
+
+`whoReads` is now the twin of `whoWrites` and is used by all eight: with a
+password set it is the session and only the session. The pages still send
+`?user=`, and must, because the password-less install has no session to ask and
+the name in the request is still all there is — so the parameter stays, and is
+ignored exactly when there is something better to go on. `req.listener` is a
+string for every cookie session, the empty one for an administrator with no
+`ADMIN_USER`, which is where `whoWrites` puts their places too; it is `undefined`
+only for the two machines that come in on a token of their own, and those go on
+naming the listener they act for.
+
 **The names that were already there.** Every one of them is approved and carries
 no password, and the first sign-in with such a name chooses one. Locking a
 household out of its own listening history to add a login would be a poor trade —
@@ -2986,6 +3010,8 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.40 | a place in a book belongs to whoever kept it, on the way out as well as in. Eight routes took the listener from `?user=` — the page naming itself — so anybody signed in could read anybody else's shelves, finished books and hearts by typing a name into the address, and a browser still carrying a name from before accounts put somebody else's book in Frank's *Continue listening*. `whoReads` is the twin of `whoWrites`: the session, and only the session |
+| 2.10.32 | "finished" has one home. `countsAsRead` moved to `finished.js` with the other two senses of the word written out beside it, and the line of numbers under every page and the accounts page both ask it now — they counted the stored tick, which drifts from it on any database old enough or re-scanned since, so a list of four sat under a 1. And the administrator's own name, when it is also a row on the accounts page, is marked as theirs: the password badge and the two ticks are about a listener account and govern nothing the administrator does, which read as *May download* being broken. Their visits are recorded, so that row stops saying "never signed in", and *Last here* carries the date at last |
 | 2.10.24 | `app.js` was 2402 lines and is now three files: the maintenance column and its file operations are `maint.js`, the edit dialog with its cover and lookup is `edit.js`, and what both of them call stays in `app.js`. The split is along what each part touches, and `pages` is what made it safe to make |
 | 2.10.16 | the pages have a suite of their own: `pages` loads both of them into jsdom with their real scripts and drives the handlers, so *Move…* dying on a route that throws, an empty Authors column and a dropped book number are checks rather than things Frank finds. Two scripts declaring one name is now a page that will not load instead of a regex over the source; and the workflow asks `npm audit` about what ships on every run |
 | 2.10.8 | `proxy-addr` 2.0.8, for a critical advisory published since the last release — it is what Express works `req.ip` out with, and `req.ip` is what the sign-in backoff counts against; and the helper that asked "is this book finished" is `countsAsRead`, since `isFinished` is Audiobookshelf's name for something else |

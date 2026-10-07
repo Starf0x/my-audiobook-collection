@@ -150,6 +150,38 @@ check('which Discord is told about', /Bert.*signed in/s.test(sent[sent.length - 
 check('the library opens for them', (await get('/api/genres', bert.cookies)).status, 200);
 check('but the admin list does not', (await get('/api/accounts', bert.cookies)).status, 403);
 
+// --- a place in a book belongs to whoever kept it --------------------------
+// Writing was closed when accounts arrived — `whoWrites` takes the session and
+// never a name in the body — and reading was left open. Every shelf, the
+// Listened section, the line of numbers, the cards and one book's own progress
+// took `?user=`, the page naming itself, and the server answered for it.
+//
+// Frank found it from the other end: signed in as the administrator, he had
+// another listener's book in *Continue listening*. His browser still carried a
+// name in `localStorage` from the picker that came before accounts, the page
+// sent that, and the server believed it. The same route would have answered
+// anybody who typed a name into the address.
+{
+  // something of Bert's to go looking for
+  await post('/api/progress', { bookId: 3, trackIdx: 0, position: 1 }, bert.cookies);
+  const asBert = (await get('/api/home', bert.cookies)).body;
+  check('Bert has a book on the go', asBert.continue.map((b) => b.id), [3]);
+
+  // and now the admin asks for it by name
+  const asked = (await get('/api/home?user=Bert', admin.cookies)).body;
+  check('naming somebody else in the address does not fetch their shelf',
+    asked.continue.map((b) => b.id), []);
+  check('nor their finished books',
+    (await get('/api/listened?user=Bert', admin.cookies)).body.length, 0);
+  check('nor the count under the page',
+    (await get('/api/stats?user=Bert', admin.cookies)).body.done, 0);
+  check('nor the place kept in one book',
+    (await get('/api/books/3?user=Bert', admin.cookies)).body.progress, null);
+  // and a listener cannot reach across either, which is the direction that matters
+  check('and a listener asking after the administrator gets their own answer',
+    (await get('/api/home?user=frank', bert.cookies)).body.continue.map((b) => b.id), [3]);
+}
+
 // --- the page the admin reads them on ------------------------------------
 const pageOf = async (where, cookie) => {
   const r = await realFetch(`${BASE}${where}`, { headers: cookie ? { Cookie: cookie } : {} });
@@ -390,6 +422,34 @@ for (let i = 0; i < 7; i++) {
   if (r.status === 429) refused++;
 }
 check('guessing starts costing after a handful of tries', refused > 0, true);
+
+// --- the administrator's own name, on the page of accounts ----------------
+// Frank turned *May download* off on his own row and went on downloading, and
+// read "no password yet" beside a name he types a password for every week. Both
+// were the same thing: the administrator listens under their own name, so that
+// name can also be a row here — left by the picker that came before accounts —
+// and the page showed it as an ordinary listener. It is not one. They sign in
+// with the container's name and password, `whoIsAsking` lets them through every
+// check as the admin, and nothing on this row governs any of that.
+{
+  const { withStats: stats } = await import('../server/listeners.js');
+  // the name the suite signs the admin in with, as a listener row: exactly the
+  // leftover this is about
+  db.prepare("INSERT OR IGNORE INTO users (name, state) VALUES ('frank', 'approved')").run();
+  await get('/api/stats', admin.cookies); // a visit, which is what marks them present
+  const mine = () => stats().find((u) => u.name === 'frank');
+  check('the administrator’s row says it is the administrator', mine().isAdmin, true);
+  check('and it is the only row that does', stats().filter((u) => u.isAdmin).map((u) => u.name), ['frank']);
+  check('their row stops claiming they have never been here', !!mine().lastSeen, true);
+  check('and the page is told not to show them a password badge they have no use for',
+    [mine().isAdmin, mine().hasPassword], [true, false]);
+  // the reason the ticks on that row are not drawn: they decide nothing
+  check('the administrator may download whatever that row says',
+    (await get('/api/download/1', admin.cookies)).status !== 403, true);
+  await post('/api/accounts/frank/download', { may: false }, admin.cookies);
+  check('and still may, with it turned off',
+    (await get('/api/download/1', admin.cookies)).status !== 403, true);
+}
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);

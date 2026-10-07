@@ -159,6 +159,12 @@ for (const [page, own] of [['index.html', 'app.js'], ['listen.html', 'shelf.js']
     [window.eval('typeof $'), window.eval('typeof seriesRows'), window.eval('typeof drawBooks')],
     ['function', 'function', 'function']);
 }
+// The third page stands on its own — no browse.js, no player — so it only has to
+// load and draw.
+{
+  const { broke } = await open('accounts.html');
+  check('accounts.html loads its scripts without complaint', broke, []);
+}
 
 // --- Move… opens whatever the routes beside it say ------------------------
 // `/api/import` refuses in every one of these, deliberately. Move… used to ask
@@ -352,6 +358,50 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('a lookup result that names no number leaves the book its own',
     [document.querySelector('#eTitle').value, document.querySelector('#eSeriesNo').value],
     ['From Google', '3']);
+}
+
+// --- a row on the page of accounts ----------------------------------------
+// Two of these are faults Frank reported on one screen. His own row read "no
+// password yet" beside a name he types a password for every week, and *May
+// download* turned off did not stop him downloading — both because the
+// administrator's name can also be a listener row, and the page drew it as an
+// ordinary one. And "Last here" had never carried a date at all: the row knew
+// when, said "12 days ago", and threw the rest away.
+{
+  const day = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  const base = {
+    state: 'approved', level: { name: 'Rookie Level', icon: '', at: 10, next: { at: 20, name: 'Listener Level' } },
+    started: 5, finished: 4, completed: 1, hours: 3.2, favourites: 2, downloads: [],
+    listening: [], signedIn: 1, reason: '', knowsAdmin: false, requestedAt: '', decidedAt: '',
+  };
+  const { document } = await open('accounts.html', {
+    '/api/accounts': {
+      accounts: [
+        { ...base, name: 'FrankyB', isAdmin: true, hasPassword: false, lastSeen: day(0), daysAgo: 0 },
+        { ...base, name: 'Donna', isAdmin: false, hasPassword: true, lastSeen: day(12), daysAgo: 12, granted: false },
+        { ...base, name: 'Newcomer', isAdmin: false, hasPassword: false, lastSeen: '', daysAgo: null },
+      ],
+    },
+  });
+  await settle(160);
+  const rowOf = (name) => document.querySelector(`.account[data-name="${name}"]`);
+  check('the administrator is named as one', rowOf('FrankyB')?.querySelector('.badge')?.textContent, 'administrator');
+  check('and is not told they have no password',
+    /no password yet/.test(rowOf('FrankyB').textContent), false);
+  check('a listener who has never signed in still is',
+    rowOf('Newcomer').querySelector('.badge.untagged')?.textContent, 'no password yet');
+  check('the ticks are not offered on the administrator’s row, because they decide nothing',
+    rowOf('FrankyB').querySelectorAll('.allowed input').length, 0);
+  check('and are on a listener’s',
+    [...rowOf('Donna').querySelectorAll('.allowed input')].map((i) => i.dataset.mayListen !== undefined
+      || i.dataset.mayDownload !== undefined), [true, true]);
+  // the date, which is the thing that was missing
+  check('Last here carries the date, not only how long ago',
+    /Last here: 12 days ago · \d/.test(rowOf('Donna').textContent), true);
+  check('and the hour for somebody who was here today',
+    /Last here: here today at \d\d?:\d\d/.test(rowOf('FrankyB').textContent), true);
+  check('while never is still never',
+    /Last here: never signed in/.test(rowOf('Newcomer').textContent), true);
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');

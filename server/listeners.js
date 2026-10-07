@@ -27,6 +27,7 @@
 //    changed by editing it.
 import crypto from 'node:crypto';
 import { db } from './db.js';
+import { readCount } from './finished.js';
 import { mustWait, wrong, right } from './guessing.js';
 import { levelOf, mayDownload } from './levels.js';
 
@@ -228,6 +229,24 @@ export function listenerOf(req) {
   return row.name;
 }
 
+// The administrator is here too, and was not being marked present.
+//
+// They sign in with the name and password from the container, which is not a row
+// in this table — but their *name* can be a row in it, left by the picker that
+// came before accounts, and that row carries everything they have listened to.
+// The page then showed it as an ordinary listener who had never signed in and
+// had no password, because nothing on the admin's way in ever touched it: only a
+// listener session writes `last_seen`, and only `signIn` writes `pass`.
+//
+// So the admin's visit is recorded against their row when there is one. Same
+// hourly guard as a listener's, and the same reason for it.
+export function seenAdmin(name) {
+  const row = find(name);
+  if (!row) return;
+  const now = new Date().toISOString();
+  if (!row.last_seen || Date.now() - Date.parse(row.last_seen) > 3600000) q.seen.run(now, now, row.name);
+}
+
 export function signOut(req) {
   const token = tokenIn(req);
   if (token) q.close.run(token);
@@ -271,9 +290,14 @@ export const downloadsOf = (user, most = 25) => db.prepare(
 
 export function withStats() {
   return everyone().map((u) => {
-    const kept = db.prepare(`SELECT COUNT(*) AS started,
-        COALESCE(SUM(CASE WHEN done = 1 THEN 1 ELSE 0 END), 0) AS finished
-      FROM progress WHERE user = ?`).get(u.name);
+    // *finished* is the same question the listener's own Listened section asks
+    // and the same one the line of numbers under every page asks: `readCount`,
+    // in `finished.js`. It counted `done = 1` here — the stored tick — which is
+    // a different question, and on a database with rows written before this app
+    // ticked a book that played out, or re-scanned since, it gives a different
+    // number. Three places showing one thing have to ask one thing.
+    const started = db.prepare('SELECT COUNT(*) AS n FROM progress WHERE user = ?').get(u.name).n;
+    const kept = { started, finished: readCount(u.name) };
     const seconds = db.prepare(`SELECT COALESCE(SUM(CASE WHEN p.done = 1 THEN b.duration ELSE
         COALESCE((SELECT SUM(t.duration) FROM tracks t
                   WHERE t.book_id = b.id AND t.idx < p.track_idx), 0) + p.position END), 0) AS s
@@ -313,14 +337,24 @@ export function withStats() {
       decidedAt: u.decided_at || '',
       lastSeen: u.last_seen || '',
       daysAgo: days,
+      // Whether this row is the administrator's own name. Everything below it on
+      // the page — the password badge, *May listen*, *May download* — is about a
+      // listener account, and none of it governs somebody who signs in with the
+      // container's password and is let through every check as the admin. Shown
+      // as an ordinary row it reads as broken: downloading stays possible with
+      // *May download* off, and "no password yet" sits beside somebody who types
+      // one every week.
+      isAdmin: !!adminName() && u.name.toLowerCase() === adminName().toLowerCase(),
       hasPassword: !!u.pass,
       signedIn: sessions,
       started: kept.started,
       finished: kept.finished,
       hours: Math.round((seconds / 3600) * 10) / 10,
       favourites: hearts,
-      // what they have actually finished, which is what the level is made of —
-      // `finished` above is how many they have ticked, and the two can differ
+      // What this app watched run out, which is what a level is made of. The two
+      // numbers stay two numbers: `finished` above is every book that counts as
+      // read, a book ticked by hand among them, and ticking cannot earn a level.
+      // So `completed` is the smaller one, and the page says which is which.
       completed: done,
       level,
       mayDownload: mayDownload(done, u.may_download),

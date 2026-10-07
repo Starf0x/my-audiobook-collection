@@ -6,6 +6,7 @@ import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR, googleCountry, GOOGLE_COUNTRY_KEY } from './db.js';
+import { countsAsRead, keptOne, readCount } from './finished.js';
 import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
 import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries,
   GOOGLE_COUNTRIES } from './google.js';
@@ -13,7 +14,7 @@ import { candidates, genreFolders, importBook, compareWithExisting, skipImport, 
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
 import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
 import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats, adminName,
-  asName, WEEK, finishedABook, finishedCount, tookABook, downloadsOf, grantDownload,
+  asName, WEEK, finishedABook, finishedCount, tookABook, downloadsOf, grantDownload, seenAdmin,
   find as findListener } from './listeners.js';
 import { levelOf, mayDownload, LEVELS, TOP } from './levels.js';
 import { askedForAnAccount, signedIn, startedListening, stoppedListening, tookTheBook,
@@ -113,7 +114,15 @@ const WITHOUT_AN_ACCOUNT = new Set([
 const whoIsAsking = (req) => {
   const listener = listenerOf(req);
   if (listener) return { listener, admin: isAdmin(req) };
-  if (isAdmin(req)) return { listener: adminName() || '', admin: true };
+  // The admin listens under their own name — that is what `whoWrites` keeps a
+  // place against — so if there is a row of that name, this is a visit and it is
+  // recorded. Without this the administrator's row said "never signed in" while
+  // its owner was using the app every day.
+  if (isAdmin(req)) {
+    const name = adminName() || '';
+    if (name) seenAdmin(name);
+    return { listener: name, admin: true };
+  }
   return null;
 };
 
@@ -284,6 +293,28 @@ app.post('/api/accounts/:name/remove', requireAdmin, wrap(async (req, res) =>
 // ADMIN_PASSWORD set there are no sessions and no lock — the private install the
 // app has always supported — and then the name in the request is all there is.
 const whoWrites = (req) => (adminRequired() ? (req.listener || '') : asName(req.body?.user));
+
+// Who a *read* belongs to, which is the same question and was not being asked.
+//
+// Every shelf, the Listened section, the line of numbers, the cards and one
+// book's own progress took the name from `?user=` — the page naming itself — and
+// the server believed it. Two things followed. Frank, signed in as the
+// administrator, had another listener's book sitting in *Continue listening*:
+// his browser still carried a name in `localStorage` from the picker that came
+// before accounts, the page sent it, and the server answered for it. And anybody
+// signed in could read anybody else's places, finished books and hearts by
+// typing a name into the address — the thing accounts were added to stop, left
+// open on the reading side while the writing side was closed.
+//
+// So with a password set it is the session and only the session, exactly as
+// `whoWrites`. `req.listener` is a string for every cookie session — the empty
+// one for an administrator with no ADMIN_USER, which is also where `whoWrites`
+// puts their places, so the two agree. It is `undefined` only for the two
+// machines that come in on a token of their own, and those are left naming the
+// listener they are acting for.
+const whoReads = (req) => (adminRequired()
+  ? (req.listener === undefined ? asName(req.query.user) : (req.listener || ''))
+  : asName(req.query.user));
 
 // The names this browser has signed in as. It is a convenience, not a door —
 // the door is the session cookie — and it is what fills the name in on a page
@@ -523,10 +554,22 @@ app.post('/api/skipped/file', requireAdmin, wrap(async (req, res) => {
 // it where it does not, so a book filed straight under its author still shows up
 // in the series it belongs to.
 const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')), '')";
+// The line of numbers under every page. *listened* here and the Listened section
+// in the column are the same question asked twice on one screen, so they are
+// counted the same way: `keptBooks(...).filter(finished)`, which is
+// `countsAsRead` — the tick, or a place sitting at the end of the last track.
+//
+// It was `COUNT(progress WHERE done = 1)`, the tick alone, and the two drifted
+// apart on any database old enough to have rows written before this app ticked a
+// book that played out, or re-scanned since so that a track's real duration
+// moved the end of it under a place already kept. Frank's had four books in the
+// list and a 1 in the line underneath, with nothing on the page to say which was
+// right. `keptBooks` is declared below this and initialised at load, long before
+// a request can arrive here.
 app.get('/api/stats', (req, res) => {
   const books = db.prepare('SELECT COUNT(*) AS n FROM books').get().n;
   const files = db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n;
-  const done = db.prepare('SELECT COUNT(*) AS n FROM progress WHERE user = ? AND done = 1').get(req.query.user || '').n;
+  const done = readCount(whoReads(req));
   res.json({ books, files, done, todo: books - done, version: VERSION });
 });
 
@@ -554,30 +597,13 @@ app.get('/api/untagged', requireAdmin, (req, res) => {
 });
 
 // the landing view: what this user was listening to, and what turned up last
-// Three things in this app mean "finished", and they are not the same thing.
-// They were all called some version of the word, which is how four books in one
-// list and one in a count next to it read as a fault rather than as an answer:
 //
-//   * `progress.done` — **ticked**. Somebody said they are done with this book,
-//     by hand or by playing it out. It can be taken off again.
-//   * `completions`   — **played to the end**. What this app watched happen, kept
-//     for ever and never rewritten (§7.12b). Levels are counted from it, so
-//     ticking a book by hand cannot earn one.
-//   * `countsAsRead()`, below — **ticked, or sitting at the end anyway**. What a
-//     shelf should draw as done. Not stored: asked of a row as it is served.
+// `countsAsRead` — ticked, or sitting at the end of the last track anyway — is
+// `finished.js`, with the other two meanings of the word written out beside it,
+// along with `readCount`, which is this question asked of a whole listener. It
+// lived here until 2.10.32, when the accounts page turned out to be counting the
+// stored tick instead and the two could not be kept in step from two files.
 //
-// This one used to be called `isFinished`, which is the name Audiobookshelf uses
-// on the wire for something else — its field is the tick alone — so the same
-// word meant two things one file apart, in `abs.js` and here.
-//
-// A book counts as read when the tick says so, or when the place kept in it sits
-// at the end of its last track: pressing Resume on one of those plays its last
-// seconds and stops, so it is offered again from the top instead. The grace is a
-// tenth of the track and never more than a minute — a player rarely stops on the
-// second, and a flat minute would call the whole of a short track the end of it.
-const countsAsRead = (b) => !!b.done
-  || (b.track_idx >= b.tracks - 1 && b.trackSeconds > 0
-      && b.position >= b.trackSeconds - Math.min(60, b.trackSeconds / 10));
 // what the listener is in the middle of, the track they are on, and the seconds
 // of the tracks already behind them — so how far into a book a place is can be
 // said in time rather than in tracks, which is the only honest way to say it for a
@@ -616,10 +642,10 @@ const keptBooks = (user) => db.prepare(`SELECT b.id, b.title, b.author, b.genre,
 // The books this listener is done with. Not a shelf: it is a section in the
 // column, so the whole list goes, however long it is.
 app.get('/api/listened', (req, res) =>
-  res.json(keptBooks(req.query.user).filter((b) => b.finished)));
+  res.json(keptBooks(whoReads(req)).filter((b) => b.finished)));
 
 app.get('/api/home', (req, res) => {
-  const kept = keptBooks(req.query.user);
+  const kept = keptBooks(whoReads(req));
   res.json({
     continue: kept.filter((b) => !b.finished).slice(0, 12),
     recent: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${SERIES} AS series, b.series_no
@@ -789,7 +815,7 @@ app.get('/api/books', (req, res) => {
                              FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                              WHERE b.genre = ? AND b.parent_series = ?
                              ORDER BY series, b.series_no, b.title`)
-      .all(req.query.user || '', req.query.genre, req.query.parent);
+      .all(whoReads(req), req.query.genre, req.query.parent);
     return res.json({
       books: rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
         finished: countsAsRead({ ...b, trackSeconds }) })),
@@ -808,7 +834,7 @@ app.get('/api/books', (req, res) => {
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
                            ORDER BY series IS NULL, series, b.series_no, b.title`)
-    .all(req.query.user || '', req.query.genre, within);
+    .all(whoReads(req), req.query.genre, within);
   return res.json({
     books: rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
       finished: countsAsRead({ ...b, trackSeconds }) })),
@@ -835,7 +861,7 @@ app.get('/api/search', (req, res) => {
                            ORDER BY CASE WHEN b.title LIKE ? THEN 0 WHEN b.author LIKE ? THEN 1 ELSE 2 END,
                                     b.author, b.series_no, b.title
                            LIMIT 200`)
-    .all(req.query.user || '', ...words.map((w) => `%${w}%`), `%${words[0]}%`, `%${words[0]}%`);
+    .all(whoReads(req), ...words.map((w) => `%${w}%`), `%${words[0]}%`, `%${words[0]}%`);
   res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
     finished: countsAsRead({ ...b, trackSeconds }) })));
 });
@@ -874,7 +900,7 @@ app.post('/api/listened', (req, res) => {
 // and it is written by clicking the heart — so it answers the same shape a book
 // list does and the page needs no second kind of card.
 app.get('/api/favourites', (req, res) => {
-  const user = whoWrites(req) || asName(req.query.user);
+  const user = whoReads(req);
   const rows = db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, b.duration, b.narrator,
                                   b.year, b.description, b.tagged, ${SERIES} AS series, b.series_no,
                                   p.position > 0 AS started, ${KEPT}
@@ -932,7 +958,7 @@ app.get('/api/books/:id', (req, res) => {
   if (!book) return res.status(404).json({ error: 'Not found' });
   book.tracks = db.prepare('SELECT id, idx, title, duration FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id);
   book.progress = db.prepare('SELECT track_idx, position, done FROM progress WHERE user = ? AND book_id = ?')
-    .get(req.query.user || '', book.id) || null;
+    .get(whoReads(req), book.id) || null;
   // The folder it actually sits in may name a series the library does not call one
   // (a series of a single book). The move dialog has to prefill from the folders,
   // or moving without editing anything would quietly flatten that level away.
@@ -1411,12 +1437,6 @@ app.get('/api/stream/:trackId', (req, res) => {
   res.sendFile(track.path); // sendFile handles Range requests
 });
 
-// What a listener has done with one book, and the track they are on: the same
-// four numbers `countsAsRead` asks for.
-const keptOne = db.prepare(`SELECT p.done, p.track_idx, p.position,
-    (SELECT COUNT(*) FROM tracks t WHERE t.book_id = p.book_id) AS tracks,
-    (SELECT t.duration FROM tracks t WHERE t.book_id = p.book_id AND t.idx = p.track_idx) AS trackSeconds
-  FROM progress p WHERE p.user = ? AND p.book_id = ?`);
 const tickIt = db.prepare('UPDATE progress SET done = 1 WHERE user = ? AND book_id = ?');
 
 app.post('/api/progress', (req, res) => {

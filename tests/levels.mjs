@@ -78,6 +78,15 @@ db.prepare(`INSERT INTO tracks (book_id, idx, path, title, duration)
             VALUES (5, 0, ?, 'One', 2)`).run(path.join(bookDir, '01.mp3'));
 db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
             VALUES (6, '/y', 'Fantasy', 'An Author', 'Another Book', 2)`).run();
+// A third with a real track on it, for the one case that cannot be played into
+// existence: a place kept at the end of the last track with no tick beside it.
+const thirdDir = path.join(HERE, 'library', 'Fantasy', 'An Author', 'A Third Book');
+fs.mkdirSync(thirdDir, { recursive: true });
+fs.writeFileSync(path.join(thirdDir, '01.mp3'), mp3(2));
+db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
+            VALUES (7, ?, 'Fantasy', 'An Author', 'A Third Book', 2)`).run(thirdDir);
+db.prepare(`INSERT INTO tracks (book_id, idx, path, title, duration)
+            VALUES (7, 0, ?, 'One', 2)`).run(path.join(thirdDir, '01.mp3'));
 
 await import('../server/index.js');
 await new Promise((r) => setTimeout(r, 800));
@@ -133,6 +142,15 @@ check('a book the app watched run out does', finishedCount('Ann'), 1);
     listed.length, mine().finished);
   check('and played-to-the-end is the smaller number, being only what was watched',
     [mine().completed, mine().finished], [1, 2]);
+  // The line of numbers runs under the same page the Listened section is on, and
+  // *listened* on it has to be the count of that section. It used to be
+  // `COUNT(progress WHERE done = 1)` — the tick alone — while the list itself is
+  // every book that counts as read, tick or a place sitting at the end of the
+  // last track. So the list said four and the number under it said one, on one
+  // screen, and the only way to find out which was right was to ask.
+  const strip = (await get('/api/stats?user=Ann', ann.cookies)).body;
+  check('and the numbers under the page count the same books as the list',
+    [strip.done, strip.todo], [listed.length, strip.books - listed.length]);
 }
 await post('/api/listened', { bookId: 5, done: true, played: true }, ann.cookies);
 check('and finishing the same book twice is one accomplishment', finishedCount('Ann'), 1);
@@ -146,6 +164,46 @@ check('though that book is no longer ticked — the one ticked by hand is anothe
 // a place that reaches the end of the last track is a completion too
 await post('/api/progress', { bookId: 5, trackIdx: 0, position: 2 }, ann.cookies);
 check('so is playing to the end of the last track', finishedCount('Ann'), 1);
+
+// --- where the two counts came apart --------------------------------------
+// The tick is *written*, once, under the rules as they stood at that moment;
+// counting as read is *worked out* when a row is served, under the rules as they
+// stand now. So they drift. A row kept before this app ticked a book that played
+// out never got one; and a scan that re-reads a file's real duration can move the
+// end of the last track under a place that was already kept, which makes a book
+// count as read that was never ticked and never will be.
+//
+// That row is written here rather than played into existence, because playing to
+// the end is exactly what sets the tick — the state only arises from a database
+// that has been through a version or a re-scan, which is what Frank's had.
+//
+// The Listened section lists by what counts as read. The line of numbers under
+// it used to count `progress.done = 1`, the tick alone. One screen, one
+// question, two answers: the list said four and the number under it said one,
+// and nothing on the page said which was right.
+{
+  const last = db.prepare(`SELECT idx, duration FROM tracks WHERE book_id = 7
+                           ORDER BY idx DESC LIMIT 1`).get();
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated)
+              VALUES ('Ann', 7, ?, ?, 0, datetime('now'))`).run(last.idx, last.duration);
+
+  const listed = (await get('/api/listened?user=Ann', ann.cookies)).body;
+  const ticked = db.prepare("SELECT COUNT(*) AS n FROM progress WHERE user = 'Ann' AND done = 1").get().n;
+  check('a book sitting at the end of its last track is listed, tick or no tick',
+    [listed.some((b) => b.id === 7), ticked < listed.length], [true, true]);
+  const strip = (await get('/api/stats?user=Ann', ann.cookies)).body;
+  check('and the numbers under the page count what that list counts',
+    [strip.done, strip.todo], [listed.length, strip.books - listed.length]);
+  // The third place the same question is asked. The admin's page has said for a
+  // while that this number is "what their own Books you've listened to lists" —
+  // and it counted the stored tick, so the label was a promise the code did not
+  // keep. There is one `readCount` behind all three now.
+  const { withStats } = await import('../server/listeners.js');
+  check('and so does the number on their row of the accounts page',
+    withStats().find((u) => u.name === 'Ann').finished, listed.length);
+  check('while played-to-the-end stays its own, smaller, number',
+    withStats().find((u) => u.name === 'Ann').completed < listed.length, true);
+}
 
 // --- what a level unlocks ------------------------------------------------
 check('a listener below the top may not take a whole book',
