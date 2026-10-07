@@ -300,11 +300,15 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
     left -= d;
   }
   const said = finished === undefined ? null : (finished ? 1 : 0);
-  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, done)
-              VALUES (?, ?, ?, ?, ?, COALESCE(?, 0))
+  // `via` says this came from a player rather than from the page. It is the
+  // thing that answers "whose book is this?" when one turns up on somebody's
+  // shelf: Music Assistant signs in as one listener and writes every position
+  // against that name, whoever is actually listening.
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, done, via)
+              VALUES (?, ?, ?, ?, ?, COALESCE(?, 0), 'music-assistant')
               ON CONFLICT(user, book_id) DO UPDATE SET
                 track_idx = excluded.track_idx, position = excluded.position,
-                updated = excluded.updated,
+                updated = excluded.updated, via = excluded.via,
                 -- said nothing: leave the tick alone. Said something: it decides.
                 done = COALESCE(?, progress.done)`)
     .run(user || '', bookId, idx, left, new Date().toISOString(), said, said);

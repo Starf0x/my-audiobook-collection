@@ -54,6 +54,12 @@ const ago = (a) => {
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString() : '');
 
+// The faces that keep a place in a book. Named here because a book on somebody's
+// row that they do not recognise is almost always one of these: a player signs in
+// as one listener and writes every position against that name, whoever is in the
+// room. Rows kept before 2.10.72 carry nothing and are left unlabelled.
+const VIA = { 'music-assistant': 'Music Assistant', 'home-assistant': 'Home Assistant' };
+
 const row = (a) => `<div class="account" data-name="${esc(a.name)}">
     <div class="who">
       <div class="name">
@@ -77,7 +83,11 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
       <div class="sub">Last here: ${esc(ago(a))}${a.signedIn ? ` · signed in on ${a.signedIn} browser(s)` : ''}</div>
       ${a.nowPlaying ? `<div class="sub playing">▶ Listening now: <strong>${esc(a.nowPlaying.title)}</strong>${a.nowPlaying.author ? ` · ${esc(a.nowPlaying.author)}` : ''}</div>` : ''}
       ${a.listening.length ? `<div class="sub">In the middle of:
-        ${a.listening.map((b) => `<span class="badge">${esc(b.title)}${b.author ? ` · ${esc(b.author)}` : ''} — ${b.percent}%</span>`).join(' ')}</div>` : ''}
+        ${a.listening.map((b) => `<span class="badge"${b.via && b.via !== 'page'
+    ? ` title="A player kept this place, not this page — ${esc(VIA[b.via] || b.via)} signs in as one listener and `
+      + 'writes every position against that name, whoever is actually listening."'
+    : ''}>${esc(b.title)}${b.author ? ` · ${esc(b.author)}` : ''} — ${b.percent}%${
+    b.via && b.via !== 'page' ? ` · ↷ ${esc(VIA[b.via] || b.via)}` : ''}</span>`).join(' ')}</div>` : ''}
       ${a.reason ? `<div class="sub said">“${esc(a.reason)}”<br>says they ${a.knowsAdmin ? 'know' : '<strong>do not know</strong>'} you${a.requestedAt ? ` · asked ${esc(when(a.requestedAt))}` : ''}</div>` : ''}
     </div>
 
