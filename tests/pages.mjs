@@ -377,7 +377,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   const { document } = await open('accounts.html', {
     '/api/accounts': {
       accounts: [
-        { ...base, name: 'FrankyB', isAdmin: true, hasPassword: false, lastSeen: day(0), daysAgo: 0 },
+        { ...base, name: 'FrankyB', isAdmin: true, hasPassword: false, lastSeen: day(0), daysAgo: 0, granted: true },
         { ...base, name: 'Donna', isAdmin: false, hasPassword: true, lastSeen: day(12), daysAgo: 12, granted: false },
         { ...base, name: 'Newcomer', isAdmin: false, hasPassword: false, lastSeen: '', daysAgo: null },
       ],
@@ -390,8 +390,17 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     /no password yet/.test(rowOf('FrankyB').textContent), false);
   check('a listener who has never signed in still is',
     rowOf('Newcomer').querySelector('.badge.untagged')?.textContent, 'no password yet');
-  check('the ticks are not offered on the administrator’s row, because they decide nothing',
-    rowOf('FrankyB').querySelectorAll('.allowed input').length, 0);
+  // One tick on the administrator's row, and it is the one that reaches them.
+  // *May listen* does not: they sign in with the container's password, which no
+  // tick here can take away. *May download* does, because downloading is a thing
+  // a row on this page allows — turned off on his own row, Frank went on
+  // downloading, and that is now a refusal.
+  check('the administrator’s row offers the one tick that governs them',
+    [...rowOf('FrankyB').querySelectorAll('.allowed input')]
+      .map((i) => Object.keys(i.dataset)), [['mayDownload']]);
+  check('and it is drawn from what that row says, rather than always the same way',
+    [rowOf('FrankyB').querySelector('.allowed input').checked,
+      rowOf('Donna').querySelector('input[data-may-download]').checked], [true, false]);
   check('and are on a listener’s',
     [...rowOf('Donna').querySelectorAll('.allowed input')].map((i) => i.dataset.mayListen !== undefined
       || i.dataset.mayDownload !== undefined), [true, true]);

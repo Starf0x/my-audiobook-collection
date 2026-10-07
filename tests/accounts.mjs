@@ -45,8 +45,17 @@ globalThis.fetch = async (url, opts) => {
 const { db, setSetting } = await import('../server/db.js');
 const { KEY } = await import('../server/notify.js');
 setSetting(KEY, 'https://discord.com/api/webhooks/1/abc');
+// A book with a file really on disk, because downloading is checked here and a
+// book with nothing behind it is refused with a 404 before the rule that decides
+// who may take it is ever reached — which is how two checks about that rule came
+// to pass without testing it.
+const bookDir = path.join(HERE, 'library', 'Fantasy', 'An Author', 'A Book');
+fs.mkdirSync(bookDir, { recursive: true });
+fs.writeFileSync(path.join(bookDir, '01.mp3'), Buffer.from(`fffb10c4${'00'.repeat(100)}`, 'hex'));
 db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
-            VALUES (3, '/x', 'Fantasy', 'An Author', 'A Book', 60)`).run();
+            VALUES (3, ?, 'Fantasy', 'An Author', 'A Book', 60)`).run(bookDir);
+db.prepare(`INSERT INTO tracks (book_id, idx, path, title, duration)
+            VALUES (3, 0, ?, 'One', 60)`).run(path.join(bookDir, '01.mp3'));
 await import('../server/index.js');
 await new Promise((r) => setTimeout(r, 800));
 
@@ -467,12 +476,39 @@ check('guessing starts costing after a handful of tries', refused > 0, true);
   check('their row stops claiming they have never been here', !!mine().lastSeen, true);
   check('and the page is told not to show them a password badge they have no use for',
     [mine().isAdmin, mine().hasPassword], [true, false]);
-  // the reason the ticks on that row are not drawn: they decide nothing
-  check('the administrator may download whatever that row says',
-    (await get('/api/download/1', admin.cookies)).status !== 403, true);
+  // --- and the one tick on that row that does reach them ------------------
+  // Frank turned *May download* off on his own row and went on downloading,
+  // because the administrator was let through that check as they are let through
+  // every other. Downloading is different: it is a thing a row on this page
+  // allows, so the row allows it for them too. Asked for outright — "ja dat moet
+  // ook voor de beheerder gelden".
+  //
+  // Book 3, not book 1. These two were written against a book this fixture does
+  // not have, so both got a 404 and `status !== 403` was true whatever the rule
+  // said. A check that cannot fail is not a check, and these could not.
+  await post('/api/accounts/frank/download', { may: true }, admin.cookies);
+  check('the administrator may download when their row says so',
+    (await get('/api/download/3', admin.cookies)).status, 200);
   await post('/api/accounts/frank/download', { may: false }, admin.cookies);
-  check('and still may, with it turned off',
-    (await get('/api/download/1', admin.cookies)).status !== 403, true);
+  check('and is refused when it says not',
+    (await get('/api/download/3', admin.cookies)).status, 403);
+  check('and told where to turn it back on, which is not "ask the administrator"',
+    /row on the accounts page/.test((await get('/api/download/3', admin.cookies)).body.error), true);
+  check('and the page is told the same, so it stops offering the button',
+    (await get('/api/account/me', admin.cookies)).body.mayDownload, false);
+  await post('/api/accounts/frank/download', { may: true }, admin.cookies);
+  check('turning it back on is enough', [
+    (await get('/api/download/3', admin.cookies)).status,
+    (await get('/api/account/me', admin.cookies)).body.mayDownload,
+  ], [200, true]);
+
+  // An administrator with no row of their own has nothing to turn off, and
+  // nothing that could ever turn it back on, so they keep what they had.
+  db.prepare("DELETE FROM users WHERE name = 'frank'").run();
+  check('an administrator with no row of their own may still download', [
+    (await get('/api/download/3', admin.cookies)).status,
+    (await get('/api/account/me', admin.cookies)).body.mayDownload,
+  ], [200, true]);
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');

@@ -230,8 +230,9 @@ app.get('/api/account/me', (req, res) => {
     // what the page needs to draw the badge beside a name and to know whether to
     // offer a download at all — the server refuses it either way
     level: levelOf(listener ? finishedCount(listener) : 0),
-    mayDownload: !adminRequired() || isAdmin(req)
-      || mayDownload(finishedCount(listener), findListener(listener)?.may_download),
+    // the same rule the download route applies, and from the same place: the
+    // page offering a button the server then refuses is how this was reported
+    mayDownload: mayTakeABook(listener || (isAdmin(req) && adminRequired() ? adminName() : ''), isAdmin(req)),
   });
 });
 
@@ -312,6 +313,28 @@ const whoWrites = (req) => (adminRequired() ? (req.listener || '') : asName(req.
 // puts their places, so the two agree. It is `undefined` only for the two
 // machines that come in on a token of their own, and those are left naming the
 // listener they are acting for.
+// May this person take a whole book? One rule, asked by the route that hands the
+// book over and by `/api/account/me`, which decides whether the page offers the
+// button at all. Two copies of this disagreeing is how it came to be reported:
+// the button was there and the download worked with *May download* turned off.
+//
+// The administrator is governed by their own row, when they have one. They sign
+// in with the container's password and are let through every other check, and
+// that is right for everything the admin page does — but downloading is a thing
+// a row on the accounts page allows, and Frank turned it off on his row and went
+// on downloading. So this one tick reaches them.
+//
+// With no row of that name there is nothing to turn off, and nothing that could
+// ever turn it back on, so an administrator without one keeps what they have
+// always had. The top level still earns it either way; `mayDownload` is where
+// that lives.
+const mayTakeABook = (who, amAdmin) => {
+  if (!adminRequired()) return true;
+  const row = who ? findListener(who) : null;
+  if (amAdmin && !row) return true;
+  return mayDownload(finishedCount(who), row && row.may_download);
+};
+
 const whoReads = (req) => (adminRequired()
   ? (req.listener === undefined ? asName(req.query.user) : (req.listener || ''))
   : asName(req.query.user));
@@ -1396,16 +1419,20 @@ app.get('/api/download/:id', wrap(async (req, res) => {
   // top level, or the admin handing it over. The page hides the button below
   // that, and hiding is not what protects it — this is.
   const who = req.listener || '';
-  if (adminRequired() && !req.isAdmin) {
-    const row = who ? findListener(who) : null;
-    if (!mayDownload(finishedCount(who), row && row.may_download)) {
-      const level = levelOf(finishedCount(who));
-      return res.status(403).json({
-        error: `Downloading a whole book is ${LEVELS[0].name}${level.next
-          ? `, and you are ${level.next.at - level.finished} book(s) from ${level.next.name}`
-          : ''}. Ask the administrator if you would like it sooner.`,
-      });
-    }
+  if (!mayTakeABook(who, req.isAdmin)) {
+    const level = levelOf(finishedCount(who));
+    const earn = `${LEVELS[0].name}${level.next
+      ? `, and you are ${level.next.at - level.finished} book(s) from ${level.next.name}`
+      : ''}`;
+    return res.status(403).json({
+      error: `Downloading a whole book is ${earn}. ${req.isAdmin
+        ? 'Your own row on the accounts page is where to turn it on.'
+        : 'Ask the administrator if you would like it sooner.'}`,
+    });
+  }
+  // Written down for whoever it is, the administrator included: the row that
+  // decides is now theirs too, so what it allowed should be as visible.
+  if (adminRequired()) {
     tookABook(who, book.id, book.title);
     tookTheBook(who, book.title, book.author);
   }

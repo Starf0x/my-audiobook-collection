@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1585 | Express app: every route, and nothing else |
+| `server/index.js` | 1612 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 205 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -142,7 +142,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/abs.js` | 692 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 196 | its behaviour — the statistics, the two ticks, and the administrator's own row |
+| `public/accounts.js` | 199 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 375 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
@@ -2018,6 +2018,24 @@ sits *beside* the level rather than instead of it — somebody at the top who wa
 then refused by a switch would be a puzzle. Every download is written down with
 the title and announced, and the Accounts page lists what each person has taken.
 
+**And it is the one tick that reaches the administrator.** They sign in with the
+container's password and are let through every other check, which is right for
+everything the admin page does — but downloading is a thing a row on the accounts
+page allows, so that row allows it for them too. Frank turned *May download* off
+on his own row and went on downloading; from 2.10.64 he is refused, and told that
+his own row is where to turn it back on rather than to ask the administrator.
+
+An administrator whose name is **not** a row keeps what they always had: there is
+nothing to turn off, and nothing that could ever turn it back on, so the rule
+would be a lock with no key. *May listen* still does not reach them in either
+case — that tick governs `signIn`, and they do not come in that way.
+
+`mayTakeABook(who, amAdmin)` is the whole rule, asked by the route that hands the
+book over **and** by `/api/account/me`, which decides whether the page offers the
+button. Those were two separate expressions of it, and they disagreed: the button
+was drawn and the download worked with the tick off. A page offering what the
+server would refuse is the same fault wearing the other face.
+
 ### 7.13 Telling Discord (`notify.js`)
 
 A webhook address saved by the admin, and three things worth saying: somebody
@@ -3038,10 +3056,11 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.10.64 | *May download* reaches the administrator, asked for outright after 2.10.40 explained why it did not. Downloading is a thing a row on the accounts page allows, so that row allows it for them; an administrator with no row of their own keeps what they had, because a rule there is no key to would be a lock. `mayTakeABook` is the one expression of it, read by the route **and** by the page that decides whether to offer the button — those were two, and they disagreed. Two checks written for this in 2.10.40 turn out to have asked about a book the fixture does not have, so both got a 404 and could not have failed |
 | 2.10.56 | a failing suite says why again under the tally, instead of forty lines of `ok` scrolling over the one sentence that explains it — the `FAIL` lines and their `got`/`want`, or whatever threw, with the stack frames left out. `series-complete` failed once and was never diagnosed because its own careful message was filtered away by the `grep` the run was piped through |
 | 2.10.48 | the same leak, on the Home Assistant route: `forHA` passes a request through when no `HA_TOKEN` is set, so a signed-in listener could ask `/api/ha?user=` for somebody else's places and `continue.m3u` would hand over the book and the second they stopped at. Found by going back over the rest of the app after 2.10.40 rather than by anybody hitting it. The Audiobookshelf face was already right |
 | 2.10.40 | a place in a book belongs to whoever kept it, on the way out as well as in. Eight routes took the listener from `?user=` — the page naming itself — so anybody signed in could read anybody else's shelves, finished books and hearts by typing a name into the address, and a browser still carrying a name from before accounts put somebody else's book in Frank's *Continue listening*. `whoReads` is the twin of `whoWrites`: the session, and only the session |
-| ″ | "finished" has one home. `countsAsRead` moved to `finished.js` with the other two senses of the word written out beside it, and the line of numbers under every page and the accounts page both ask it now — they counted the stored tick, which drifts from it on any database old enough or re-scanned since, so a list of four sat under a 1. And the administrator's own name, when it is also a row on the accounts page, is marked as theirs: the password badge and the two ticks are about a listener account and govern nothing the administrator does, which read as *May download* being broken. Their visits are recorded, so that row stops saying "never signed in", and *Last here* carries the date at last |
+| ″ | "finished" has one home. `countsAsRead` moved to `finished.js` with the other two senses of the word written out beside it, and the line of numbers under every page and the accounts page both ask it now — they counted the stored tick, which drifts from it on any database old enough or re-scanned since, so a list of four sat under a 1. And the administrator's own name, when it is also a row on the accounts page, is marked as theirs: the password badge and *May listen* are about a listener account and govern nothing the administrator does, which read as *May download* being broken (that one reaches them from 2.10.64). Their visits are recorded, so that row stops saying "never signed in", and *Last here* carries the date at last |
 | 2.10.24 | `app.js` was 2402 lines and is now three files: the maintenance column and its file operations are `maint.js`, the edit dialog with its cover and lookup is `edit.js`, and what both of them call stays in `app.js`. The split is along what each part touches, and `pages` is what made it safe to make |
 | 2.10.16 | the pages have a suite of their own: `pages` loads both of them into jsdom with their real scripts and drives the handlers, so *Move…* dying on a route that throws, an empty Authors column and a dropped book number are checks rather than things Frank finds. Two scripts declaring one name is now a page that will not load instead of a regex over the source; and the workflow asks `npm audit` about what ships on every run |
 | 2.10.8 | `proxy-addr` 2.0.8, for a critical advisory published since the last release — it is what Express works `req.ip` out with, and `req.ip` is what the sign-in backoff counts against; and the helper that asked "is this book finished" is `countsAsRead`, since `isFinished` is Audiobookshelf's name for something else |
