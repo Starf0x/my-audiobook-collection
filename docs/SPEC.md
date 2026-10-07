@@ -1964,6 +1964,16 @@ to work out which faces can write a place at all. The answer was never the other
 person's to give: the row is yours, and unticking it on your own page is what
 removes it.
 
+**The app cannot do better than record it.** Nothing in a Music Assistant
+request says who pressed play: the `deviceInfo` on a playback session is what
+*this* app sends out, hardcoded, and MA sends nothing back. Identity is fixed at
+the moment MA logs in and every position after that carries it. So one provider
+shared by a household is one pile of places, and the remedy is on MA's side —
+one Audiobookshelf provider instance per person, each with that person's name,
+which MA supports. The README says so where the username is set, which is where
+the surprise is bought. Frank's install had MA on his own name, which is how
+somebody else's Star Wars book came to sit in his *Continue listening*.
+
 `progress.via` records the face: `page`, `music-assistant`, `home-assistant`, or
 empty for a row kept before 2.10.72. The tiles and the accounts page say it
 **only when it was not the page** — a place the page kept needs no label, and one

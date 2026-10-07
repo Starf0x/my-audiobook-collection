@@ -763,6 +763,26 @@ Assistant keeps its position under somebody else. A name it logs in with that
 this app has not seen becomes a new listener, the same as typing one into the
 page — so a second name appearing in the app's list is the sign you mistyped it.
 
+**And it is one listener for everybody who plays through it.** This is the part
+that surprises a household. Music Assistant signs in once, with one name, and
+every position it reports afterwards lands on that name — whoever is actually in
+the room. Nothing in the protocol says who pressed play, so this app cannot tell
+and does not guess. Set it up with your own name and somebody else's book turns
+up in *your* Continue listening, correctly filed under you, which reads as the
+app mixing people up. It is not: it is the player speaking for you.
+
+So **add one Audiobookshelf provider per person** in Music Assistant — it allows
+several instances of the same provider — each logged in with that person's name,
+and play from the one that is yours. One provider shared by a household keeps one
+pile of places, and no setting here can unpick it afterwards.
+
+A place a player kept says so on the tile and on the accounts page — *↷ Music
+Assistant* under the book — so when one does turn up where you did not expect it,
+you can see at a glance that a player wrote it rather than wondering. To get rid
+of one, untick *Listened* on it: that clears the place, and it is your row to
+clear. Asking the other person to mark the book listened does nothing, because
+the row you are looking at is yours and theirs is a different one.
+
 The folders Music Assistant shows inside the library — *Audiobooks*, *Series*,
 *Authors*, *Narrators*, Collections, Playlists — are its own layout, not this
 app's. Collections and Playlists are empty here, on purpose: this app groups by
