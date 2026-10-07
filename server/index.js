@@ -601,7 +601,7 @@ app.get('/api/untagged', requireAdmin, (req, res) => {
 // `countsAsRead` — ticked, or sitting at the end of the last track anyway — is
 // `finished.js`, with the other two meanings of the word written out beside it,
 // along with `readCount`, which is this question asked of a whole listener. It
-// lived here until 2.10.32, when the accounts page turned out to be counting the
+// lived here until 2.10.40, when the accounts page turned out to be counting the
 // stored tick instead and the two could not be kept in step from two files.
 //
 // what the listener is in the middle of, the track they are on, and the seconds
