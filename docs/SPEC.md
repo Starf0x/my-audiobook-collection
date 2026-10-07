@@ -149,12 +149,12 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 400 | the admin page: columns, dialogs |
-| `public/app.js` | 1569 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/app.js` | 1578 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 585 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
-| `public/shelf.js` | 309 | the listening page’s behaviour |
-| `public/style.css` | 842 | the whole look, every page, phone included |
+| `public/shelf.js` | 318 | the listening page’s behaviour |
+| `public/style.css` | 849 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -1980,8 +1980,19 @@ nothing at all where it goes. Cards stack, and the eye reads the last series it
 was told about as still applying: Frank had *Warbreaker* sitting under
 *Oathbringer*'s "The Stormlight Archive · book 3" and nothing on the page gave
 him reason to think otherwise. Absence is not a statement, so the card makes one
-— *Standalone*, in the same slot, quieter than a series because it is the lack of
-one. `seriesLine(b)` in `browse.js`, one copy for both pages.
+— **No Series**, in the same slot, quieter than a series because it is the lack
+of one. `seriesLine(b)` in `browse.js`, one copy for both pages.
+
+Saying it was not enough on its own. A series gets a `series-head` above its run,
+and that heading is what separates one run from the next; a run of books in no
+series gets no heading, so its first card sat tight under the last volume of the
+series above and still read as more of it. That card carries `apart` — 22px on
+top of the list's own 10px, so the break is three times an ordinary gap and
+cannot be read as anything else. Only the first of the run, and only when
+something precedes it: a list that *opens* with such a book is not pushed down by
+a gap above nothing. The comparison is `(b.series || '')`, because the server
+sends **null** for a book in no series (`NULLIF` in `SERIES`), and `null !== ''`
+would make the first card of every such list begin a new run.
 
 **And whether it is the whole book.** *Unabridged* sits under *Listened* on the
 admin card and is a different kind of thing: *Listened* is each listener's own,
@@ -3171,6 +3182,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.8 | the run of books in no series is set apart from the series above it — saying *No Series* on the card was not enough on its own, because a series is separated from what follows by its heading and these have none, so the first of them carries the gap instead. And it is called *No Series* rather than *Standalone* |
 | 2.11.0 | failing to read a job's progress is no longer the job failing: `trackProgress` gave up on the first unanswered poll, and the caller put that complaint ahead of the answer from the request that did the work, so a tag write that finished reported *"Writing tags failed: lost contact with the server"*. And a card says which series a book is in **or that it is in none**. The line was drawn only when there was a series, and cards stack, so *Warbreaker* under *Oathbringer*'s "The Stormlight Archive · book 3" read as part of it — absence is not a statement, so the card says *Standalone*. And *Unabridged*, under *Listened* and a different kind of thing: *Listened* is each listener's, this is the book's, so the admin states it and the listening page only shows it |
 | 2.10.88 | converting is started, not awaited. `POST /api/convert/:id` answered only when the conversion was over, so the page held one request open for the length of an m4b — and anything that dropped it reached the page as the conversion failing: the bar left, *Convert to MP3* came back, and ffmpeg carried on in the container. Both halves of what Frank saw, one cause. The route answers at once and the status carries the outcome, so a reload during one rejoins it |
 | 2.10.80 | listening on a phone shows up on the desktop. A place lives on the server and nothing on a page ever read it again, so a desktop left open showed where you were when you opened it — and, open and paused, would overwrite a place the phone had moved on, because a press resumes from that tab's own clock. The page picks the place up when it comes back, and redraws *Continue listening* when that is what is on screen |

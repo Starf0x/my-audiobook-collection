@@ -102,7 +102,7 @@ const shelf = (title, items, resumable) => !items.length ? '' :
 // reason to think otherwise. Absence is not a statement. Saying *Standalone* is.
 const seriesLine = (b) => (b.series
   ? `<div class="sub series-of">Series · ${esc(b.series)}${b.series_no ? ` · book ${b.series_no}` : ''}</div>`
-  : '<div class="sub standalone" title="This book is not part of a series">Standalone</div>');
+  : '<div class="sub no-series" title="This book is not part of a series">No Series</div>');
 
 // --- coming back, after listening somewhere else --------------------------
 // A place in a book is kept on the server, so listening on a phone moves it for
