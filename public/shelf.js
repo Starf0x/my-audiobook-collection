@@ -145,19 +145,28 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
       ? `<div class="series-gap${s.missing.length ? ' missing' : ''}">${esc(s.says)}</div>` : '';
   };
   let html = heading ? `<div class="series-head">${kind} · ${esc(heading)}</div>` + howComplete(heading) : '';
-  let series = heading;
+  let series = heading || '';
+  // A run of books in no series gets no heading of its own, so nothing marks
+  // where the series above it stopped and the cards run together — which is how
+  // a standalone book came to read as the next volume of the series above it.
+  // A heading separates one run from the next; where there is no heading, this
+  // does.
+  let apart = false;
   for (const b of books) {
     const author = b.author;
-    if (!heading && b.series !== series) {
-      series = b.series;
+    apart = false;
+    if (!heading && (b.series || '') !== series) {
+      series = b.series || '';
       // A part names the series it is part of, so a whole series read in one
       // view says which movement each run of books belongs to.
       if (series) {
         html += `<div class="series-head">Series · ${b.parent ? `${esc(b.parent)} · ` : ''}${esc(series)}</div>`
           + howComplete(series);
+      } else {
+        apart = true;
       }
     }
-    html += `<div class="card" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
+    html += `<div class="card${apart ? ' apart' : ''}" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
       <div class="cover" data-glyph="▶">
         <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
           onclick="playBook(${b.id})" title="Play or pause">
