@@ -35,12 +35,21 @@ $('#brand').onclick = () => { location.href = '/'; };
 $('#toAdmin').onclick = () => { location.href = '/admin'; };
 $('#toListen').onclick = () => { location.href = '/'; };
 
-// How long ago, in the unit somebody actually thinks in.
+// How long ago, in the unit somebody actually thinks in — and then the date
+// itself, because "12 days ago" is the right thing to read at a glance and the
+// wrong thing to write down. The date was never on this page at all: the row
+// knew it, said `daysAgo`, and threw the rest away.
+//
+// Today and yesterday get the time instead of the date. On those two the date is
+// the thing already said, and the hour is what is actually being asked.
 const ago = (a) => {
   if (a.daysAgo === null) return 'never signed in';
-  if (a.daysAgo === 0) return 'here today';
-  if (a.daysAgo === 1) return 'yesterday';
-  return `${a.daysAgo} days ago`;
+  const at = a.lastSeen ? new Date(a.lastSeen) : null;
+  const near = at ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  const far = at ? at.toLocaleDateString() : '';
+  if (a.daysAgo === 0) return `here today${near ? ` at ${near}` : ''}`;
+  if (a.daysAgo === 1) return `yesterday${near ? ` at ${near}` : ''}`;
+  return `${a.daysAgo} days ago${far ? ` · ${far}` : ''}`;
 };
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString() : '');
@@ -50,7 +59,12 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
       <div class="name">
         ${a.level.icon ? `<span class="badge-icon" title="${esc(a.level.name)}">${a.level.icon}</span>` : ''}
         <strong>${esc(a.name)}</strong>
-        ${a.hasPassword ? '' : '<span class="badge untagged" title="A name from before accounts existed. Whoever signs in with it first chooses the password.">no password yet</span>'}
+        ${a.isAdmin ? `<span class="badge" title="This is the administrator's own name. They sign in with the name
+          and password the container was given, not with an account on this page, and every check here lets them
+          through — so the ticks below do not govern them.">administrator</span>`
+    : a.hasPassword ? ''
+      : `<span class="badge untagged" title="A name from before accounts existed. Whoever signs in with it first
+        chooses the password.">no password yet</span>`}
         ${a.state === 'denied' ? '<span class="badge untagged">cannot sign in</span>' : ''}
       </div>
       <!-- The level, always: below ten books the listener's own page shows
@@ -84,7 +98,11 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
       <div title="Whole books they have downloaded."><strong>${a.downloads.length}</strong><span>downloads</span></div>
     </div>
 
-    <div class="allowed">
+    ${a.isAdmin ? `<div class="allowed">
+      <span class="sub">The administrator signs in with the container’s password and is let through every check
+        here, so there is nothing on this row to allow or refuse. Taking the name away would not change that —
+        what it governs is in the container, not in this app.</span>
+    </div>` : `<div class="allowed">
       <label class="pick" title="The approval. Off means they cannot sign in.">
         <input type="checkbox" data-may-listen ${a.state === 'approved' ? 'checked' : ''}> May listen
       </label>
@@ -95,7 +113,7 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
         ${a.granted || !a.mayDownload ? '' : '<span class="sub">(earned)</span>'}
       </label>
       <button class="ghost danger" data-drop>Delete…</button>
-    </div>
+    </div>`}
 
     ${a.downloads.length ? `<div class="took">
       <span class="sub">Downloaded:</span>
