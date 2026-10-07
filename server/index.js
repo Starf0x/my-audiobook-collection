@@ -1058,7 +1058,7 @@ const forHA = (req, res, next) => (tokenOk(req)
   ? next()
   : res.status(401).json({ error: 'HA_TOKEN is set on this container; pass it as ?token= or a Bearer header.' }));
 
-app.get('/api/ha', forHA, (req, res) => res.json(haState(req, VERSION)));
+app.get('/api/ha', forHA, (req, res) => res.json(haState(req, VERSION, whoReads(req))));
 
 app.get('/api/ha/book/:id.m3u', forHA, (req, res) => {
   const from = Math.max(0, Number(req.query.from) || 0);
@@ -1071,7 +1071,7 @@ app.get('/api/ha/book/:id.m3u', forHA, (req, res) => {
 // The book to carry on with, as one address that never changes: HA can point a
 // media player at this and get whatever the listener is in the middle of.
 app.get('/api/ha/continue.m3u', forHA, (req, res) => {
-  const state = haState(req, VERSION);
+  const state = haState(req, VERSION, whoReads(req));
   const first = state.continue.find((b) => !b.listened) || state.continue[0];
   if (!first) return res.status(404).type('text/plain').send('Nothing to continue.');
   const list = bookPlaylist(req, first.id, first.track - 1);
