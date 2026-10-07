@@ -129,6 +129,11 @@ try { db.exec("ALTER TABLE books ADD COLUMN parent_series TEXT DEFAULT ''"); } c
 // the source to answer "whose is this?". One of `page`, `music-assistant`,
 // `home-assistant`, or empty for a row kept before 2.10.72.
 try { db.exec("ALTER TABLE progress ADD COLUMN via TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
+// Whether this is the whole book or a shortened reading of it. Nothing in a file
+// says so reliably — there is no tag for it, and a publisher who abridges rarely
+// puts it in the title — so it is the owner's to state, and unstated is the
+// honest default. 0 is "nobody has said", not "abridged".
+try { db.exec('ALTER TABLE books ADD COLUMN unabridged INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
 
 // A listener became an account in 2.7.0. Every name that was already there is
 // approved — locking the household out of its own listening history to add a

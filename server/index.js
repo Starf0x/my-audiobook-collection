@@ -679,7 +679,7 @@ const KEPT = `p.track_idx, p.position, p.done, p.via, p.updated,
 // they are done with it. Two views read this: the shelf of what you are in the
 // middle of, and the Listened section in the column.
 const keptBooks = (user) => db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${KEPT},
-                                               b.narrator, b.year, b.description, b.duration, b.tagged,
+                                               b.narrator, b.year, b.description, b.duration, b.tagged, b.unabridged,
                                                ${SERIES} AS series, b.series_no
                                         FROM progress p JOIN books b ON b.id = p.book_id
                                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
@@ -871,7 +871,7 @@ app.get('/api/books', (req, res) => {
   if (req.query.parent) {
     if (!req.query.genre) return res.status(400).json({ error: 'Say which genre.' });
     const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                    b.description, b.cover, b.duration, b.tagged,
+                                    b.description, b.cover, b.duration, b.tagged, b.unabridged,
                                     p.position > 0 AS started, ${KEPT}
                              FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                              WHERE b.genre = ? AND b.parent_series = ?
@@ -890,7 +890,7 @@ app.get('/api/books', (req, res) => {
     return res.status(400).json({ error: 'Say which genre, and which author or series in it.' });
   }
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                  b.description, b.cover, b.duration, b.tagged,
+                                  b.description, b.cover, b.duration, b.tagged, b.unabridged,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
@@ -914,7 +914,7 @@ app.get('/api/search', (req, res) => {
   const words = (req.query.q || '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
   if (!words.length || words.join('').length < 2) return res.json([]);
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                  b.genre, b.description, b.cover, b.duration, b.tagged,
+                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE ${words.map(() => `${HAYSTACK} LIKE ?`).join(' AND ')}
@@ -963,7 +963,7 @@ app.post('/api/listened', (req, res) => {
 app.get('/api/favourites', (req, res) => {
   const user = whoReads(req);
   const rows = db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, b.duration, b.narrator,
-                                  b.year, b.description, b.tagged, ${SERIES} AS series, b.series_no,
+                                  b.year, b.description, b.tagged, b.unabridged, ${SERIES} AS series, b.series_no,
                                   p.position > 0 AS started, ${KEPT}
                            FROM favourites f JOIN books b ON b.id = f.book_id
                            LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
@@ -971,6 +971,23 @@ app.get('/api/favourites', (req, res) => {
                            ORDER BY b.author, series, b.series_no, b.title`).all(user, user);
   res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
     finished: countsAsRead({ ...b, trackSeconds }), favourite: true })));
+});
+
+// Whether this is the whole book or a shortened reading of it.
+//
+// A property of the book, not of a listener — so it is the admin's to set and
+// everybody's to see, unlike *Listened* beside it on the card, which is each
+// listener's own. Nothing in a file says it reliably: there is no tag for it,
+// and a publisher who abridges rarely puts it in the title. So it is stated, and
+// unstated is the honest default — off means nobody has said, not "abridged".
+app.post('/api/books/:id/unabridged', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(id)) {
+    return res.status(404).json({ error: 'No such book' });
+  }
+  const on = req.body.on === true ? 1 : 0;
+  db.prepare('UPDATE books SET unabridged = ? WHERE id = ?').run(on, id);
+  return res.json({ ok: true, unabridged: !!on });
 });
 
 app.post('/api/favourites/:id', wrap(async (req, res) => {
