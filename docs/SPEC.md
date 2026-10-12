@@ -148,9 +148,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 400 | the admin page: columns, dialogs |
-| `public/app.js` | 1578 | the admin page's spine: the columns, browsing, import, the scan, settings |
-| `public/maint.js` | 585 | the maintenance column, and the moving and deleting it leads to |
+| `public/index.html` | 407 | the admin page: columns, dialogs |
+| `public/app.js` | 1598 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 318 | the listening page’s behaviour |
@@ -1974,6 +1974,27 @@ succeeded; `p.error` only ever complains about *watching* it, and is read only
 when the request itself said nothing at all. The work is on the server and goes
 on whatever this page can reach.
 
+**The maintenance column shows only what is waiting.** A row there is a job to be
+done, and nine of them reading 0 say nothing except that the column is long: the
+one number that mattered — *Series to complete, 68* — sat among eight noughts.
+`counts(rowId, n)` in `app.js` sets the number and the row's visibility together,
+and every loader goes through it, so the rule is one thing in one place rather
+than ten `hidden` assignments that can drift.
+
+Two rows do not follow it. **Import** is not a count of work — it reads `–` until
+a folder is set, and it is the way to set one. And **the row that is the view on
+screen** stays, whatever its count: emptying the trash from inside the trash must
+not pull the list out from under the reader, and every such change redraws the
+list it is in. The rows ship `hidden` in `index.html` rather than being hidden
+once the counts arrive, or each would appear holding `…` and half of them would
+then vanish again.
+
+The count element is found inside the row rather than named: the row ids and the
+count ids do not share a pattern (`convertList` / `convertCount`), and a table
+mapping one to the other would be a second thing to keep in step. Hiding
+*Accounts* costs nothing, because *Settings → Accounts and statistics* is the
+other way to that page — checked before it was hidden.
+
 **A card says which series a book is in, or that it is in none.** The series line
 used to be drawn only when there was a series, so a standalone book showed
 nothing at all where it goes. Cards stack, and the eye reads the last series it
@@ -3182,6 +3203,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.16 | the maintenance column shows only what is waiting. A row there is a job to be done, and nine of them reading 0 said nothing except that the column was long — *Series to complete, 68* sat among eight noughts. `counts()` sets the number and the row's visibility together, so the rule is one thing in one place. *Import* is not a count of work and stays; so does whichever row is the view on screen, or emptying the trash from inside the trash would pull the list out from under the reader |
 | 2.11.8 | the run of books in no series is set apart from the series above it — saying *No Series* on the card was not enough on its own, because a series is separated from what follows by its heading and these have none, so the first of them carries the gap instead. And it is called *No Series* rather than *Standalone* |
 | 2.11.0 | failing to read a job's progress is no longer the job failing: `trackProgress` gave up on the first unanswered poll, and the caller put that complaint ahead of the answer from the request that did the work, so a tag write that finished reported *"Writing tags failed: lost contact with the server"*. And a card says which series a book is in **or that it is in none**. The line was drawn only when there was a series, and cards stack, so *Warbreaker* under *Oathbringer*'s "The Stormlight Archive · book 3" read as part of it — absence is not a statement, so the card says *Standalone*. And *Unabridged*, under *Listened* and a different kind of thing: *Listened* is each listener's, this is the book's, so the admin states it and the listening page only shows it |
 | 2.10.88 | converting is started, not awaited. `POST /api/convert/:id` answered only when the conversion was over, so the page held one request open for the length of an m4b — and anything that dropped it reached the page as the conversion failing: the bar left, *Convert to MP3* came back, and ffmpeg carried on in the container. Both halves of what the owner saw, one cause. The route answers at once and the status carries the outcome, so a reload during one rejoins it |

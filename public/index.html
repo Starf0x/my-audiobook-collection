@@ -41,18 +41,25 @@
     <ul id="listenedRows" hidden>
       <li id="listenedList"><span>Books you&rsquo;ve listened to</span><span class="count" id="listenedCount">0</span></li>
     </ul>
+    <!-- Every row here but Import ships hidden and is shown by `counts()` when
+         it has something in it: a row is a job waiting to be done, and a column
+         of noughts says only that the column is long. Hidden to begin with
+         rather than hidden once the counts arrive, or each one would appear
+         holding "…" and then half of them would vanish again. Import is not a
+         count of work — it reads "–" until a folder is set, and it is the way
+         to set one. -->
     <div class="col-title">Maintenance</div>
-    <ul>
-      <li id="needsTags"><span>Needs tags</span><span class="count" id="needsTagsCount">…</span></li>
-      <li id="convertList"><span>Needs converting</span><span class="count" id="convertCount">…</span></li>
-      <li id="convertedList"><span>Converted</span><span class="count" id="convertedCount">…</span></li>
-      <li id="brokenList"><span>Broken on disk</span><span class="count" id="brokenCount">…</span></li>
-      <li id="seriesList"><span>Series to complete</span><span class="count" id="seriesCount">…</span></li>
-      <li id="accountList"><span>Accounts</span><span class="count" id="accountCount">…</span></li>
+    <ul id="maintRows">
+      <li id="needsTags" hidden><span>Needs tags</span><span class="count" id="needsTagsCount">0</span></li>
+      <li id="convertList" hidden><span>Needs converting</span><span class="count" id="convertCount">0</span></li>
+      <li id="convertedList" hidden><span>Converted</span><span class="count" id="convertedCount">0</span></li>
+      <li id="brokenList" hidden><span>Broken on disk</span><span class="count" id="brokenCount">0</span></li>
+      <li id="seriesList" hidden><span>Series to complete</span><span class="count" id="seriesCount">0</span></li>
+      <li id="accountList" hidden><span>Accounts</span><span class="count" id="accountCount">0</span></li>
       <li id="skippedList" hidden><span>Not counted</span><span class="count" id="skippedCount">0</span></li>
       <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
-      <li id="replacedList"><span>Replaced</span><span class="count" id="replacedCount">…</span></li>
-      <li id="trashList"><span>Trash</span><span class="count" id="trashCount">…</span></li>
+      <li id="replacedList" hidden><span>Replaced</span><span class="count" id="replacedCount">0</span></li>
+      <li id="trashList" hidden><span>Trash</span><span class="count" id="trashCount">0</span></li>
     </ul>
   </aside>
   <section id="authors"><div class="col-title"><button class="back linkish" id="backGenres">‹ Genres</button>Authors</div><ul></ul></section>
