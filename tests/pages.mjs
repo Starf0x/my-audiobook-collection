@@ -438,6 +438,64 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     /Last here: never signed in/.test(rowOf('Newcomer').textContent), true);
 }
 
+// --- the maintenance column shows only what is waiting --------------------
+// A row there is a job to be done. Nine of them reading 0 say only that the
+// column is long: Frank had one number that mattered — 68 series to complete —
+// among eight noughts. A row with nothing in it is not drawn.
+//
+// Import does not follow the rule: it is not a count of work, it reads "–" until
+// an import folder is set, and it is the way to set one. Nor does a row that is
+// the view on screen, whatever its count — emptying the trash from inside the
+// trash must not pull the list out from under the reader.
+{
+  const shown = (document) => [...document.querySelectorAll('#maintRows li')]
+    .filter((li) => !li.hidden).map((li) => li.id);
+
+  // nothing waiting anywhere
+  {
+    const { document } = await open('index.html');
+    await settle(160);
+    check('with nothing waiting, only Import is there',
+      shown(document), ['importList']);
+    check('and it still says what it says when no folder is set',
+      document.querySelector('#importCount').textContent, '–');
+  }
+
+  // some of them with something in them
+  {
+    const { document } = await open('index.html', {
+      '/api/untagged': [{ id: 1, title: 'A', author: 'B', genre: 'C', fixable: ['album'], needsLookup: [] }],
+      '/api/trash': { keepDays: 30, items: [{ id: 1, title: 'A', genre: 'C', author: 'B', files: 1, onDisk: true, daysLeft: 9, deleted_at: '2026-10-01T09:00:00Z' }] },
+    });
+    await settle(200);
+    check('a row with something waiting is drawn, and the empty ones are not',
+      shown(document), ['needsTags', 'importList', 'trashList']);
+    check('and each says how much',
+      [document.querySelector('#needsTagsCount').textContent,
+        document.querySelector('#trashCount').textContent], ['1', '1']);
+  }
+
+  // the row you are standing in, emptied
+  {
+    const { window, document } = await open('index.html', {
+      '/api/trash': { keepDays: 30, items: [{ id: 1, title: 'A', genre: 'C', author: 'B', files: 1, onDisk: true, daysLeft: 9, deleted_at: '2026-10-01T09:00:00Z' }] },
+    });
+    await settle(200);
+    document.querySelector('#trashList').click();
+    await settle(140);
+    check('the trash is open and on screen',
+      document.querySelector('#trashList').classList.contains('active'), true);
+    window.eval("counts('trashList', 0)");
+    check('and emptying it does not take the row away while you are in it',
+      [document.querySelector('#trashList').hidden,
+        document.querySelector('#trashCount').textContent], [false, '0']);
+    document.querySelector('#trashList').classList.remove('active');
+    window.eval("counts('trashList', 0)");
+    check('it goes once you have gone somewhere else',
+      document.querySelector('#trashList').hidden, true);
+  }
+}
+
 // --- following a job the server is doing ---------------------------------
 // Frank got "Writing tags failed: lost contact with the server" on a tag write
 // that had almost certainly finished perfectly well. Two faults, one shape:
