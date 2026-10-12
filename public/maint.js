@@ -34,8 +34,7 @@ const WHY = {
 // nothing in it: an empty list is not worth a place in the column.
 async function loadSkipped() {
   const items = await api('/api/skipped').catch(() => []);
-  $('#skippedCount').textContent = items.length || '0';
-  $('#skippedList').hidden = !items.length;
+  counts('skippedList', items.length);
   return items;
 }
 
@@ -131,7 +130,7 @@ async function askToFile(source, reason) {
 
 async function loadBroken() {
   const items = await api('/api/broken').catch(() => []);
-  $('#brokenCount').textContent = items.length || '0';
+  counts('brokenList', items.length);
   return items;
 }
 
@@ -208,7 +207,7 @@ $('#brokenList').onclick = async () => {
 // --- copies an import replaced -----------------------------------------
 async function loadReplaced() {
   const items = await api('/api/replaced').catch(() => []);
-  $('#replacedCount').textContent = items.length || '0';
+  counts('replacedList', items.length);
   return items;
 }
 
@@ -265,13 +264,13 @@ async function loadConvertible() {
   state.convertWhy = d.why
     || (d.tools ? '' : 'This container is older than 2.3.0, which is where converting came in. '
       + 'Update it to the newest build.');
-  $('#convertCount').textContent = d.books.length;
+  counts('convertList', d.books.length);
   return d;
 }
 
 async function loadConverted() {
   const items = await api('/api/converted').catch(() => []);
-  $('#convertedCount').textContent = items.length || '0';
+  counts('convertedList', items.length);
   return items;
 }
 
@@ -437,7 +436,7 @@ window.trashBook = async function (id) {
 // --- trash --------------------------------------------------------------
 async function loadTrash() {
   const d = await api('/api/trash').catch(() => ({ items: [] }));
-  $('#trashCount').textContent = d.items.length;
+  counts('trashList', d.items.length);
   return d;
 }
 
@@ -492,7 +491,7 @@ $('#trashList').onclick = async () => {
 // --- maintenance: books whose files miss required tags -------------------
 async function loadUntagged() {
   const list = await api('/api/untagged').catch(() => []);
-  $('#needsTagsCount').textContent = list.length;
+  counts('needsTags', list.length);
   return list;
 }
 

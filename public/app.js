@@ -874,7 +874,7 @@ async function loadAccounts() {
   state.accounts = d.accounts;
   state.adminName = d.admin;
   const waiting = d.accounts.filter((a) => a.state === 'pending').length;
-  $('#accountCount').textContent = String(waiting);
+  counts('accountList', waiting);
   $('#accountList').classList.toggle('wants', !!waiting);
   return d;
 }
@@ -1162,7 +1162,7 @@ async function loadSeriesCount() {
   for (const r of (online.series || [])) {
     if (r.found && (r.missing || []).length) names.add(`${r.genre}/${r.name}`);
   }
-  $('#seriesCount').textContent = String(names.size);
+  counts('seriesList', names.size);
   return { gaps, online };
 }
 
@@ -1248,6 +1248,26 @@ $('#tidyCovers').onclick = () => work($('#tidyCovers'), 'The cover tidy-up', asy
   }
 });
 
+
+// A maintenance row is a job waiting to be done, so a row with nothing waiting
+// is not drawn. A column of nine zeroes says only that the column is long, and
+// the one number that mattered — 68 series to complete — had to be found among
+// eight noughts.
+//
+// Two rows do not follow the rule. *Import* is not a count of work: it reads "–"
+// until a folder is set, and it is the way to set one. And any row that is the
+// view currently on screen stays, whatever its count — emptying the trash from
+// inside the trash must not pull the list out from under the reader, and the
+// list redraws itself after every such change.
+//
+// The count is the `.count` inside the row, found rather than named: the row ids
+// and the count ids do not share a pattern (`convertList`/`convertCount`), and a
+// table mapping one to the other would be a second thing to keep in step.
+const counts = (rowId, n) => {
+  const row = $(`#${rowId}`);
+  row.querySelector('.count').textContent = String(n);
+  row.hidden = !n && !row.classList.contains('active');
+};
 
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
