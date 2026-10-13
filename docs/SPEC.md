@@ -429,7 +429,15 @@ and prints what `--unprivileged` will cost before it does it.
 **It asks, the way the community scripts do**: a whiptail menu, then either the
 defaults or every setting one at a time, with the menus built from what the host
 actually has — the storages that can hold a container root, the templates already
-downloaded. *Default settings* still asks one question, where the audiobooks are,
+downloaded.
+
+**The storage pool is asked for in both paths.** It was offered only under
+*Advanced* at first, so the quick path silently put the container on whichever
+pool `pvesm` listed first — and a host with several has them for a reason. It is
+a `--radiolist` with `name (type)` and the free space beside each, the shape
+`select_storage` uses in the scripts this is modelled on, because *local-lvm or
+tank?* cannot be answered from the names alone. One pool is not a choice, so
+there is no box for it. *Default settings* also asks where the audiobooks are,
 because a container with nothing mounted starts perfectly well and then has
 nothing to offer under *Library folders*, which is the most common way this ends
 badly and costs one box to prevent. Every setting is also a flag, and it asks
@@ -3289,6 +3297,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.48 | the storage pool can be chosen, which it could not be from the quick path: it was offered only under *Advanced*, so Default silently took whichever pool `pvesm` listed first. It is a `--radiolist` with the free space beside each name now, the shape `select_storage` uses in the scripts this is modelled on, and it is asked in both paths — unless the host has one pool, which is not a choice |
 | 2.11.40 | the Proxmox script **asks**, the way the community scripts it is modelled on do: a whiptail menu, then the defaults or every setting one at a time, with the storages and templates the host actually has in the menus. *Default settings* still asks where the audiobooks are, since a container with nothing mounted is the most common way this ends badly. It fetches no framework to do it — theirs source a `build.func` from another repository and run it as root on the hypervisor, and `packaging` checks none of these three ever starts to |
 | 2.11.32 | **`proxmox-create-lxc.sh`** makes the container and installs into it, which is what one command on a Proxmox host is expected to do — `lxc-install.sh` installs onto whatever machine it runs on, so pasted at a host prompt it put node, ffmpeg and a service on the hypervisor. It refuses there now and names the other two. **`uninstall.sh`** takes it off a machine again, keeping the database and the settings unless asked for `--purge`. And the installer says when it is in an **unprivileged container**, which Proxmox makes by default: every id is shifted by 100000, so `PUID=99` is 100099 on the host and the app is refused permission to write in a collection whose permissions look right from the host. It reads `/proc/self/uid_map`, says what the ids become and what the two ways out are, and carries on. The README builds a Proxmox container from nothing |
 | 2.11.24 | it installs into an **LXC container** as well: `install/lxc-install.sh` does the four things the image was doing — a node, ffmpeg, the app at its newest tag, and a systemd service — writes a settings file it will never overwrite, and updates in place when run again. `packaging` holds the two ways to install to each other, since they describe one app twice and nothing would have noticed them drifting; it found `TRUST_PROXY` and `ALLOW_ROOT` settable on one and not the other. `.gitattributes` pins the script and the unit to LF, because a shell script with CRLF does not run at all |

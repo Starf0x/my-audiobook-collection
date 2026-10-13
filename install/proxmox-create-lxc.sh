@@ -81,7 +81,6 @@ free_id=$(pvesh get /cluster/nextid 2>/dev/null || true)
 # choosing one of those fails late and confusingly.
 mapfile -t storages < <(pvesm status -content rootdir 2>/dev/null | awk 'NR>1 && $3=="active" {print $1}')
 [ "${#storages[@]}" -gt 0 ] || die "No storage on this host can hold a container. Pass one with --storage."
-[ -n "$storage" ] || storage=${storages[0]}
 
 # The Debian templates already downloaded, newest last. Fetching one silently
 # would be rude, and a host that keeps templates has the one it wants.
@@ -103,6 +102,54 @@ fi
 # --- asking ---------------------------------------------------------------
 box() { whiptail --backtitle "$TITLE" --title "$1" "${@:2}" 3>&1 1>&2 2>&3; }
 
+# Which storage the container's disk goes on.
+#
+# Asked whenever there is more than one, in the quick path as well as the slow
+# one: a host with several pools has them for a reason, and silently taking the
+# first active one puts the container on whichever disk `pvesm` happened to list
+# first. That is what it used to do, and there was no way to say otherwise
+# without the Advanced path.
+#
+# A radiolist with the free space beside each, because "local-lvm or tank?" is
+# not a question anybody can answer from the names alone.
+pick_storage() {
+  local tag type total used free display info width=0
+  local -a menu=()
+  declare -gA storage_of=()
+  while read -r tag type _ total used free _; do
+    [ -n "$tag" ] && [ -n "$type" ] || continue
+    display="$tag ($type)"
+    if command -v numfmt >/dev/null; then
+      info="Free: $(numfmt --to=iec --from-unit=1024 --format %.1f <<<"$free")B  Used: $(numfmt --to=iec --from-unit=1024 --format %.1f <<<"$used")B"
+    else
+      info="Free: ${free}K  Used: ${used}K"
+    fi
+    storage_of["$display"]=$tag
+    menu+=("$display" "$info" "OFF")
+    [ "${#display}" -gt "$width" ] && width=${#display}
+  done < <(pvesm status -content rootdir 2>/dev/null | awk 'NR>1 && $3=="active"')
+
+  # One pool is not a choice, and a box with a single answer in it is a box
+  # somebody has to dismiss for no reason.
+  if [ "$((${#menu[@]} / 3))" -eq 1 ]; then
+    storage=${storage_of[${menu[0]}]}
+    return 0
+  fi
+
+  local chosen
+  while true; do
+    chosen=$(box "Storage Pools" --radiolist \
+      "Which storage pool for the container?\n(Spacebar to select)" \
+      16 "$((width + 42))" 6 "${menu[@]}") || die "Nothing was created."
+    chosen=${chosen%"${chosen##*[![:space:]]}"}
+    if [ -n "$chosen" ] && [ -n "${storage_of[$chosen]+set}" ]; then
+      storage=${storage_of[$chosen]}
+      return 0
+    fi
+    box "Storage Pools" --msgbox "Nothing was selected. Spacebar picks one, Enter confirms." 8 58
+  done
+}
+
 if [ "$ask" -eq 1 ]; then
   choice=$(box "$TITLE" --menu "\nAn LXC container on this host, with the app installed in it.\n" 16 68 3 \
     "default"  "Use the defaults, and just ask where the books are" \
@@ -117,6 +164,7 @@ if [ "$ask" -eq 1 ]; then
     # under Library folders, which reads as the app being broken — it is the
     # most common way this ends badly, and it costs one box to prevent.
     default)
+      [ -n "$storage" ] || pick_storage
       books=$(box "Where are your audiobooks?" --inputbox \
         "\nA path on this host. It is mounted in the container at /audiobooks.\n\nLeave it empty to add one later.\n" 13 68 "$books" || echo "")
       ;;
@@ -127,14 +175,13 @@ if [ "$ask" -eq 1 ]; then
       hostname=$(box "Hostname" --inputbox "\nWhat the container is called.\n" 10 60 "$hostname" || echo "")
       [ -n "$hostname" ] || die "Nothing was created."
 
-      menu=()
-      for s in "${storages[@]}"; do menu+=("$s" "$(pvesm status --storage "$s" 2>/dev/null | awk 'NR>1 {print $2}')"); done
-      storage=$(box "Storage" --menu "\nWhere the container's own disk goes.\n" 16 68 6 "${menu[@]}" || echo "")
-      [ -n "$storage" ] || die "Nothing was created."
+      [ -n "$storage" ] || pick_storage
 
       menu=()
-      for t in "${templates[@]}"; do menu+=("$t" ""); done
-      template=$(box "Template" --menu "\nThe operating system in the container.\n" 16 76 6 "${menu[@]}" || echo "")
+      for t in "${templates[@]}"; do menu+=("$t" "" "OFF"); done
+      template=$(box "Template" --radiolist \
+        "Which operating system for the container?\n(Spacebar to select)" \
+        16 76 6 "${menu[@]}") || die "Nothing was created."
       [ -n "$template" ] || die "Nothing was created."
 
       disk=$(box "Disk" --inputbox "\nGB for the container itself. The database is small; your audiobooks are not in here.\n" 11 68 "$disk" || echo "")
@@ -156,6 +203,17 @@ if [ "$ask" -eq 1 ]; then
       fi
       ;;
   esac
+fi
+
+# Nobody to ask and nothing said: take the first that can hold a container, and
+# say which — a container that quietly landed on the wrong disk is a thing you
+# find out about when that disk fills up.
+if [ -z "$storage" ]; then
+  storage=${storages[0]}
+  if [ "${#storages[@]}" -gt 1 ]; then
+    printf '\nNo --storage given and nothing to ask with, so: %s. The others here are %s.\n' \
+      "$storage" "$(printf '%s ' "${storages[@]:1}")"
+  fi
 fi
 
 pct status "$ctid" >/dev/null 2>&1 && die "$ctid is already a container. Pass a free one with --id."
