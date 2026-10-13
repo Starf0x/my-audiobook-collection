@@ -32,6 +32,7 @@ const PORTABLE = [
   'sub-series',
   'moving',
   'pages',
+  'packaging',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten

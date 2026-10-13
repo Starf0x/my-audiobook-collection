@@ -359,6 +359,64 @@ change anything.
 docker compose up -d
 ```
 
+## Run it in an LXC container
+
+Proxmox, or Unraid's own LXC support, or any Debian or Ubuntu machine with
+systemd. There is no image here, so the things the container did for you have to
+be done once: install node and ffmpeg, put the app somewhere, write a settings
+file, and arrange for it to start at boot. One script does all four.
+
+**First, give the container your collection.** This is the host's job and the
+script cannot do it — on Proxmox, with the container stopped:
+
+```bash
+pct set <id> -mp0 /host/path/to/Audiobooks,mp=/audiobooks
+```
+
+Add a second one for an import folder if you use one. A container with no such
+mount starts perfectly well and then has nothing to offer under *Library
+folders*, which reads as the app being broken when it is the mount that is
+missing.
+
+**Then, inside the container, as root:**
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/lxc-install.sh)"
+```
+
+It installs node and ffmpeg, clones the **newest released version** — a tag, not
+whatever `main` happens to be — installs the three dependencies, writes
+`/etc/my-audiobook-collection.env`, installs a systemd service and starts it. At
+the end it prints the address, and if the service did not stay running it prints
+what the log said instead of claiming success.
+
+| Where | What |
+| --- | --- |
+| `/etc/my-audiobook-collection.env` | every setting, the same names the Docker image takes. `0600`, because it holds your password and your tokens |
+| `/var/lib/my-audiobook-collection` | the database, the covers and `backups/`. Not on the share: it is the one thing the files cannot rebuild |
+| `/opt/my-audiobook-collection` | the app itself, a git checkout at the released tag |
+| `journalctl -u my-audiobook-collection -f` | what it is doing |
+
+Edit the settings, then `systemctl restart my-audiobook-collection`. **Set `PUID`
+and `PGID` to the user that owns the audiobooks** — `stat -c '%u %g' /audiobooks`
+says which — or the app runs as root and every folder it creates on your share
+belongs to root, which is the one mistake that is annoying to undo. It refuses to
+carry on as root unless you say `ALLOW_ROOT=1`.
+
+### Updating it
+
+Run the same script again. It fetches the newest tag, reinstalls the
+dependencies, keeps your settings file exactly as it is, and restarts the
+service.
+
+### Why a service rather than just running it
+
+Because a thing you started by hand is a thing that is gone after a reboot and
+after any crash, and you find out when somebody cannot play a book. The unit
+restarts it on failure, starts it at boot, and waits for local mounts first — a
+scan that runs before the share is mounted finds nothing and looks like a library
+that emptied itself.
+
 ## Searching
 
 The box at the top of both pages looks for what you type in everything a book is

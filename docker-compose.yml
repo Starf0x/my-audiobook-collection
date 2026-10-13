@@ -31,6 +31,14 @@ services:
       # Audiobookshelf face is not there at all
       MA_TOKEN: ""
       BASE_URL: ""
+      # Behind a reverse proxy the app believes X-Forwarded-For, which is what
+      # the sign-in backoff counts wrong guesses against. Set it to 0 when
+      # nothing in front of it sets that header, or one person can spend
+      # somebody else's attempts.
+      # TRUST_PROXY: "1"
+      # Start even if it could not become PUID:PGID and is therefore still root.
+      # Everything it then creates on your share belongs to root.
+      # ALLOW_ROOT: "0"
     volumes:
       - ./data:/data
       - /mnt/user/Audiobooks:/audiobooks

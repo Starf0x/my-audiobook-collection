@@ -1,0 +1,129 @@
+// packaging — the two ways to install this app, kept saying the same thing.
+//
+// The Docker image and the LXC installer describe one app twice. The image pins
+// a node, sets a port and names every setting; the installer and its systemd
+// unit and its settings file do all of that again, in four more places. Nothing
+// makes them agree, and nothing would notice for months: an install path is
+// exercised once, by somebody who then has a working machine and never looks
+// again. The suites run every push.
+//
+// So this reads them and holds them to each other. It checks facts that are
+// written down twice, not behaviour — the behaviour is every other suite.
+//
+// Run: node tests/packaging.mjs
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+
+let failed = 0;
+const check = (label, got, want) => {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`);
+};
+
+const dockerfile = read('Dockerfile');
+const script = read('install/lxc-install.sh');
+const unit = read('install/my-audiobook-collection.service');
+const envExample = read('install/my-audiobook-collection.env.example');
+const workflow = read('.github/workflows/test.yml');
+const index = read('server/index.js');
+
+// --- one runtime, however it is installed --------------------------------
+// `node:sqlite` is the database, and which major it is stable in is the whole
+// reason this app pins one. A container on 26 and an LXC on whatever Debian
+// ships would be two different apps with one set of checks.
+const major = {
+  image: (dockerfile.match(/FROM node:(\d+)-/) || [])[1],
+  installer: (script.match(/^NODE_MAJOR=(\d+)/m) || [])[1],
+  checks: (workflow.match(/node-version: '(\d+)'/) || [])[1],
+};
+check('the image, the installer and the checks all run one major of node',
+  [major.image === major.installer, major.image === major.checks, major.image],
+  [true, true, '26']);
+
+// --- one port ------------------------------------------------------------
+const port = {
+  app: (index.match(/process\.env\.PORT \|\| (\d+)/) || [])[1],
+  image: (dockerfile.match(/PORT=(\d+)/) || [])[1],
+  settings: (envExample.match(/^PORT=(\d+)/m) || [])[1],
+};
+check('and one port, in the app, the image and the settings file',
+  [port.app === port.image, port.app === port.settings, port.app],
+  [true, true, '8523']);
+
+// --- every setting the app reads is offered to somebody installing it -----
+// This is the one that will actually catch something. A new `process.env.X`
+// goes into the code and the compose file, and the LXC settings file is the
+// copy nobody remembers — so the setting exists, is documented, and cannot be
+// set on half the installs.
+const reads = [...new Set([...fs.readdirSync(path.join(ROOT, 'server'))
+  .filter((f) => f.endsWith('.js'))
+  .flatMap((f) => [...read(`server/${f}`).matchAll(/process\.env\.([A-Z_]+)/g)].map((m) => m[1]))])]
+  .sort();
+// `NODE_ENV` and friends belong to the runtime, not to this app; nothing here
+// sets them and nobody installing it should be offered one.
+const OURS = reads.filter((n) => !['NODE_ENV', 'npm_package_version'].includes(n));
+const offered = (text) => OURS.filter((n) => new RegExp(`^#?\\s*${n}=`, 'm').test(text));
+check('every setting the server reads can be set in the LXC settings file',
+  OURS.filter((n) => !offered(envExample).includes(n)), []);
+// The image carries its own defaults for the two that describe where it runs —
+// `ENV DATA_DIR=/data PORT=8523` — and compose maps a volume and a port against
+// them rather than setting them again. An LXC has no image to carry anything,
+// which is why its settings file names them and this does not ask compose to.
+const fromImage = [...dockerfile.matchAll(/^ENV (.+)$/gm)]
+  .flatMap((m) => m[1].split(/\s+/)).map((kv) => kv.split('=')[0]);
+check('and in the compose file, apart from the two the image sets itself',
+  OURS.filter((n) => !fromImage.includes(n))
+    .filter((n) => !new RegExp(`^\\s*#?\\s*${n}:`, 'm').test(read('docker-compose.yml'))), []);
+
+// --- the pieces point at each other --------------------------------------
+// Three paths written twice: where the app is put, where the settings go, and
+// what starts. A unit naming a directory the installer does not create is a
+// service that will not start, and the installer is the only thing that would
+// have told you.
+const inScript = (name) => (script.match(new RegExp(`^${name}=(\\S+)`, 'm')) || [])[1];
+check('the unit runs the app out of the directory the installer puts it in',
+  (unit.match(/^WorkingDirectory=(\S+)/m) || [])[1], inScript('APP_DIR'));
+check('and reads the settings file the installer writes',
+  (unit.match(/^EnvironmentFile=(\S+)/m) || [])[1], inScript('ENV_FILE'));
+check('and starts what the image starts',
+  (unit.match(/^ExecStart=\S*node (\S+)/m) || [])[1],
+  (dockerfile.match(/CMD \["node", "(\S+?)"\]/) || [])[1]);
+check('and the installer installs the unit it ships under the name it uses',
+  [script.includes('install/$UNIT'), (script.match(/^UNIT=(\S+)/m) || [])[1]],
+  [true, 'my-audiobook-collection.service']);
+
+// --- the installer is a script a stranger is asked to pipe into a shell ---
+// So the two things that make that survivable are checked: it stops at the
+// first failure rather than carrying on past one, and it refuses to overwrite
+// a settings file that already holds somebody's password.
+check('it stops at the first failure', /^set -euo pipefail$/m.test(script), true);
+check('and never overwrites a settings file that is already there',
+  /if \[ -f "\$ENV_FILE" \]/.test(script), true);
+
+// --- what Linux has to execute is stored the way Linux reads it ----------
+// This is written on Windows and run on Linux, and git converts line endings on
+// checkout by default. A shell script with CRLF does not run at all — the kernel
+// reads `#!/usr/bin/env bash\r`, reports "bad interpreter", and names a program
+// that plainly exists. `.gitattributes` pins these to LF; this is what notices
+// if that file is lost or if one of them stops being covered by it.
+const attrs = read('.gitattributes');
+for (const [what, file] of [['the installer', 'install/lxc-install.sh'],
+  ['the systemd unit', 'install/my-audiobook-collection.service']]) {
+  const ext = file.slice(file.lastIndexOf('.'));
+  check(`${what} is pinned to LF, or Linux will not run it`,
+    new RegExp(`^\\*${ext.replace('.', '\\.')}\\s+text eol=lf`, 'm').test(attrs), true);
+  check(`and the copy in this checkout has none of the other kind`,
+    read(file).includes('\r'), false);
+}
+
+// --- ffmpeg, which converting needs --------------------------------------
+check('both ways to install it bring ffmpeg, which converting needs',
+  [/apk add .*ffmpeg/.test(dockerfile), /apt-get install .*ffmpeg/.test(script)], [true, true]);
+
+console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
+process.exit(failed ? 1 : 0);
