@@ -1,0 +1,13 @@
+# Line endings, decided here rather than by whichever machine last touched a
+# file. This project is written on Windows and runs on Linux, and git's default
+# is to convert on checkout — which is harmless for everything except the files
+# Linux actually executes or parses.
+#
+# A shell script with CRLF does not run at all: the kernel reads `#!/usr/bin/env
+# bash\r` and reports "bad interpreter", naming a program that plainly exists.
+# A systemd unit with CRLF is worse, because it half works. So these are LF,
+# always, in the repository and in every checkout of it.
+*.sh            text eol=lf
+*.service       text eol=lf
+*.env.example   text eol=lf
+Dockerfile      text eol=lf

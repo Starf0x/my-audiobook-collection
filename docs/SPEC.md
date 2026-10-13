@@ -378,6 +378,42 @@ their config. `<Name>` inside the file must match the container name or the
 Docker tab stops treating it as managed. Force update lives in the Docker tab's
 *Advanced View* only.
 
+### In an LXC container, where there is no image
+
+Proxmox, Unraid's own LXC support, or any Debian or Ubuntu machine with systemd.
+The image is doing four things that then have to be done by hand — install a
+node and ffmpeg, put the app somewhere, write a settings file, and arrange for it
+to start at boot — so `install/lxc-install.sh` does them, and running it again
+updates in place.
+
+It installs **the newest released tag**, not `main`: `main` is where work in
+progress lands and a tag is a thing that passed its checks. It writes
+`/etc/my-audiobook-collection.env` at `0600` and **never overwrites one that is
+already there**, because that file holds the admin password and the tokens; it
+puts the database in `/var/lib/my-audiobook-collection`, off the share, since
+that is the one thing the audio files cannot rebuild. It ends by looking again a
+few seconds after `systemctl restart` and printing the journal if the service did
+not stay up — `systemctl start` succeeding says only that systemd forked
+something.
+
+The unit starts as **root on purpose** and does not stay root: `server/user.js`
+drops to `PUID:PGID` before `db.js` creates a folder, which is exactly what the
+image does, so one set of instructions covers both ways of running it. Left as
+root it would make folders on the share that their owner cannot write into — the
+problem `PUID` exists to prevent — and the app refuses to carry on as root unless
+`ALLOW_ROOT=1`. It waits on `local-fs.target`: a scan that runs before the bind
+mount is there finds nothing, and an emptied library is a frightening thing to
+find.
+
+**`packaging` holds the two ways to install apart from each other.** They
+describe one app twice — a node major in three places, a port in three, every
+setting name in two more — and nothing would have noticed them drifting, because
+an install path is exercised once by somebody who then has a working machine and
+never looks again. The suite reads the Dockerfile, the installer, the unit, the
+settings file, the compose file and the workflow, and holds the facts written
+twice to each other. It found two real gaps the first time it ran: `TRUST_PROXY`
+and `ALLOW_ROOT` could be set on an LXC and not in compose.
+
 ### Publishing
 
 `.github/workflows/docker.yml`, on `v*` tags and on manual dispatch:
@@ -3022,15 +3058,15 @@ whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These sixteen are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the fourteen that run
+leans on could not be run by anybody who had only the spec. These seventeen are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the fifteen that run
 anywhere — `ogg-lengths` among them, which needs `ffmpeg` to make the Ogg it
 checks and says so and checks nothing where there is none, rather than passing
 quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -3150,7 +3186,8 @@ to insert order and looks broken when the app is right.
 ## 12. Rebuilding, in order
 
 1. `package.json` (ESM, the three dependencies, `start`), `Dockerfile`,
-   `.dockerignore`, `docker-compose.yml`, the Unraid template.
+   `.dockerignore`, `docker-compose.yml`, the Unraid template, and `install/`
+   — the LXC script, its systemd unit and its settings file (§5).
 2. `db.js` — schema, migrations, settings, `getLibraries`.
 3. `admin.js`, then `index.js` with the routes of §6 as stubs; get the static
    pages served and `/api/admin` answering.
@@ -3203,6 +3240,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.24 | it installs into an **LXC container** as well: `install/lxc-install.sh` does the four things the image was doing — a node, ffmpeg, the app at its newest tag, and a systemd service — writes a settings file it will never overwrite, and updates in place when run again. `packaging` holds the two ways to install to each other, since they describe one app twice and nothing would have noticed them drifting; it found `TRUST_PROXY` and `ALLOW_ROOT` settable on one and not the other. `.gitattributes` pins the script and the unit to LF, because a shell script with CRLF does not run at all |
 | 2.11.16 | the maintenance column shows only what is waiting. A row there is a job to be done, and nine of them reading 0 said nothing except that the column was long — *Series to complete, 68* sat among eight noughts. `counts()` sets the number and the row's visibility together, so the rule is one thing in one place. *Import* is not a count of work and stays; so does whichever row is the view on screen, or emptying the trash from inside the trash would pull the list out from under the reader |
 | 2.11.8 | the run of books in no series is set apart from the series above it — saying *No Series* on the card was not enough on its own, because a series is separated from what follows by its heading and these have none, so the first of them carries the gap instead. And it is called *No Series* rather than *Standalone* |
 | 2.11.0 | failing to read a job's progress is no longer the job failing: `trackProgress` gave up on the first unanswered poll, and the caller put that complaint ahead of the answer from the request that did the work, so a tag write that finished reported *"Writing tags failed: lost contact with the server"*. And a card says which series a book is in **or that it is in none**. The line was drawn only when there was a series, and cards stack, so *Warbreaker* under *Oathbringer*'s "The Stormlight Archive · book 3" read as part of it — absence is not a statement, so the card says *Standalone*. And *Unabridged*, under *Listened* and a different kind of thing: *Listened* is each listener's, this is the book's, so the admin states it and the listening page only shows it |
