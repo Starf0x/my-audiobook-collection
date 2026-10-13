@@ -215,6 +215,42 @@ check('and reads where the database is from the settings file, not from a guess'
 check('every one of the three stops at the first failure',
   [script, creator, uninstaller].map((s) => /^set -euo pipefail$/m.test(s)), [true, true, true]);
 
+// --- the Proxmox VE Helper Script pair ------------------------------------
+// `ct/my-audiobook-collection.sh` is the community-scripts entry point, and it
+// behaves like theirs because it *is* theirs: the engine comes from
+// community-scripts/core. What makes it work for an app outside their
+// repository is one export. Their engine resolves two roots — its own files
+// from COMMUNITY_SCRIPTS_CORE_URL, and `ct/` and `install/` from
+// COMMUNITY_SCRIPTS_URL — and left unset the second is their script repo, so
+// the install step would be fetched from there and 404.
+const ct = read('ct/my-audiobook-collection.sh');
+check('the helper script points the engine at this repository for ct/ and install/',
+  /export COMMUNITY_SCRIPTS_URL=.*Starf0x\/my-audiobook-collection/.test(live(ct)), true);
+check('and still loads the engine itself from community-scripts',
+  /community-scripts\/core.*core\/build\.func/.test(live(ct)), true);
+
+// The engine computes the installer's filename from the app's name: `${APP,,}`
+// with the spaces taken out, plus `-install`. Rename either and it fetches
+// something that is not there.
+const app = (ct.match(/^APP="([^"]+)"/m) || [])[1] || '';
+check('the installer is named what the engine will ask for',
+  `install/${app.toLowerCase().replace(/ /g, '')}-install.sh`,
+  'install/myaudiobookcollection-install.sh');
+check('and that file is really here',
+  shipped.includes(`${app.toLowerCase().replace(/ /g, '')}-install.sh`), true);
+
+// It is the same app however it is installed, so the node it runs on is too.
+const ctInstall = read('install/myaudiobookcollection-install.sh');
+check('and installs the same major of node as the image',
+  (ctInstall.match(/NODE_VERSION="(\d+)"/) || [])[1], major.image);
+
+// The line Frank was missing: the address, at the end, in their shape.
+check('the helper script ends by saying where the app now is',
+  [/Completed successfully/.test(ct), /Access it using the following URL/.test(ct),
+    /http:\/\/\$\{IP\}:8523/.test(ct)], [true, true, true]);
+check('and the port it prints is the one the app listens on',
+  (ct.match(/http:\/\/\$\{IP\}:(\d+)/) || [])[1], port.app);
+
 // --- ffmpeg, which converting needs --------------------------------------
 check('both ways to install it bring ffmpeg, which converting needs',
   [/apk add .*ffmpeg/.test(dockerfile), /apt-get install .*ffmpeg/.test(script)], [true, true]);
