@@ -105,6 +105,24 @@ check('it stops at the first failure', /^set -euo pipefail$/m.test(script), true
 check('and never overwrites a settings file that is already there',
   /if \[ -f "\$ENV_FILE" \]/.test(script), true);
 
+// --- the one thing that catches people on Proxmox ------------------------
+// An unprivileged container shifts every id: PUID=99 inside is 100099 on the
+// host, which owns nothing, so the app is refused permission to write in a
+// collection whose permissions look perfectly right from the host. The installer
+// reads /proc/self/uid_map and says so, because this is a whole afternoon to
+// work out from the other end and one line to be told.
+// Comments off first. The paragraph above that check explains what it reads and
+// why, so a grep over the whole file passes on the explanation after the code
+// has gone — which is how a check in `one-at-a-time` once passed for the wrong
+// reason, in this same project, over this same mistake.
+const runs = script.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+check('the installer really reads uid_map, rather than only mentioning it',
+  /\/proc\/self\/uid_map/.test(runs), true);
+check('and warns about shifted ids when it finds them',
+  /unprivileged container/.test(runs), true);
+check('and says it carries on, since it is about writing, not about starting',
+  /Install carries on/.test(script), true);
+
 // --- what Linux has to execute is stored the way Linux reads it ----------
 // This is written on Windows and run on Linux, and git converts line endings on
 // checkout by default. A shell script with CRLF does not run at all — the kernel
@@ -112,14 +130,48 @@ check('and never overwrites a settings file that is already there',
 // that plainly exists. `.gitattributes` pins these to LF; this is what notices
 // if that file is lost or if one of them stops being covered by it.
 const attrs = read('.gitattributes');
-for (const [what, file] of [['the installer', 'install/lxc-install.sh'],
-  ['the systemd unit', 'install/my-audiobook-collection.service']]) {
-  const ext = file.slice(file.lastIndexOf('.'));
-  check(`${what} is pinned to LF, or Linux will not run it`,
+const shipped = fs.readdirSync(path.join(ROOT, 'install')).sort();
+for (const ext of ['.sh', '.service']) {
+  check(`every ${ext} is pinned to LF, or Linux will not run it`,
     new RegExp(`^\\*${ext.replace('.', '\\.')}\\s+text eol=lf`, 'm').test(attrs), true);
-  check(`and the copy in this checkout has none of the other kind`,
-    read(file).includes('\r'), false);
 }
+check('and no file in install/ carries the other kind',
+  shipped.filter((f) => read(`install/${f}`).includes('\r')), []);
+
+// --- three scripts, and which machine each belongs on --------------------
+// `lxc-install.sh` installs the app onto whatever machine it runs on. The
+// obvious place to paste a one-liner you found is the host's shell prompt, and
+// there it installs node, ffmpeg, a NodeSource apt repository and a service onto
+// the hypervisor. Frank did exactly that, and nothing in the command said it
+// would. So it refuses, and names the two scripts that do belong there.
+const creator = read('install/proxmox-create-lxc.sh');
+const uninstaller = read('install/uninstall.sh');
+const live = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+check('the installer refuses to run on the Proxmox host',
+  [/\/etc\/pve/.test(live(script)), /command -v pct/.test(live(script))], [true, true]);
+check('and says there what to run instead',
+  [/proxmox-create-lxc\.sh/.test(script), /uninstall\.sh/.test(script)], [true, true]);
+check('the creator refuses to run anywhere but the Proxmox host',
+  /command -v pct >\/dev\/null \|\| die/.test(live(creator)), true);
+check('and installs by running the installer inside the container it made',
+  /pct exec .*lxc-install\.sh/.test(live(creator)), true);
+
+// --- the uninstaller removes what the installer wrote, and no more -------
+// An uninstaller is only as good as its agreement with the installer: one that
+// removes a path the installer never used does nothing, and one that removes a
+// path it was not meant to is worse than having none.
+for (const name of ['APP_DIR', 'ENV_FILE', 'UNIT']) {
+  const mine = (text) => (text.match(new RegExp(`^${name}=(\\S+)`, 'm')) || [])[1];
+  check(`the uninstaller's ${name} is the installer's ${name}`,
+    mine(uninstaller), mine(script));
+}
+check('it keeps the database and the settings unless asked for --purge',
+  [/--purge/.test(uninstaller), /if \[ "\$purge" -eq 1 \]/.test(live(uninstaller))], [true, true]);
+check('and reads where the database is from the settings file, not from a guess',
+  /DATA_DIR:-/.test(live(uninstaller)), true);
+check('every one of the three stops at the first failure',
+  [script, creator, uninstaller].map((s) => /^set -euo pipefail$/m.test(s)), [true, true, true]);
 
 // --- ffmpeg, which converting needs --------------------------------------
 check('both ways to install it bring ffmpeg, which converting needs',
