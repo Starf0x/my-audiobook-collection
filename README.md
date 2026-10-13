@@ -374,27 +374,43 @@ This makes the container **and** installs into it. Run it on the Proxmox host:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/proxmox-create-lxc.sh)"
 ```
 
-It picks a free id, the newest Debian template you already have and a storage
-that can hold a container, prints everything it is about to do, and stops there
-unless you say yes. Then it creates the container, starts it, waits for it to
-reach the network, and runs the installer inside it.
+It asks first:
 
-Give it your collection while it is at it, and it mounts it for you:
+| | |
+| --- | --- |
+| **Default settings** | a free id, the newest Debian template you already have, a storage that can hold a container, 2 cores, 1 GB, 8 GB disk, `vmbr0` by DHCP, privileged. It asks one thing: where your audiobooks are |
+| **Advanced settings** | every one of those, one at a time, with what the host actually offers in the menus — your storages by name, the templates you have downloaded |
+
+Then it shows the whole plan, waits for a yes, creates the container, starts it,
+waits for it to reach the network, and runs the installer inside it.
+
+**Why it asks for the books even in the quick path.** A container with no
+collection mounted starts perfectly well and then has nothing to offer under
+*Library folders*, which reads as the app being broken when it is the mount that
+is missing. It is the most common way this ends badly and it costs one question
+to prevent. Leave it empty and it tells you how to add one later.
+
+**It makes a privileged container** by default, on purpose — see the id-shifting
+note below. Advanced settings asks, and explains what unprivileged costs before
+you choose it.
+
+Every setting is also a flag, so it can run with nobody watching:
 
 ```bash
 bash -c "$(curl -fsSL .../install/proxmox-create-lxc.sh)" -- \
-  --books /host/path/to/Audiobooks --import /host/path/to/_AutoDownload
+  --books /host/path/to/Audiobooks --import /host/path/to/_AutoDownload --yes
 ```
 
 `--id`, `--hostname`, `--storage`, `--template`, `--bridge`, `--cores`,
-`--memory` and `--disk` are there when you want them, and `--yes` skips the
-question. A container with no collection mounted starts perfectly well and then
-has nothing to offer under *Library folders*, which reads as the app being broken
-when it is the mount that is missing; add one later with
-`pct set <id> -mp0 /path,mp=/audiobooks`.
+`--memory`, `--disk` and `--unprivileged` are the rest. With `--yes`, or piped
+into `bash` where there is no terminal to ask at, it takes the defaults and says
+so rather than hanging on a question nobody can see.
 
-**It makes a privileged container**, on purpose — see the id-shifting note below.
-`--unprivileged` overrides that and prints what it will cost you.
+**It fetches no framework.** The community scripts source a shared `build.func`
+from another repository and run it as root on your hypervisor; that is a fair
+trade for a collection covering hundreds of apps and a poor one for a single
+script you ought to be able to read in full. What is in these three files is all
+of it.
 
 **`--unprivileged 0` is the line to look at.** An unprivileged container shifts
 every id by 100000: `PUID=99` inside becomes 100099 on the host, which owns
