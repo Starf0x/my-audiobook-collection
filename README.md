@@ -368,7 +368,34 @@ file, and arrange for it to start at boot. One script does all four.
 
 ### On Proxmox VE: one command on the host
 
-This makes the container **and** installs into it. Run it on the Proxmox host:
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/ct/my-audiobook-collection.sh)"
+```
+
+This is a **Proxmox VE Helper Script**, and it behaves exactly like the ones from
+[community-scripts](https://github.com/community-scripts/ProxmoxVE) because it
+is one: the engine is theirs, loaded from `community-scripts/core`. The banner,
+*Default* and *Advanced settings*, the storage radiolist, the spinners and the
+line at the end with the address all come from it, so if you have installed
+anything that way before, this is the same thing.
+
+What makes it work for an app that is not in their repository is one line. Their
+engine resolves two roots separately — its own files from one, and `ct/` and
+`install/` from another — so this script points the second at this repository,
+and the engine fetches this app's installer instead of looking for it in theirs.
+
+Run it again later and it offers to update: it fetches the newest released tag,
+reinstalls the dependencies and restarts the service.
+
+It makes a **privileged** container, where theirs default to unprivileged. That
+is deliberate — see the id-shifting note below — and `var_unprivileged=1` in
+front of the command overrides it.
+
+### Or without a framework
+
+If you would rather not have an engine fetched from another repository and run
+as root on your hypervisor, this does the same job and is three files you can
+read in full:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/proxmox-create-lxc.sh)"
