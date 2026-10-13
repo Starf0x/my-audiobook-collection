@@ -28,6 +28,37 @@ say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run this as root: it installs packages and a systemd service."
+
+# --- not on the hypervisor -------------------------------------------------
+# This installs the app *into* the machine it runs on. Run on a Proxmox host it
+# therefore installs the app on the Proxmox host: node, ffmpeg, a NodeSource apt
+# repository and a systemd service, all on the box that runs everything else.
+# Nothing about the command says so, and the obvious place to paste a one-liner
+# you found is the host's shell prompt — which is exactly what happened.
+#
+# `proxmox-create-lxc.sh` is the one that belongs on the host: it makes the
+# container and then runs this inside it. `uninstall.sh` clears up a host this
+# was already run on.
+if [ -d /etc/pve ] && command -v pct >/dev/null; then
+  printf '\n\033[31m==> This is the Proxmox host, not a container.\033[0m\n' >&2
+  cat >&2 <<WRONGPLACE
+
+  This script installs the app onto whatever machine it runs on, so here it
+  would install node, ffmpeg and a service onto your hypervisor.
+
+  To make a container and install into it, from this same prompt:
+
+    bash -c "\$(curl -fsSL ${RAW:-https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main}/install/proxmox-create-lxc.sh)"
+
+  To run this script as intended, go inside the container first: pct enter <id>.
+
+  If a previous run already installed onto this host, this takes it off again:
+
+    bash -c "\$(curl -fsSL ${RAW:-https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main}/install/uninstall.sh)"
+
+WRONGPLACE
+  exit 1
+fi
 command -v systemctl >/dev/null || die "No systemd here. This script is for a Debian or Ubuntu LXC; the Docker image is the other way to run the app."
 command -v apt-get >/dev/null || die "No apt-get here. This script is for Debian or Ubuntu; on anything else install node ${NODE_MAJOR}, ffmpeg and the app by hand — the systemd unit beside this script is the only other piece."
 
@@ -95,6 +126,42 @@ data_dir=$( set -a; . "$ENV_FILE"; printf '%s' "${DATA_DIR:-/var/lib/my-audioboo
 port=$( set -a; . "$ENV_FILE"; printf '%s' "${PORT:-8523}" )
 puid=$( set -a; . "$ENV_FILE"; printf '%s' "${PUID:-}" )
 pgid=$( set -a; . "$ENV_FILE"; printf '%s' "${PGID:-}" )
+
+# --- the one thing that catches people on Proxmox -------------------------
+# An unprivileged container shifts every id: container 0 is host 100000, so the
+# PUID below is not the uid that will own the files on the host — it is that uid
+# plus the offset. Set PUID=99 in an unprivileged container and the share sees
+# 100099, which owns nothing, and the app is refused permission to write in a
+# collection whose permissions look perfectly correct from the host.
+#
+# `/proc/self/uid_map` says which kind of container this is: `0 0 4294967295`
+# is privileged, anything else is a shift. Unreadable on anything that is not a
+# container, which is why this says nothing rather than guessing.
+if [ -r /proc/self/uid_map ]; then
+  shift_by=$(awk 'NR==1 {print $2}' /proc/self/uid_map 2>/dev/null || echo 0)
+  if [ -n "${shift_by:-}" ] && [ "$shift_by" != "0" ]; then
+    printf '\n\033[33m==> This is an unprivileged container (ids are shifted by %s)\033[0m\n' "$shift_by"
+    cat <<MAPPED
+  PUID and PGID below are ids *inside* here. On the host they become
+  $((shift_by + ${puid:-0})) and $((shift_by + ${pgid:-0})), which probably own nothing — so the app
+  will be refused permission to write in your collection even though its
+  permissions look right from the host.
+
+  Two ways out, on the host, with the container stopped:
+    * make it privileged, which is the usual answer for a media container; or
+    * map the owning group through, in /etc/pve/lxc/<id>.conf:
+        lxc.idmap: u 0 100000 65536
+        lxc.idmap: g 0 100000 100
+        lxc.idmap: g 100 100 1
+        lxc.idmap: g 101 100101 65435
+      (that example maps gid 100 straight through; use the gid that owns
+       your audiobooks, which \`stat -c '%g' /path\` on the host says)
+
+  Install carries on. This is about writing to the collection, not about
+  whether the app starts.
+MAPPED
+  fi
+fi
 
 say "Where it keeps the database"
 install -d -m 0755 "$data_dir"

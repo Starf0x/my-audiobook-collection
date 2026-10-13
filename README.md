@@ -366,23 +366,70 @@ systemd. There is no image here, so the things the container did for you have to
 be done once: install node and ffmpeg, put the app somewhere, write a settings
 file, and arrange for it to start at boot. One script does all four.
 
-**First, give the container your collection.** This is the host's job and the
-script cannot do it — on Proxmox, with the container stopped:
+### On Proxmox VE: one command on the host
+
+This makes the container **and** installs into it. Run it on the Proxmox host:
 
 ```bash
-pct set <id> -mp0 /host/path/to/Audiobooks,mp=/audiobooks
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/proxmox-create-lxc.sh)"
 ```
 
-Add a second one for an import folder if you use one. A container with no such
-mount starts perfectly well and then has nothing to offer under *Library
-folders*, which reads as the app being broken when it is the mount that is
-missing.
+It picks a free id, the newest Debian template you already have and a storage
+that can hold a container, prints everything it is about to do, and stops there
+unless you say yes. Then it creates the container, starts it, waits for it to
+reach the network, and runs the installer inside it.
 
-**Then, inside the container, as root:**
+Give it your collection while it is at it, and it mounts it for you:
+
+```bash
+bash -c "$(curl -fsSL .../install/proxmox-create-lxc.sh)" -- \
+  --books /host/path/to/Audiobooks --import /host/path/to/_AutoDownload
+```
+
+`--id`, `--hostname`, `--storage`, `--template`, `--bridge`, `--cores`,
+`--memory` and `--disk` are there when you want them, and `--yes` skips the
+question. A container with no collection mounted starts perfectly well and then
+has nothing to offer under *Library folders*, which reads as the app being broken
+when it is the mount that is missing; add one later with
+`pct set <id> -mp0 /path,mp=/audiobooks`.
+
+**It makes a privileged container**, on purpose — see the id-shifting note below.
+`--unprivileged` overrides that and prints what it will cost you.
+
+**`--unprivileged 0` is the line to look at.** An unprivileged container shifts
+every id by 100000: `PUID=99` inside becomes 100099 on the host, which owns
+nothing, so the app is refused permission to write in a collection whose
+permissions look perfectly right from the host. Privileged is the usual answer
+for a container that writes to a media share, and it is what that flag does.
+
+If you would rather keep it unprivileged, map the owning group through instead —
+on the host, container stopped, in `/etc/pve/lxc/120.conf`:
+
+```
+lxc.idmap: u 0 100000 65536
+lxc.idmap: g 0 100000 100
+lxc.idmap: g 100 100 1
+lxc.idmap: g 101 100101 65435
+```
+
+That maps gid 100 straight through; use the gid that owns your audiobooks, which
+`stat -c '%g' /host/path/to/Audiobooks` tells you. The install script checks
+which kind of container it is in and prints this if it finds a shift, so you do
+not have to decide now.
+
+### Into a container you already have
+
+Inside it, as root — on Unraid's LXC, or a container you made yourself, or any
+Debian or Ubuntu machine with systemd:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/lxc-install.sh)"
 ```
+
+**This one installs onto whatever machine it runs on**, so it is not the one to
+paste at a Proxmox host prompt: there it would put node, ffmpeg and a service on
+the hypervisor itself. It now refuses to, and says which script to use instead —
+but if an earlier run already did it, the uninstaller below takes it off again.
 
 It installs node and ffmpeg, clones the **newest released version** — a tag, not
 whatever `main` happens to be — installs the three dependencies, writes
@@ -408,6 +455,31 @@ carry on as root unless you say `ALLOW_ROOT=1`.
 Run the same script again. It fetches the newest tag, reinstalls the
 dependencies, keeps your settings file exactly as it is, and restarts the
 service.
+
+### Taking it off again
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/uninstall.sh)"
+```
+
+Removes the service and the app and **keeps your database and your settings**,
+because those are the two that cannot be got back: the database holds every
+listening position, account and heart, and the settings file holds your password.
+Install again and it picks both up where they are.
+
+| | |
+| --- | --- |
+| `--purge` | the database and the settings file too. It lists them and asks first |
+| `--yes` | do not ask. For a container you are about to destroy anyway |
+| `--nodesource` | also remove the apt repository it added for node. Node itself stays: something else may want it |
+
+Nothing it removes is inside your audiobooks. It is also what to run on a Proxmox
+host that an earlier `lxc-install.sh` was pasted into — it is safe on a machine
+where only some of it got as far as installing, and says so rather than failing
+when there is nothing of it there.
+
+If you made the container with the Proxmox script and want the whole thing gone,
+`pct stop <id> && pct destroy <id>` is shorter.
 
 ### Why a service rather than just running it
 
