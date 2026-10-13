@@ -36,9 +36,10 @@ die() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
 # Nothing about the command says so, and the obvious place to paste a one-liner
 # you found is the host's shell prompt — which is exactly what happened.
 #
-# `proxmox-create-lxc.sh` is the one that belongs on the host: it makes the
-# container and then runs this inside it. `uninstall.sh` clears up a host this
-# was already run on.
+# `ct/my-audiobook-collection.sh` is the one that belongs on the host: it is a
+# Proxmox VE Helper Script, it makes the container and installs into it, and the
+# engine it loads is the community-scripts one. `uninstall.sh` clears up a host
+# this was already run on.
 if [ -d /etc/pve ] && command -v pct >/dev/null; then
   printf '\n\033[31m==> This is the Proxmox host, not a container.\033[0m\n' >&2
   cat >&2 <<WRONGPLACE
@@ -48,7 +49,7 @@ if [ -d /etc/pve ] && command -v pct >/dev/null; then
 
   To make a container and install into it, from this same prompt:
 
-    bash -c "\$(curl -fsSL ${RAW:-https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main}/install/proxmox-create-lxc.sh)"
+    bash -c "\$(curl -fsSL ${RAW:-https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main}/ct/my-audiobook-collection.sh)"
 
   To run this script as intended, go inside the container first: pct enter <id>.
 

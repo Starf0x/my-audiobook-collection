@@ -138,66 +138,35 @@ for (const ext of ['.sh', '.service']) {
 check('and no file in install/ carries the other kind',
   shipped.filter((f) => read(`install/${f}`).includes('\r')), []);
 
-// --- three scripts, and which machine each belongs on --------------------
+// --- two scripts, and which machine each belongs on ----------------------
 // `lxc-install.sh` installs the app onto whatever machine it runs on. The
 // obvious place to paste a one-liner you found is the host's shell prompt, and
 // there it installs node, ffmpeg, a NodeSource apt repository and a service onto
 // the hypervisor. Frank did exactly that, and nothing in the command said it
-// would. So it refuses, and names the two scripts that do belong there.
-const creator = read('install/proxmox-create-lxc.sh');
+// would. So it refuses, and names the two that do belong there.
+//
+// There used to be a third: a hand-rolled container creator with whiptail menus
+// of its own. Offering it beside the helper script is what had Frank run the
+// wrong one twice — there is a standard for this, and a second way of doing the
+// same job is not a kindness. It is gone, and this is what keeps it gone.
 const uninstaller = read('install/uninstall.sh');
 const live = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
 
 check('the installer refuses to run on the Proxmox host',
   [/\/etc\/pve/.test(live(script)), /command -v pct/.test(live(script))], [true, true]);
-check('and says there what to run instead',
-  [/proxmox-create-lxc\.sh/.test(script), /uninstall\.sh/.test(script)], [true, true]);
-check('the creator refuses to run anywhere but the Proxmox host',
-  /command -v pct >\/dev\/null \|\| die/.test(live(creator)), true);
-
-// It asks, the way the community scripts do — a menu, then the defaults or
-// every setting one at a time.
-check('the creator asks, with a Default and an Advanced way through',
-  [/whiptail/.test(live(creator)), /--menu/.test(live(creator)),
-    /advanced\)/.test(live(creator))], [true, true, true]);
-// The storage was pickable only under Advanced, so the quick path silently put
-// the container on whichever pool `pvesm` listed first. A host with several has
-// them for a reason. It is asked in both paths now, in the shape the scripts
-// this is modelled on use: a radiolist with the free space beside each name,
-// because "local-lvm or tank?" cannot be answered from the names alone.
-const defaultBranch = (creator.match(/\n\s*default\)([\s\S]*?)\n\s*;;/) || [])[1] || '';
-check('the storage is asked for in the quick path too, not only under Advanced',
-  [/pick_storage/.test(defaultBranch),
-    (live(creator).match(/^\s*\[ -n "\$storage" \] \|\| pick_storage$/gm) || []).length], [true, 2]);
-// Scoped to the function that asks it. The template question is a radiolist
-// too, so looking for one anywhere in the file passes whatever the storage
-// question has become — which is exactly what it did.
-const picker = (creator.match(/\npick_storage\(\) \{([\s\S]*?)\n\}/) || [])[1] || '';
-check('and asked as a radiolist with the free space beside each pool',
-  [/--radiolist/.test(picker), /Free: /.test(picker)], [true, true]);
-check('and not asked at all when the host has only one, since that is not a choice',
-  /-eq 1 \]; then\n\s*storage=/.test(picker), true);
-
-// And only when there is somewhere to ask. `curl … | bash` leaves stdin as the
-// pipe, and whiptail would read the rest of the script as the answers.
-check('and only when there is a terminal to ask at',
-  /\[ -t 0 \]/.test(live(creator)), true);
-check('and every setting is still a flag, for a run with nobody watching',
-  ['--id', '--hostname', '--storage', '--template', '--bridge', '--cores',
-    '--memory', '--disk', '--books', '--import', '--unprivileged', '--yes']
-    // `--yes|-y)` is a case with an alternative in it, so the flag is followed
-    // by `)` or by `|`, not always by `)`
-    .filter((f) => !new RegExp(`\\s${f}[)|]`, 'm').test(live(creator))), []);
-
-// The community scripts pull a shared `build.func` from another repository and
-// run it as root on the hypervisor. That is a fair trade for a framework
-// covering hundreds of apps and a poor one for a single script somebody ought to
-// be able to read in full, so none of these fetch code to execute. Said as a
-// check because it is a decision, not a detail, and decisions drift.
-check('none of the three sources code over the network to run as root',
-  [script, creator, uninstaller].flatMap((s) => [...live(s).matchAll(/(?:source|\.)\s+<\(/g)]), []);
-check('and installs by running the installer inside the container it made',
-  /pct exec .*lxc-install\.sh/.test(live(creator)), true);
+check('and sends you to the helper script, the one way in on a host',
+  [/ct\/my-audiobook-collection\.sh/.test(script), /uninstall\.sh/.test(script)], [true, true]);
+check('and no second way of making a container is offered beside it',
+  fs.existsSync(path.join(ROOT, 'install/proxmox-create-lxc.sh')), false);
+// The GUI is not ours to get right or wrong any more: the menu, the storage
+// radiolist, the spinners and the banner all come from the engine the helper
+// script loads. What is checked below is the little that is still ours — where
+// the engine looks for this app's pieces, and what the end of it says.
+//
+// `lxc-install.sh` is the one that still fetches nothing to execute, and that
+// stays a check because it is a decision rather than a detail.
+check('the installer sources nothing over the network to run as root',
+  [...live(script).matchAll(/(?:source|\.)\s+<\(/g)], []);
 
 // --- the uninstaller removes what the installer wrote, and no more -------
 // An uninstaller is only as good as its agreement with the installer: one that
@@ -212,8 +181,8 @@ check('it keeps the database and the settings unless asked for --purge',
   [/--purge/.test(uninstaller), /if \[ "\$purge" -eq 1 \]/.test(live(uninstaller))], [true, true]);
 check('and reads where the database is from the settings file, not from a guess',
   /DATA_DIR:-/.test(live(uninstaller)), true);
-check('every one of the three stops at the first failure',
-  [script, creator, uninstaller].map((s) => /^set -euo pipefail$/m.test(s)), [true, true, true]);
+check('both of them stop at the first failure',
+  [script, uninstaller].map((s) => /^set -euo pipefail$/m.test(s)), [true, true]);
 
 // --- the Proxmox VE Helper Script pair ------------------------------------
 // `ct/my-audiobook-collection.sh` is the community-scripts entry point, and it
@@ -250,6 +219,12 @@ check('the helper script ends by saying where the app now is',
     /http:\/\/\$\{IP\}:8523/.test(ct)], [true, true, true]);
 check('and the port it prints is the one the app listens on',
   (ct.match(/http:\/\/\$\{IP\}:(\d+)/) || [])[1], port.app);
+// And how to mount the two folders, at the moment somebody needs it: the app is
+// up and has nothing to show, because the collection is the host's to mount and
+// the container has to be rebooted to see it. Two commands, no explaining.
+check('and says how to mount the two folders, with the container it just made',
+  [/-mp0 .*mp=\/audiobooks/.test(ct), /-mp1 .*mp=\/import/.test(ct),
+    /pct reboot \$\{CTID\}/.test(ct)], [true, true, true]);
 
 // --- ffmpeg, which converting needs --------------------------------------
 check('both ways to install it bring ffmpeg, which converting needs',
