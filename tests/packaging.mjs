@@ -160,6 +160,24 @@ check('the creator refuses to run anywhere but the Proxmox host',
 check('the creator asks, with a Default and an Advanced way through',
   [/whiptail/.test(live(creator)), /--menu/.test(live(creator)),
     /advanced\)/.test(live(creator))], [true, true, true]);
+// The storage was pickable only under Advanced, so the quick path silently put
+// the container on whichever pool `pvesm` listed first. A host with several has
+// them for a reason. It is asked in both paths now, in the shape the scripts
+// this is modelled on use: a radiolist with the free space beside each name,
+// because "local-lvm or tank?" cannot be answered from the names alone.
+const defaultBranch = (creator.match(/\n\s*default\)([\s\S]*?)\n\s*;;/) || [])[1] || '';
+check('the storage is asked for in the quick path too, not only under Advanced',
+  [/pick_storage/.test(defaultBranch),
+    (live(creator).match(/^\s*\[ -n "\$storage" \] \|\| pick_storage$/gm) || []).length], [true, 2]);
+// Scoped to the function that asks it. The template question is a radiolist
+// too, so looking for one anywhere in the file passes whatever the storage
+// question has become — which is exactly what it did.
+const picker = (creator.match(/\npick_storage\(\) \{([\s\S]*?)\n\}/) || [])[1] || '';
+check('and asked as a radiolist with the free space beside each pool',
+  [/--radiolist/.test(picker), /Free: /.test(picker)], [true, true]);
+check('and not asked at all when the host has only one, since that is not a choice',
+  /-eq 1 \]; then\n\s*storage=/.test(picker), true);
+
 // And only when there is somewhere to ask. `curl … | bash` leaves stdin as the
 // pipe, and whiptail would read the rest of the script as the answers.
 check('and only when there is a terminal to ask at',

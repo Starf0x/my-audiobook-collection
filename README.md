@@ -378,8 +378,13 @@ It asks first:
 
 | | |
 | --- | --- |
-| **Default settings** | a free id, the newest Debian template you already have, a storage that can hold a container, 2 cores, 1 GB, 8 GB disk, `vmbr0` by DHCP, privileged. It asks one thing: where your audiobooks are |
-| **Advanced settings** | every one of those, one at a time, with what the host actually offers in the menus — your storages by name, the templates you have downloaded |
+| **Default settings** | a free id, the newest Debian template you already have, 2 cores, 1 GB, 8 GB disk, `vmbr0` by DHCP, privileged. It asks two things: **which storage pool**, and where your audiobooks are |
+| **Advanced settings** | every one of those, one at a time, with what the host actually offers in the menus — your storage pools with the free space beside each, the templates you have downloaded |
+
+The storage pool is asked for in both paths, because a host with several has them
+for a reason and the container's disk should not land on whichever one `pvesm`
+listed first. With only one pool there is no question to ask, so it does not ask
+it.
 
 Then it shows the whole plan, waits for a yes, creates the container, starts it,
 waits for it to reach the network, and runs the installer inside it.
