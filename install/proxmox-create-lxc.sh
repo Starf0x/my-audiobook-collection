@@ -4,24 +4,27 @@
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/proxmox-create-lxc.sh)"
 #
-# It asks nothing it can work out, says everything it is about to do, and stops
-# before doing any of it if you say no.
+# It asks, the way the community scripts do: a menu, then either the defaults or
+# every setting one at a time. The questions are whiptail, which Proxmox has;
+# with no terminal to ask at — piped into bash, or run from cron — it takes the
+# defaults and whatever flags it was given and says so.
 #
-#   --id <n>            container id (default: the first free one from 120)
-#   --hostname <name>   default: audiobooks
-#   --storage <name>    where the container's disk goes (default: guessed)
-#   --template <vol>    the OS template (default: the newest Debian you have)
-#   --bridge <name>     default: vmbr0
-#   --cores <n>         default: 2
-#   --memory <MB>       default: 1024
-#   --disk <GB>         default: 8
-#   --books <path>      host path to your audiobooks, mounted at /audiobooks
-#   --import <path>     host path for new arrivals, mounted at /import
-#   --unprivileged      make it unprivileged. Read the note it prints first.
-#   --yes               do not ask
+# It does not source anything over the network to do that. The community scripts
+# pull a shared `build.func` from another repository and run it as root on your
+# hypervisor, which is a fine trade for a framework covering four hundred apps
+# and a poor one for a single script you ought to be able to read in full. What
+# is here is all of it.
+#
+# Every setting is also a flag, so this can be run without being asked anything:
+#   --id --hostname --storage --template --bridge --cores --memory --disk
+#   --books <host path>   mounted at /audiobooks
+#   --import <host path>  mounted at /import
+#   --unprivileged        read what it prints about shifted ids
+#   --yes                 take the defaults, ask nothing
 set -euo pipefail
 
 RAW=https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main
+TITLE="My Audiobook Collection"
 
 ctid=""
 hostname=audiobooks
@@ -60,20 +63,30 @@ done
 command -v pct >/dev/null || die "No pct here. Run this on the Proxmox VE host; inside a container, lxc-install.sh is the one you want."
 [ "$(id -u)" -eq 0 ] || die "Run this as root."
 
-# --- the id ----------------------------------------------------------------
-if [ -z "$ctid" ]; then
-  ctid=$(pvesh get /cluster/nextid 2>/dev/null || true)
-  [ -n "$ctid" ] || die "Could not ask the cluster for a free id. Pass one with --id."
-fi
-pct status "$ctid" >/dev/null 2>&1 && die "$ctid is already a container. Pass a free one with --id."
+# Asking needs both a terminal to ask at and something to ask with. `bash -c
+# "$(curl …)"` keeps the terminal — the script arrives as an argument, not on
+# stdin — but `curl … | bash` does not, and then whiptail would read the rest of
+# the script as answers.
+ask=0
+if [ "$assume_yes" -eq 0 ] && [ -t 0 ] && command -v whiptail >/dev/null; then ask=1; fi
 
-# --- the template ----------------------------------------------------------
-# The newest Debian already downloaded, rather than fetching one: a host that
-# keeps templates has the one it wants, and downloading silently is rude.
-if [ -z "$template" ]; then
-  template=$(pveam list local 2>/dev/null | awk '/debian-1[0-9]/ {print $1}' | sort -V | tail -n 1 || true)
-fi
-if [ -z "$template" ]; then
+# --- what this host can offer --------------------------------------------
+# Worked out before anything is asked, so the menus offer what exists rather
+# than taking a name and failing on it later.
+free_id=$(pvesh get /cluster/nextid 2>/dev/null || true)
+[ -n "$ctid" ] || ctid=$free_id
+[ -n "$ctid" ] || die "Could not ask the cluster for a free id. Pass one with --id."
+
+# A storage that can hold a container root. ISO and backup storages cannot, and
+# choosing one of those fails late and confusingly.
+mapfile -t storages < <(pvesm status -content rootdir 2>/dev/null | awk 'NR>1 && $3=="active" {print $1}')
+[ "${#storages[@]}" -gt 0 ] || die "No storage on this host can hold a container. Pass one with --storage."
+[ -n "$storage" ] || storage=${storages[0]}
+
+# The Debian templates already downloaded, newest last. Fetching one silently
+# would be rude, and a host that keeps templates has the one it wants.
+mapfile -t templates < <(pveam list local 2>/dev/null | awk '/debian-1[0-9]/ {print $1}' | sort -V)
+if [ "${#templates[@]}" -eq 0 ] && [ -z "$template" ]; then
   say "No Debian template on this host"
   cat <<NOTEMPLATE
   Fetch one, then run this again:
@@ -85,18 +98,70 @@ if [ -z "$template" ]; then
 NOTEMPLATE
   exit 1
 fi
+[ -n "$template" ] || template=${templates[-1]}
 
-# --- where the disk goes ---------------------------------------------------
-# A storage that can actually hold a container root, not just any storage: ISOs
-# and backups cannot, and picking one of those fails late and confusingly.
-if [ -z "$storage" ]; then
-  storage=$(pvesm status -content rootdir 2>/dev/null | awk 'NR>1 && $3=="active" {print $1; exit}' || true)
-  [ -n "$storage" ] || die "No storage here can hold a container. Pass one with --storage."
+# --- asking ---------------------------------------------------------------
+box() { whiptail --backtitle "$TITLE" --title "$1" "${@:2}" 3>&1 1>&2 2>&3; }
+
+if [ "$ask" -eq 1 ]; then
+  choice=$(box "$TITLE" --menu "\nAn LXC container on this host, with the app installed in it.\n" 16 68 3 \
+    "default"  "Use the defaults, and just ask where the books are" \
+    "advanced" "Choose every setting" \
+    "exit"     "Change nothing" || echo exit)
+
+  case "$choice" in
+    exit|"") die "Nothing was created." ;;
+
+    # The one question worth asking even in the quick path. A container with no
+    # collection mounted starts perfectly well and then has nothing to offer
+    # under Library folders, which reads as the app being broken — it is the
+    # most common way this ends badly, and it costs one box to prevent.
+    default)
+      books=$(box "Where are your audiobooks?" --inputbox \
+        "\nA path on this host. It is mounted in the container at /audiobooks.\n\nLeave it empty to add one later.\n" 13 68 "$books" || echo "")
+      ;;
+
+    advanced)
+      ctid=$(box "Container ID" --inputbox "\nA free id on this host.\n" 10 60 "$ctid" || echo "")
+      [ -n "$ctid" ] || die "Nothing was created."
+      hostname=$(box "Hostname" --inputbox "\nWhat the container is called.\n" 10 60 "$hostname" || echo "")
+      [ -n "$hostname" ] || die "Nothing was created."
+
+      menu=()
+      for s in "${storages[@]}"; do menu+=("$s" "$(pvesm status --storage "$s" 2>/dev/null | awk 'NR>1 {print $2}')"); done
+      storage=$(box "Storage" --menu "\nWhere the container's own disk goes.\n" 16 68 6 "${menu[@]}" || echo "")
+      [ -n "$storage" ] || die "Nothing was created."
+
+      menu=()
+      for t in "${templates[@]}"; do menu+=("$t" ""); done
+      template=$(box "Template" --menu "\nThe operating system in the container.\n" 16 76 6 "${menu[@]}" || echo "")
+      [ -n "$template" ] || die "Nothing was created."
+
+      disk=$(box "Disk" --inputbox "\nGB for the container itself. The database is small; your audiobooks are not in here.\n" 11 68 "$disk" || echo "")
+      cores=$(box "Cores" --inputbox "\nOne is enough unless you convert books, which is ffmpeg.\n" 11 68 "$cores" || echo "")
+      memory=$(box "Memory" --inputbox "\nMB.\n" 10 60 "$memory" || echo "")
+      bridge=$(box "Network" --inputbox "\nThe bridge to put it on. It takes its address by DHCP.\n" 11 68 "$bridge" || echo "")
+      for v in disk cores memory bridge; do [ -n "${!v}" ] || die "Nothing was created."; done
+
+      books=$(box "Audiobooks" --inputbox \
+        "\nA path on this host, mounted in the container at /audiobooks.\n\nLeave it empty to add one later.\n" 13 68 "$books" || echo "")
+      importdir=$(box "Import folder" --inputbox \
+        "\nWhere new audiobooks arrive, mounted at /import. Optional.\n" 12 68 "$importdir" || echo "")
+
+      if box "Privileged?" --yesno \
+        "\nPrivileged is the usual answer for a container that writes to a media share.\n\nUnprivileged shifts every id by 100000, so the app's PUID=99 is uid 100099 on this host — which owns nothing, and it is then refused permission to write in a collection whose permissions look perfectly right from here. It can be mapped through afterwards, but it is a thing to know first.\n\nMake it privileged?" 20 72; then
+        unprivileged=0
+      else
+        unprivileged=1
+      fi
+      ;;
+  esac
 fi
 
-# --- privileged, and why ---------------------------------------------------
+pct status "$ctid" >/dev/null 2>&1 && die "$ctid is already a container. Pass a free one with --id."
+
 if [ "$unprivileged" -eq 1 ]; then
-  say "Unprivileged, as asked — read this before the bind mount surprises you"
+  say "Unprivileged — read this before the bind mount surprises you"
   cat <<SHIFTED
   Every id inside the container is shifted by 100000, so PUID=99 in the app's
   settings is uid 100099 on this host. That uid owns nothing, so the app will be
@@ -104,8 +169,8 @@ if [ "$unprivileged" -eq 1 ]; then
   look perfectly right from here.
 
   Either map the owning group through in /etc/pve/lxc/$ctid.conf afterwards, or
-  leave off --unprivileged and let it be privileged, which is the usual answer
-  for a container that writes to a media share.
+  make it privileged, which is the usual answer for a container that writes to a
+  media share.
 SHIFTED
 fi
 
@@ -113,8 +178,8 @@ mounts=()
 [ -n "$books" ] && mounts+=("-mp0" "$books,mp=/audiobooks")
 [ -n "$importdir" ] && mounts+=("-mp1" "$importdir,mp=/import")
 
-say "About to create"
-cat <<PLAN
+plan() {
+  cat <<PLAN
   id          $ctid
   hostname    $hostname
   template    $template
@@ -128,11 +193,18 @@ cat <<PLAN
 
   Then, inside it: node, ffmpeg, the app at its newest release, and a service.
 PLAN
+}
 
-if [ "$assume_yes" -eq 0 ]; then
-  printf '\nType yes to go ahead: '
-  read -r answer
-  [ "$answer" = "yes" ] || die "Nothing was created."
+if [ "$ask" -eq 1 ]; then
+  box "About to create" --yesno "\n$(plan)\n\nGo ahead?" 24 76 || die "Nothing was created."
+else
+  say "About to create"
+  plan
+  if [ "$assume_yes" -eq 0 ]; then
+    printf '\nType yes to go ahead: '
+    read -r answer
+    [ "$answer" = "yes" ] || die "Nothing was created."
+  fi
 fi
 
 say "Creating $ctid"
@@ -173,6 +245,16 @@ cat <<DONE
   shell      pct enter $ctid
   settings   /etc/my-audiobook-collection.env   (inside it)
   remove     pct stop $ctid && pct destroy $ctid
-
-Point it at your collection in Settings → Library folders.
 DONE
+if [ -z "$books" ]; then
+  cat <<NOBOOKS
+
+  No collection is mounted yet, so Settings → Library folders has nothing to
+  offer. Add one on this host and restart the container:
+
+    pct set $ctid -mp0 /host/path/to/Audiobooks,mp=/audiobooks
+    pct reboot $ctid
+NOBOOKS
+else
+  printf '\n  Point it at /audiobooks in Settings → Library folders.\n'
+fi

@@ -426,6 +426,24 @@ that removes a path it was not meant to is worse than having none.
 The creator makes a **privileged** container by default, for the reason below,
 and prints what `--unprivileged` will cost before it does it.
 
+**It asks, the way the community scripts do**: a whiptail menu, then either the
+defaults or every setting one at a time, with the menus built from what the host
+actually has — the storages that can hold a container root, the templates already
+downloaded. *Default settings* still asks one question, where the audiobooks are,
+because a container with nothing mounted starts perfectly well and then has
+nothing to offer under *Library folders*, which is the most common way this ends
+badly and costs one box to prevent. Every setting is also a flag, and it asks
+only when `[ -t 0 ]` and whiptail are both true: piped into `bash` there is no
+terminal, and whiptail would read the rest of the script as the answers.
+
+**It fetches no framework to do that**, which is the one place it deliberately
+departs from the scripts it is modelled on. Theirs source a shared `build.func`
+from another repository and run it as root on the hypervisor — a fair trade for a
+collection covering hundreds of apps, a poor one for a single script somebody
+ought to be able to read in full. `packaging` checks that none of the three ever
+starts doing it, because that is a decision rather than a detail, and decisions
+drift.
+
 **An unprivileged container is the thing that catches people**, and Proxmox makes
 one by default. Every id is shifted by 100000: `PUID=99` inside is 100099 on the
 host, which owns nothing, so the app is refused permission to write in a
@@ -3271,6 +3289,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.40 | the Proxmox script **asks**, the way the community scripts it is modelled on do: a whiptail menu, then the defaults or every setting one at a time, with the storages and templates the host actually has in the menus. *Default settings* still asks where the audiobooks are, since a container with nothing mounted is the most common way this ends badly. It fetches no framework to do it — theirs source a `build.func` from another repository and run it as root on the hypervisor, and `packaging` checks none of these three ever starts to |
 | 2.11.32 | **`proxmox-create-lxc.sh`** makes the container and installs into it, which is what one command on a Proxmox host is expected to do — `lxc-install.sh` installs onto whatever machine it runs on, so pasted at a host prompt it put node, ffmpeg and a service on the hypervisor. It refuses there now and names the other two. **`uninstall.sh`** takes it off a machine again, keeping the database and the settings unless asked for `--purge`. And the installer says when it is in an **unprivileged container**, which Proxmox makes by default: every id is shifted by 100000, so `PUID=99` is 100099 on the host and the app is refused permission to write in a collection whose permissions look right from the host. It reads `/proc/self/uid_map`, says what the ids become and what the two ways out are, and carries on. The README builds a Proxmox container from nothing |
 | 2.11.24 | it installs into an **LXC container** as well: `install/lxc-install.sh` does the four things the image was doing — a node, ffmpeg, the app at its newest tag, and a systemd service — writes a settings file it will never overwrite, and updates in place when run again. `packaging` holds the two ways to install to each other, since they describe one app twice and nothing would have noticed them drifting; it found `TRUST_PROXY` and `ALLOW_ROOT` settable on one and not the other. `.gitattributes` pins the script and the unit to LF, because a shell script with CRLF does not run at all |
 | 2.11.16 | the maintenance column shows only what is waiting. A row there is a job to be done, and nine of them reading 0 said nothing except that the column was long — *Series to complete, 68* sat among eight noughts. `counts()` sets the number and the row's visibility together, so the rule is one thing in one place. *Import* is not a count of work and stays; so does whichever row is the view on screen, or emptying the trash from inside the trash would pull the list out from under the reader |

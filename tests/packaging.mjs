@@ -154,6 +154,30 @@ check('and says there what to run instead',
   [/proxmox-create-lxc\.sh/.test(script), /uninstall\.sh/.test(script)], [true, true]);
 check('the creator refuses to run anywhere but the Proxmox host',
   /command -v pct >\/dev\/null \|\| die/.test(live(creator)), true);
+
+// It asks, the way the community scripts do — a menu, then the defaults or
+// every setting one at a time.
+check('the creator asks, with a Default and an Advanced way through',
+  [/whiptail/.test(live(creator)), /--menu/.test(live(creator)),
+    /advanced\)/.test(live(creator))], [true, true, true]);
+// And only when there is somewhere to ask. `curl … | bash` leaves stdin as the
+// pipe, and whiptail would read the rest of the script as the answers.
+check('and only when there is a terminal to ask at',
+  /\[ -t 0 \]/.test(live(creator)), true);
+check('and every setting is still a flag, for a run with nobody watching',
+  ['--id', '--hostname', '--storage', '--template', '--bridge', '--cores',
+    '--memory', '--disk', '--books', '--import', '--unprivileged', '--yes']
+    // `--yes|-y)` is a case with an alternative in it, so the flag is followed
+    // by `)` or by `|`, not always by `)`
+    .filter((f) => !new RegExp(`\\s${f}[)|]`, 'm').test(live(creator))), []);
+
+// The community scripts pull a shared `build.func` from another repository and
+// run it as root on the hypervisor. That is a fair trade for a framework
+// covering hundreds of apps and a poor one for a single script somebody ought to
+// be able to read in full, so none of these fetch code to execute. Said as a
+// check because it is a decision, not a detail, and decisions drift.
+check('none of the three sources code over the network to run as root',
+  [script, creator, uninstaller].flatMap((s) => [...live(s).matchAll(/(?:source|\.)\s+<\(/g)]), []);
 check('and installs by running the installer inside the container it made',
   /pct exec .*lxc-install\.sh/.test(live(creator)), true);
 
