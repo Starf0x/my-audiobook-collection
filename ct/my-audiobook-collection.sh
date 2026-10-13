@@ -86,3 +86,11 @@ echo -e "${INFO}${YW}The page that changes things:${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:8523/admin${CL}"
 echo -e "${INFO}${YW}Settings (edit, then restart the service):${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}/etc/my-audiobook-collection.env${CL}"
+# The two folders, here, because this is the moment somebody needs them: the app
+# is up and has nothing to show. They are the host's to mount and the container
+# has to be rebooted to see them, which is two commands and no explaining.
+echo -e "${INFO}${YW}Your folders — on the HOST, then reboot the container:${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}pct set ${CTID} -mp0 /host/path/Audiobooks,mp=/audiobooks${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}pct set ${CTID} -mp1 /host/path/Import,mp=/import${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}pct reboot ${CTID}${CL}"
+echo -e "${INFO}${YW}Then add /audiobooks under Settings → Library folders.${CL}"
