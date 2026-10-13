@@ -391,64 +391,27 @@ It makes a **privileged** container, where theirs default to unprivileged. That
 is deliberate — see the id-shifting note below — and `var_unprivileged=1` in
 front of the command overrides it.
 
-### Or without a framework
+### Your two folders
 
-If you would rather not have an engine fetched from another repository and run
-as root on your hypervisor, this does the same job and is three files you can
-read in full:
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/proxmox-create-lxc.sh)"
-```
-
-It asks first:
-
-| | |
-| --- | --- |
-| **Default settings** | a free id, the newest Debian template you already have, 2 cores, 1 GB, 8 GB disk, `vmbr0` by DHCP, privileged. It asks two things: **which storage pool**, and where your audiobooks are |
-| **Advanced settings** | every one of those, one at a time, with what the host actually offers in the menus — your storage pools with the free space beside each, the templates you have downloaded |
-
-The storage pool is asked for in both paths, because a host with several has them
-for a reason and the container's disk should not land on whichever one `pvesm`
-listed first. With only one pool there is no question to ask, so it does not ask
-it.
-
-Then it shows the whole plan, waits for a yes, creates the container, starts it,
-waits for it to reach the network, and runs the installer inside it.
-
-**Why it asks for the books even in the quick path.** A container with no
-collection mounted starts perfectly well and then has nothing to offer under
-*Library folders*, which reads as the app being broken when it is the mount that
-is missing. It is the most common way this ends badly and it costs one question
-to prevent. Leave it empty and it tells you how to add one later.
-
-**It makes a privileged container** by default, on purpose — see the id-shifting
-note below. Advanced settings asks, and explains what unprivileged costs before
-you choose it.
-
-Every setting is also a flag, so it can run with nobody watching:
+The container cannot see your collection until the host hands it over. On the
+host, with `<id>` the container it just made — it prints these at the end, with
+the id filled in:
 
 ```bash
-bash -c "$(curl -fsSL .../install/proxmox-create-lxc.sh)" -- \
-  --books /host/path/to/Audiobooks --import /host/path/to/_AutoDownload --yes
+pct set <id> -mp0 /host/path/Audiobooks,mp=/audiobooks
+pct set <id> -mp1 /host/path/Import,mp=/import      # only if you import
+pct reboot <id>
 ```
 
-`--id`, `--hostname`, `--storage`, `--template`, `--bridge`, `--cores`,
-`--memory`, `--disk` and `--unprivileged` are the rest. With `--yes`, or piped
-into `bash` where there is no terminal to ask at, it takes the defaults and says
-so rather than hanging on a question nobody can see.
+Then add `/audiobooks` under *Settings → Library folders*. Until that mount is
+there the app runs perfectly well with nothing to show, which reads as the app
+being broken when it is the folder that is missing.
 
-**It fetches no framework.** The community scripts source a shared `build.func`
-from another repository and run it as root on your hypervisor; that is a fair
-trade for a collection covering hundreds of apps and a poor one for a single
-script you ought to be able to read in full. What is in these three files is all
-of it.
-
-**`--unprivileged 0` is the line to look at.** An unprivileged container shifts
-every id by 100000: `PUID=99` inside becomes 100099 on the host, which owns
-nothing, so the app is refused permission to write in a collection whose
-permissions look perfectly right from the host. Privileged is the usual answer
-for a container that writes to a media share, and it is what that flag does.
+**Why privileged.** An unprivileged container shifts every id by 100000:
+`PUID=99` inside becomes 100099 on the host, which owns nothing, so the app is
+refused permission to write in a collection whose permissions look perfectly
+right from the host. Privileged is the usual answer for a container that writes
+to a media share, which is why this one defaults to it.
 
 If you would rather keep it unprivileged, map the owning group through instead —
 on the host, container stopped, in `/etc/pve/lxc/120.conf`:
