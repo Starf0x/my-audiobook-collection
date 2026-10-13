@@ -444,13 +444,37 @@ badly and costs one box to prevent. Every setting is also a flag, and it asks
 only when `[ -t 0 ]` and whiptail are both true: piped into `bash` there is no
 terminal, and whiptail would read the rest of the script as the answers.
 
-**It fetches no framework to do that**, which is the one place it deliberately
-departs from the scripts it is modelled on. Theirs source a shared `build.func`
-from another repository and run it as root on the hypervisor — a fair trade for a
-collection covering hundreds of apps, a poor one for a single script somebody
-ought to be able to read in full. `packaging` checks that none of the three ever
-starts doing it, because that is a decision rather than a detail, and decisions
-drift.
+**It fetches no framework to do that**, which is where it departs from the
+scripts it is modelled on: theirs source an engine from another repository and
+run it as root on the hypervisor. `packaging` checks that none of the three ever
+starts doing it, because that is a decision rather than a detail.
+
+**And then there is `ct/my-audiobook-collection.sh`, which is one of theirs.**
+Asked for a second time, outright, and this is the honest way to give it: not an
+imitation of the look but their engine, loaded from `community-scripts/core`, so
+the banner, *Default* and *Advanced settings*, the storage radiolist and the
+closing line with the address are the real ones.
+
+An app outside their repository can use it because the engine resolves **two
+roots**: its own files from `COMMUNITY_SCRIPTS_CORE_URL`, and `ct/` and
+`install/` from `COMMUNITY_SCRIPTS_URL`. The ct script exports the second to this
+repository, and the engine then fetches this app's installer rather than looking
+for it in theirs. That was not obvious — the legacy `misc/build.func` has the
+install URL hardcoded, and reading that one first produced a confident and wrong
+conclusion that this could not be done at all. The engine the ct scripts actually
+load goes through `_cs_fetch_text` → `_cs_remote_url`, which honours the
+override; running those two functions with this repository as the scripts root is
+what settled it.
+
+The installer's **filename is not a choice**: the engine computes it as
+`${APP,,}` with the spaces removed plus `-install`, so *My Audiobook Collection*
+becomes `install/myaudiobookcollection-install.sh`. `packaging` recomputes it
+from `APP` and checks the file exists, because renaming either end means the
+engine fetches something that is not there — and the container is built before
+that is discovered.
+
+The ct script sets `var_unprivileged=0` where theirs default to 1, for the
+id-shifting reason below.
 
 **An unprivileged container is the thing that catches people**, and Proxmox makes
 one by default. Every id is shifted by 100000: `PUID=99` inside is 100099 on the
@@ -3297,6 +3321,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.56 | **`ct/my-audiobook-collection.sh`**: a real Proxmox VE Helper Script, asked for outright. Not an imitation of the look but their engine, loaded from `community-scripts/core` — so the banner, Default and Advanced settings, the storage radiolist and the closing line with the address are the real ones. An app outside their repository can use it because the engine resolves `ct/` and `install/` from `COMMUNITY_SCRIPTS_URL`, which this points here |
 | 2.11.48 | the storage pool can be chosen, which it could not be from the quick path: it was offered only under *Advanced*, so Default silently took whichever pool `pvesm` listed first. It is a `--radiolist` with the free space beside each name now, the shape `select_storage` uses in the scripts this is modelled on, and it is asked in both paths — unless the host has one pool, which is not a choice |
 | 2.11.40 | the Proxmox script **asks**, the way the community scripts it is modelled on do: a whiptail menu, then the defaults or every setting one at a time, with the storages and templates the host actually has in the menus. *Default settings* still asks where the audiobooks are, since a container with nothing mounted is the most common way this ends badly. It fetches no framework to do it — theirs source a `build.func` from another repository and run it as root on the hypervisor, and `packaging` checks none of these three ever starts to |
 | 2.11.32 | **`proxmox-create-lxc.sh`** makes the container and installs into it, which is what one command on a Proxmox host is expected to do — `lxc-install.sh` installs onto whatever machine it runs on, so pasted at a host prompt it put node, ffmpeg and a service on the hypervisor. It refuses there now and names the other two. **`uninstall.sh`** takes it off a machine again, keeping the database and the settings unless asked for `--purge`. And the installer says when it is in an **unprivileged container**, which Proxmox makes by default: every id is shifted by 100000, so `PUID=99` is 100099 on the host and the app is refused permission to write in a collection whose permissions look right from the host. It reads `/proc/self/uid_map`, says what the ids become and what the two ways out are, and carries on. The README builds a Proxmox container from nothing |
