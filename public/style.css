@@ -53,6 +53,24 @@ header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; 
    baseline rather than its top. The artwork brings its own rounded dark square,
    so nothing here draws a background or a radius. */
 .mark { width: 1.6em; height: 1.6em; vertical-align: -.42em; }
+/* There is a newer version. The dot sits on the corner of the icon the way an
+   unread count does, because that corner is where the eye looks for one, and it
+   is drawn over the artwork rather than beside it so nothing in the header
+   moves when it appears and nothing is left shifted when it goes. The wrapper
+   is `inline-block` only so the dot has something to be absolute against; it
+   takes the icon's own line-height, which keeps the baseline the `.mark` rule
+   above was nudged to. A ring in the header's own colour keeps it a dot rather
+   than a smear on dark artwork. */
+.marked { position: relative; display: inline-block; line-height: 0; }
+#updateDot {
+  position: absolute; top: -2px; right: -3px; width: 10px; height: 10px;
+  border-radius: 50%; background: #e5484d; border: 2px solid #171a21; /* the header gradient where the icon sits, not --bg */
+  box-shadow: 0 0 6px rgba(229, 72, 77, .9);
+}
+#updateDot[hidden] { display: none; }
+/* and the way to act on it, in the pulldown: the one entry there that is news
+   rather than a place to go */
+.menu > ul li.stands-out { color: #ff8f93; font-weight: 600; }
 /* the search box: wide enough for a title and an author, and it may grow */
 .search { width: 300px; max-width: 34vw; margin-left: 14px; }
 .search::placeholder { color: var(--dim); }

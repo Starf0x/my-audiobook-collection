@@ -69,6 +69,41 @@ if [[ -n "$PUID" && -n "$PGID" ]]; then
 fi
 msg_ok "Set up Settings and Data"
 
+# The one thing that catches people on Proxmox, and it is an afternoon to work
+# out from the other end. An unprivileged container shifts every id: container 0
+# is host 100000, so PUID=99 in here is 100099 on the host, which owns nothing —
+# and the app is refused permission to write in a collection whose permissions
+# look perfectly right from the host.
+#
+# `/proc/self/uid_map` says which kind this is: `0 0 4294967295` is privileged,
+# anything else is a shift. Said out loud rather than guessed at, and the install
+# carries on: this is about writing to the collection, not about starting.
+if [[ -r /proc/self/uid_map ]]; then
+  SHIFT_BY=$(awk 'NR==1 {print $2}' /proc/self/uid_map 2>/dev/null || echo 0)
+  if [[ -n "${SHIFT_BY:-}" && "$SHIFT_BY" != "0" ]]; then
+    printf '\n\033[33m==> This is an unprivileged container (ids are shifted by %s)\033[0m\n' "$SHIFT_BY"
+    cat <<MAPPED
+  PUID and PGID in /etc/my-audiobook-collection.env are ids *inside* here. On the
+  host they become $((SHIFT_BY + ${PUID:-0})) and $((SHIFT_BY + ${PGID:-0})), which probably own nothing — so the
+  app will be refused permission to write in your collection even though its
+  permissions look right from the host.
+
+  Two ways out, on the host, with the container stopped:
+    * make it privileged, which is the usual answer for a media container; or
+    * map the owning group through, in /etc/pve/lxc/<id>.conf:
+        lxc.idmap: u 0 100000 65536
+        lxc.idmap: g 0 100000 100
+        lxc.idmap: g 100 100 1
+        lxc.idmap: g 101 100101 65435
+      (that example maps gid 100 straight through; use the gid that owns
+       your audiobooks, which \`stat -c '%g' /path\` on the host says)
+
+  Install carries on. This is about writing to the collection, not about
+  whether the app starts.
+MAPPED
+  fi
+fi
+
 msg_info "Creating Service"
 install -m 0644 /opt/my-audiobook-collection/install/my-audiobook-collection.service \
   /etc/systemd/system/my-audiobook-collection.service

@@ -670,6 +670,122 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   }
 }
 
+// --- and saying so without opening Settings -------------------------------
+// Settings is three clicks away and nobody opens it to find out whether there
+// is news. So the news comes to the page: a red dot on the icon, and the way to
+// act on it in the pulldown — which is removed again the moment there is
+// nothing to install, because a menu entry that does nothing is worse than none.
+{
+  const marked = async (update) => {
+    const page = await open('index.html', { '/api/update': update });
+    await settle();
+    page.window.eval('updateMark()');
+    await settle(120);
+    return page.document;
+  };
+
+  {
+    const d = await marked({ running: '2.12.0', newest: '2.12.8', behind: true, how: 'lxc', canInstall: true });
+    check('a newer version puts a dot on the icon and the way to take it in the menu',
+      [d.querySelector('#updateDot').hidden, d.querySelector('#installUpdate').hidden],
+      [false, false]);
+    check('and the dot says which version it is about, since the icon cannot',
+      d.querySelector('#updateDot').title, 'Update available: v2.12.8');
+  }
+  {
+    const d = await marked({ running: '2.12.0', newest: '2.12.8', behind: true, how: 'image', canInstall: false });
+    check('an install that cannot take it is still told, but offered nothing to click',
+      [d.querySelector('#updateDot').hidden, d.querySelector('#installUpdate').hidden],
+      [false, true]);
+  }
+  {
+    const d = await marked({ running: '2.12.8', newest: '2.12.8', behind: false, how: 'lxc', canInstall: true });
+    check('and on the newest version there is no dot and no entry',
+      [d.querySelector('#updateDot').hidden, d.querySelector('#installUpdate').hidden],
+      [true, true]);
+  }
+}
+
+// --- and knowing when it is over ------------------------------------------
+// Frank's: "wanneer de update is uitgevoerd, blijft de tekst Updating… gewoon
+// staan. Het is niet duidelijk dat het klaar is."
+//
+// The page waited for the app to *answer* and reloaded on that. But nothing has
+// stopped when the button is pressed — the app writes a file, and a root path
+// unit has to notice it, stop the service, fetch and run `npm ci` — so it
+// answers happily for the next half minute. Either the page reloaded itself
+// straight back into the old version, or, when the app did not come back inside
+// four minutes, the poll ran out in silence and left "Updating…" on the screen
+// with nothing to say whether it had worked.
+//
+// The version is the one honest signal: it changes exactly when the new code is
+// running. Both halves are checked here — that an app still answering on the
+// old version is *not* taken for success, and that the new one is.
+{
+  // The poll is every two seconds and the reload is a second after that, which
+  // is the right pace for a person and far too slow for a suite. The clock is
+  // the environment, so the environment is what is wound on: `setInterval` runs
+  // fast and `setTimeout` only records, which also keeps jsdom from being asked
+  // to navigate — it cannot, and it would be a fault in `broke` if it tried.
+  const watching = async (versions) => {
+    let n = 0;
+    const page = await open('index.html', {
+      '/api/update': { running: '2.12.0', newest: '2.12.8', behind: true, how: 'lxc', canInstall: true },
+      // The rest of the shape is what the page's own counters read; the version
+      // is the only part this is about.
+      '/api/stats': () => ({ books: 0, files: 0, done: 0, todo: 0, version: versions[Math.min(n++, versions.length - 1)] }),
+    });
+    await settle();
+    const w = page.window;
+    const tick = w.setInterval.bind(w);
+    const slept = [];
+    w.setInterval = (fn) => tick(fn, 5);
+    w.setTimeout = (fn, ms) => { slept.push(ms); return 0; };
+    w.eval("document.querySelector('#installUpdate').click()");
+    await settle(200);
+    return { d: page.document, slept, broke: page.broke, asked: n };
+  };
+
+  {
+    // It comes back on a new version: said out loud, left where the page that
+    // reloads will find it, and only then reloaded.
+    const { d, slept, broke } = await watching(['2.12.0', '2.12.0', '2.12.8']);
+    check('when the version changes it says so, in the words "Updated to"',
+      /Updated to v2\.12\.8/.test(d.querySelector('#updateState').textContent), true);
+    check('and leaves the news for the page it is about to throw away',
+      d.defaultView.sessionStorage.getItem('updated-to'), '2.12.8');
+    check('and only then reloads', slept.includes(1200), true);
+    check('with nothing thrown along the way', broke, []);
+  }
+  {
+    // It keeps answering on the old version, which is what it does for the
+    // first half-minute of every update. Nothing may be claimed from that.
+    const { d, slept, asked } = await watching(['2.12.0']);
+    check('an app still on the old version is not mistaken for a finished update',
+      [/Updated to/.test(d.querySelector('#updateState').textContent),
+        d.defaultView.sessionStorage.getItem('updated-to'), slept.includes(1200)],
+      [false, null, false]);
+    check('and it is still being watched, rather than given up on',
+      [asked > 3, /Updating/.test(d.querySelector('#updateState').textContent)], [true, true]);
+  }
+}
+
+// --- the page that comes up afterwards -------------------------------------
+// The reload throws the message away with the page, so the news is left behind
+// and said on the other side. Without this the update is silent exactly where
+// it matters: the app is new, and nothing on screen ever said it worked.
+{
+  const page = await open('index.html');
+  await settle();
+  page.window.sessionStorage.setItem('updated-to', '2.12.8');
+  page.window.eval('sayIfUpdated()');
+  await settle(120);
+  check('the page that comes up after an update says so, once',
+    [/Updated to v2\.12\.8/.test(page.document.body.textContent),
+      page.window.sessionStorage.getItem('updated-to')],
+    [true, null]);
+}
+
 // --- following a job the server is doing ---------------------------------
 // Frank got "Writing tags failed: lost contact with the server" on a tag write
 // that had almost certainly finished perfectly well. Two faults, one shape:

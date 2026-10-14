@@ -149,13 +149,13 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 415 | the admin page: columns, dialogs |
-| `public/app.js` | 1667 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/index.html` | 437 | the admin page: columns, dialogs |
+| `public/app.js` | 1745 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 318 | the listening page’s behaviour |
-| `public/style.css` | 870 | the whole look, every page, phone included |
+| `public/style.css` | 888 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -384,8 +384,8 @@ Docker tab stops treating it as managed. Force update lives in the Docker tab's
 Proxmox, Unraid's own LXC support, or any Debian or Ubuntu machine with systemd.
 The image is doing four things that then have to be done by hand — install a
 node and ffmpeg, put the app somewhere, write a settings file, and arrange for it
-to start at boot — so `install/lxc-install.sh` does them, and running it again
-updates in place.
+to start at boot — so `install/myaudiobookcollection-install.sh`, the inside half
+of the helper script, does them.
 
 It installs **the newest released tag**, not `main`: `main` is where work in
 progress lands and a tag is a thing that passed its checks. It writes
@@ -406,30 +406,43 @@ problem `PUID` exists to prevent — and the app refuses to carry on as root unl
 mount is there finds nothing, and an emptied library is a frightening thing to
 find.
 
-**Three scripts, and which machine each belongs on.** `lxc-install.sh` installs
-the app onto whatever machine it runs on — that is all it ever claimed to do, and
-it is not what somebody reading a one-liner assumes. The obvious place to paste
-one is the host's shell prompt, and there it put node, ffmpeg, a NodeSource apt
-repository and a systemd service on the hypervisor. Frank did exactly that and
-there was nothing to undo it with.
+**One way in, and it took three to learn that.** There was a hand-rolled
+container creator with whiptail menus of its own, written before the engine
+turned out to be usable from outside their repository. There was
+`lxc-install.sh`, which installed the app onto whatever machine it was run on —
+all it ever claimed to do, and not what somebody reading a one-liner assumes:
+the obvious place to paste one is the host's shell prompt, and there it put
+node, ffmpeg, a NodeSource apt repository and a systemd service on the
+hypervisor. Frank did exactly that and there was nothing to undo it with.
 
-So: `ct/my-audiobook-collection.sh` runs **on the host** and is the one that
-makes a container and installs into it; `lxc-install.sh` **refuses** on a host
-(`/etc/pve` and `pct` together) and names the other two; and `uninstall.sh`
-takes it off a machine it was already run on.
+Teaching it to refuse on a host was treating the symptom. What had him run the
+wrong one twice was that there were two to run — he pasted the command he
+already had. **There is a standard for this and a second way of doing the same
+job is not a kindness**, so both are gone and there is one command:
+`ct/my-audiobook-collection.sh` on the host, which makes the container and
+installs into it. `uninstall.sh` takes it off a machine again, including a host
+one of the old one-liners reached. `packaging` checks neither comes back and
+that nothing still hands anybody a command that runs one — the README and the
+scripts, not this file, whose version log says they existed and why they went.
 
-There was briefly a third, a hand-rolled creator with whiptail menus of its own,
-written before the engine turned out to be usable from outside their repository.
-Offering it beside the helper script is what had Frank run the wrong one twice —
-he pasted the command he already had. **There is a standard for this and a second
-way of doing the same job is not a kindness**, so it is gone, and `packaging`
-checks it stays gone. The uninstaller keeps the database
+What went with `lxc-install.sh` and had to be kept is the **unprivileged
+container** warning: every id is shifted by 100000, so `PUID=99` inside is
+100099 on the host, which owns nothing, and the app is refused permission to
+write in a collection whose permissions look perfectly right from the host. It
+reads `/proc/self/uid_map`, says what the ids become and what the two ways out
+are, and carries on — it is about writing to the collection, not about starting.
+That now lives in the install half, where `packaging` still holds it.
+
+The uninstaller keeps the database
 and the settings file unless asked for `--purge`, because those are the two
 things that cannot be got back, and it is safe on a machine where only half of it
 installed — a half-installed machine is exactly when somebody reaches for it.
-`packaging` holds its `APP_DIR`, `ENV_FILE` and `UNIT` to the installer's: an
-uninstaller that removes a path the installer never wrote does nothing, and one
-that removes a path it was not meant to is worse than having none.
+`packaging` holds its `APP_DIR`, `ENV_FILE` and `UNIT` to the paths the unit and
+the installer really use: an uninstaller that removes a path the installer never
+wrote does nothing, and one that removes a path it was not meant to is worse
+than having none. The uninstaller keeps them in variables because a person reads
+it before running it; the installer writes them out, which is the engine's house
+style — so the check is each path, not each variable.
 
 **The one command on a host is `ct/my-audiobook-collection.sh`, and it is one of theirs.**
 Asked for a second time, outright, and this is the honest way to give it: not an
@@ -496,6 +509,38 @@ that, which is how a failed update is heard about at all.
 takes the button, a checkout without it gets the two commands, and an image is
 told to pull a new one — which is the host's job and not something this could do
 if it wanted to.
+
+**The news comes to the page.** All of the above lived behind *Settings →
+Version*, three clicks away, and nobody opens Settings to find out whether there
+is news. So a **red dot sits on the icon** in the top-left corner the moment the
+cached answer says there is a newer version, titled with the version it is
+about, and the **pulldown grows an "Install the update" entry** where this
+install can take one. The entry is removed again as soon as there is nothing to
+install — the next answer says so and takes it away — because a menu entry that
+does nothing is worse than no entry. Both are drawn by one function from one
+answer, so the dot and the entry can never disagree. The dot is drawn over the
+artwork rather than beside it: nothing in the header moves when it appears, and
+nothing is left shifted when it goes.
+
+**Knowing when it is over.** Frank: *"wanneer de update is uitgevoerd, blijft de
+tekst Updating… gewoon staan. Het is niet duidelijk dat het klaar is."* The page
+waited for the app to *answer* and reloaded on that — but nothing has stopped
+when the button is pressed. The app writes a file; the path unit has to notice
+it, stop the service, fetch and run `npm ci`. So it answered happily for the
+next half minute, and the page either reloaded itself straight back into the old
+version or, when the app did not come back inside four minutes, ran out of polls
+in silence and left *Updating…* on screen with nothing to say whether it had
+worked.
+
+The **version** is the one honest signal: it changes exactly when the new code
+is running. The page reads it before asking, then polls `/api/stats` until it
+differs — never reloading on an app that is merely answering — says *Updated to
+vX* out loud, and **leaves the news in `sessionStorage` for the page it is about
+to throw away**, which says it again as a toast. That toast is the only thing
+that ever tells anybody the update worked, so it is said first in `begin()`,
+before a single column loads: last in the list was where it was, and a column
+that failed to load took those words down with it. After five minutes it stops
+pretending to watch and says what to look at instead.
 
 **An unprivileged container is the thing that catches people**, and Proxmox makes
 one by default. Every id is shifted by 100000: `PUID=99` inside is 100099 on the
@@ -3393,6 +3438,7 @@ to insert order and looks broken when the app is right.
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
 | 2.12.0 | **there is always an administrator, and until there is, nothing opens.** An install with no `ADMIN_PASSWORD` ran open — `isAdmin()` answered true for everybody, so the collection, every listening position and all the accounts were there for anything that could reach the port, with nothing on screen to say so. The gate asks for one on first run, keeps it hashed in `settings`, and three routes answer until it is made. `ADMIN_PASSWORD` on the container still wins, which is the way back in after a forgotten one. This locks an install that was open yesterday: nothing is lost, but it asks before it answers |
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
+| 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.11.80 | accounts can be deleted again. Giving the administrator's row fewer controls in 2.10.64 broke the loop that wires every row: it took `[data-may-listen]` without looking, that row has none, and `forEach` stopped there — so every row after it was drawn with its buttons dead. The jsdom harness collected the error on every run for two weeks and nothing read it, because the checks asked what the markup held and the markup was perfect |
 | 2.11.72 | the app says when a newer version is out, and on an LXC install offers to take it — three ways that are one procedure: the button, `my-audiobook-collection-update` in the container, and the `ct/` command again on the host. It **asks** rather than installs: it runs as PUID and a page that can run a root script runs it for whoever reaches it, so it writes a file and a root-owned path unit that takes no argument does the work |
 | 2.11.64 | one command on a Proxmox host, and it is the standard one. The hand-rolled creator is gone: offering it beside the helper script is what had Frank run the wrong one twice — he pasted the command he already had, saw my menus, and said the GUI was still wrong. There is a standard for this and a second way of doing the same job is not a kindness. And it ends by saying how to mount the two folders, with the container's own id filled in: that is the moment somebody needs it, because the app is up and has nothing to show until the host hands the collection over |

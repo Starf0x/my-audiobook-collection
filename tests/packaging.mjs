@@ -1,11 +1,18 @@
 // packaging — the two ways to install this app, kept saying the same thing.
 //
-// The Docker image and the LXC installer describe one app twice. The image pins
-// a node, sets a port and names every setting; the installer and its systemd
-// unit and its settings file do all of that again, in four more places. Nothing
-// makes them agree, and nothing would notice for months: an install path is
-// exercised once, by somebody who then has a working machine and never looks
-// again. The suites run every push.
+// The Docker image and the Proxmox helper script describe one app twice. The
+// image pins a node, sets a port and names every setting; the installer and its
+// systemd unit and its settings file do all of that again, in four more places.
+// Nothing makes them agree, and nothing would notice for months: an install
+// path is exercised once, by somebody who then has a working machine and never
+// looks again. The suites run every push.
+//
+// There were three ways once, and two of them made containers. That is what had
+// Frank run the wrong one twice: there is a standard for this on Proxmox, and a
+// second way of doing the same job is not a kindness. `ct/` plus its install
+// half is the standard one; `lxc-install.sh`, which installed onto whatever
+// machine it was pasted into, is gone, and the end of this file is what keeps
+// it gone.
 //
 // So this reads them and holds them to each other. It checks facts that are
 // written down twice, not behaviour — the behaviour is every other suite.
@@ -26,7 +33,8 @@ const check = (label, got, want) => {
 };
 
 const dockerfile = read('Dockerfile');
-const script = read('install/lxc-install.sh');
+const ct = read('ct/my-audiobook-collection.sh');
+const script = read('install/myaudiobookcollection-install.sh');
 const unit = read('install/my-audiobook-collection.service');
 const envExample = read('install/my-audiobook-collection.env.example');
 const workflow = read('.github/workflows/test.yml');
@@ -38,7 +46,7 @@ const index = read('server/index.js');
 // ships would be two different apps with one set of checks.
 const major = {
   image: (dockerfile.match(/FROM node:(\d+)-/) || [])[1],
-  installer: (script.match(/^NODE_MAJOR=(\d+)/m) || [])[1],
+  installer: (script.match(/NODE_VERSION="(\d+)"/) || [])[1],
   checks: (workflow.match(/node-version: '(\d+)'/) || [])[1],
 };
 check('the image, the installer and the checks all run one major of node',
@@ -85,25 +93,31 @@ check('and in the compose file, apart from the two the image sets itself',
 // what starts. A unit naming a directory the installer does not create is a
 // service that will not start, and the installer is the only thing that would
 // have told you.
-const inScript = (name) => (script.match(new RegExp(`^${name}=(\\S+)`, 'm')) || [])[1];
-check('the unit runs the app out of the directory the installer puts it in',
-  (unit.match(/^WorkingDirectory=(\S+)/m) || [])[1], inScript('APP_DIR'));
+// The installer writes these paths out in full rather than keeping them in
+// variables, which is the engine's house style — so the check is that each path
+// the unit names is a path the installer really uses.
+const APP_DIR = (unit.match(/^WorkingDirectory=(\S+)/m) || [])[1];
+const ENV_FILE = (unit.match(/^EnvironmentFile=(\S+)/m) || [])[1];
+check('the unit runs the app out of the directory the installer clones into',
+  [script.includes(`git clone https://github.com/Starf0x/my-audiobook-collection.git ${APP_DIR}`), APP_DIR],
+  [true, '/opt/my-audiobook-collection']);
 check('and reads the settings file the installer writes',
-  (unit.match(/^EnvironmentFile=(\S+)/m) || [])[1], inScript('ENV_FILE'));
+  [script.includes(ENV_FILE), ENV_FILE], [true, '/etc/my-audiobook-collection.env']);
 check('and starts what the image starts',
   (unit.match(/^ExecStart=\S*node (\S+)/m) || [])[1],
   (dockerfile.match(/CMD \["node", "(\S+?)"\]/) || [])[1]);
-check('and the installer installs the unit it ships under the name it uses',
-  [script.includes('install/$UNIT'), (script.match(/^UNIT=(\S+)/m) || [])[1]],
-  [true, 'my-audiobook-collection.service']);
+check('and the installer installs the unit it ships, under the name it enables',
+  [script.includes(`${APP_DIR}/install/my-audiobook-collection.service`),
+    /systemctl enable -q --now my-audiobook-collection$/m.test(script)], [true, true]);
 
-// --- the installer is a script a stranger is asked to pipe into a shell ---
-// So the two things that make that survivable are checked: it stops at the
-// first failure rather than carrying on past one, and it refuses to overwrite
-// a settings file that already holds somebody's password.
-check('it stops at the first failure', /^set -euo pipefail$/m.test(script), true);
+// --- the installer runs unattended, as root, on somebody else's machine ---
+// It stops at the first failure rather than carrying on past one — `catch_errors`
+// is the engine's way of saying `set -e`, and it is a call rather than a line of
+// its own — and it refuses to overwrite a settings file that already holds
+// somebody's password, because this same script is what a reinstall runs.
+check('it stops at the first failure', /^catch_errors$/m.test(script), true);
 check('and never overwrites a settings file that is already there',
-  /if \[ -f "\$ENV_FILE" \]/.test(script), true);
+  new RegExp(`if \\[\\[ ! -f ${ENV_FILE} \\]\\]`).test(script), true);
 
 // --- the one thing that catches people on Proxmox ------------------------
 // An unprivileged container shifts every id: PUID=99 inside is 100099 on the
@@ -138,45 +152,43 @@ for (const ext of ['.sh', '.service']) {
 check('and no file in install/ carries the other kind',
   shipped.filter((f) => read(`install/${f}`).includes('\r')), []);
 
-// --- two scripts, and which machine each belongs on ----------------------
-// `lxc-install.sh` installs the app onto whatever machine it runs on. The
-// obvious place to paste a one-liner you found is the host's shell prompt, and
-// there it installs node, ffmpeg, a NodeSource apt repository and a service onto
-// the hypervisor. Frank did exactly that, and nothing in the command said it
-// would. So it refuses, and names the two that do belong there.
-//
-// There used to be a third: a hand-rolled container creator with whiptail menus
-// of its own. Offering it beside the helper script is what had Frank run the
-// wrong one twice — there is a standard for this, and a second way of doing the
-// same job is not a kindness. It is gone, and this is what keeps it gone.
+// --- one way in, and only one --------------------------------------------
+// There were three ways to install this, and two of them made containers.
+// `proxmox-create-lxc.sh` was a hand-rolled creator with whiptail menus of its
+// own; `lxc-install.sh` installed onto whatever machine it was pasted into,
+// which on a host meant node, ffmpeg, a NodeSource apt repository and a service
+// on the hypervisor — Frank did exactly that, and nothing in the command said it
+// would. Both are gone. There is a standard for this on Proxmox, the app follows
+// it, and a second way of doing the same job is not a kindness. This is what
+// keeps them gone: not a comment saying they were removed, but a check that
+// fails the day one comes back.
 const uninstaller = read('install/uninstall.sh');
 const live = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
 
-check('the installer refuses to run on the Proxmox host',
-  [/\/etc\/pve/.test(live(script)), /command -v pct/.test(live(script))], [true, true]);
-check('and sends you to the helper script, the one way in on a host',
-  [/ct\/my-audiobook-collection\.sh/.test(script), /uninstall\.sh/.test(script)], [true, true]);
-check('and no second way of making a container is offered beside it',
-  fs.existsSync(path.join(ROOT, 'install/proxmox-create-lxc.sh')), false);
-// The GUI is not ours to get right or wrong any more: the menu, the storage
-// radiolist, the spinners and the banner all come from the engine the helper
-// script loads. What is checked below is the little that is still ours — where
-// the engine looks for this app's pieces, and what the end of it says.
-//
-// `lxc-install.sh` is the one that still fetches nothing to execute, and that
-// stays a check because it is a decision rather than a detail.
-check('the installer sources nothing over the network to run as root',
-  [...live(script).matchAll(/(?:source|\.)\s+<\(/g)], []);
+for (const gone of ['install/proxmox-create-lxc.sh', 'install/lxc-install.sh']) {
+  check(`no second way of installing is offered beside the helper script: ${gone}`,
+    fs.existsSync(path.join(ROOT, gone)), false);
+}
+// A command somebody can paste is the thing that matters, so this reads the
+// README and the scripts. Not the SPEC: its version log says those two existed
+// and why they went, which is a record rather than a direction, and a check that
+// forbade naming them would be a check against remembering.
+check('and nothing still hands anybody a command that runs one',
+  [read('README.md'), ct, uninstaller, script, read('install/update.sh')]
+    .filter((t) => /lxc-install\.sh|proxmox-create-lxc\.sh/.test(live(t))).length, 0);
 
 // --- the uninstaller removes what the installer wrote, and no more -------
 // An uninstaller is only as good as its agreement with the installer: one that
 // removes a path the installer never used does nothing, and one that removes a
-// path it was not meant to is worse than having none.
-for (const name of ['APP_DIR', 'ENV_FILE', 'UNIT']) {
-  const mine = (text) => (text.match(new RegExp(`^${name}=(\\S+)`, 'm')) || [])[1];
-  check(`the uninstaller's ${name} is the installer's ${name}`,
-    mine(uninstaller), mine(script));
-}
+// path it was not meant to is worse than having none. The uninstaller keeps its
+// paths in variables because it is read by a person deciding whether to run it;
+// the installer writes them out. They still have to be the same paths.
+const theirs = (name) => (uninstaller.match(new RegExp(`^${name}=(\\S+)`, 'm')) || [])[1];
+check("the uninstaller's APP_DIR is the one the app was installed into", theirs('APP_DIR'), APP_DIR);
+check("and its ENV_FILE is the settings file that was written", theirs('ENV_FILE'), ENV_FILE);
+check('and the unit it stops is the unit that was enabled',
+  [theirs('UNIT'), script.includes(`systemctl enable -q --now ${(theirs('UNIT') || '').replace(/\.service$/, '')}`)],
+  ['my-audiobook-collection.service', true]);
 check('and takes the updater with it, or a path unit is left watching a folder',
   [/UPDATE_PATH=/.test(live(uninstaller)), /UPDATE_BIN=/.test(live(uninstaller)),
     /rm -f .*UPDATE_PATH/.test(live(uninstaller))], [true, true, true]);
@@ -184,8 +196,8 @@ check('it keeps the database and the settings unless asked for --purge',
   [/--purge/.test(uninstaller), /if \[ "\$purge" -eq 1 \]/.test(live(uninstaller))], [true, true]);
 check('and reads where the database is from the settings file, not from a guess',
   /DATA_DIR:-/.test(live(uninstaller)), true);
-check('both of them stop at the first failure',
-  [script, uninstaller].map((s) => /^set -euo pipefail$/m.test(s)), [true, true]);
+check('the uninstaller stops at the first failure too',
+  /^set -euo pipefail$/m.test(uninstaller), true);
 
 // --- the Proxmox VE Helper Script pair ------------------------------------
 // `ct/my-audiobook-collection.sh` is the community-scripts entry point, and it
@@ -195,7 +207,6 @@ check('both of them stop at the first failure',
 // from COMMUNITY_SCRIPTS_CORE_URL, and `ct/` and `install/` from
 // COMMUNITY_SCRIPTS_URL — and left unset the second is their script repo, so
 // the install step would be fetched from there and 404.
-const ct = read('ct/my-audiobook-collection.sh');
 check('the helper script points the engine at this repository for ct/ and install/',
   /export COMMUNITY_SCRIPTS_URL=.*Starf0x\/my-audiobook-collection/.test(live(ct)), true);
 check('and still loads the engine itself from community-scripts',
@@ -211,10 +222,6 @@ check('the installer is named what the engine will ask for',
 check('and that file is really here',
   shipped.includes(`${app.toLowerCase().replace(/ /g, '')}-install.sh`), true);
 
-// It is the same app however it is installed, so the node it runs on is too.
-const ctInstall = read('install/myaudiobookcollection-install.sh');
-check('and installs the same major of node as the image',
-  (ctInstall.match(/NODE_VERSION="(\d+)"/) || [])[1], major.image);
 
 // The line Frank was missing: the address, at the end, in their shape.
 check('the helper script ends by saying where the app now is',
@@ -255,9 +262,8 @@ check('the oneshot takes no argument, so the file cannot say what to run',
 const envDefault = (envExample.match(/^DATA_DIR=(\S+)/m) || [])[1];
 check('the path unit watches the folder the settings file names',
   (pathUnit.match(/^PathExists=(\S+)\/update-wanted$/m) || [])[1], envDefault);
-check('and both installers substitute the real one in, for a DATA_DIR that differs',
-  [/PathExists=.*update-wanted/.test(script), /PathExists=.*update-wanted/.test(ctInstall)],
-  [true, true]);
+check('and the installer substitutes the real one in, for a DATA_DIR that differs',
+  /PathExists=.*update-wanted/.test(script), true);
 
 // Clearing the request first is what stops it running for ever: left behind, the
 // path unit fires again the moment the oneshot exits.
@@ -303,7 +309,8 @@ check('and the rest of it behaves', [
 
 // --- ffmpeg, which converting needs --------------------------------------
 check('both ways to install it bring ffmpeg, which converting needs',
-  [/apk add .*ffmpeg/.test(dockerfile), /apt-get install .*ffmpeg/.test(script)], [true, true]);
+  [/apk add .*ffmpeg/.test(dockerfile), /apt install[^\n]*(\n[^\n]*)*?ffmpeg/.test(live(script))],
+  [true, true]);
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
