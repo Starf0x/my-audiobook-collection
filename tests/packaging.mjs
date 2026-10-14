@@ -149,8 +149,10 @@ for (const ext of ['.sh', '.service']) {
   check(`every ${ext} is pinned to LF, or Linux will not run it`,
     new RegExp(`^\\*${ext.replace('.', '\\.')}\\s+text eol=lf`, 'm').test(attrs), true);
 }
-check('and no file in install/ carries the other kind',
-  shipped.filter((f) => read(`install/${f}`).includes('\r')), []);
+check('and no file in install/ or ct/ carries the other kind',
+  [...shipped.map((f) => `install/${f}`),
+    ...fs.readdirSync(path.join(ROOT, 'ct')).map((f) => `ct/${f}`)]
+    .filter((f) => read(f).includes('\r')), []);
 
 // --- one way in, and only one --------------------------------------------
 // There were three ways to install this, and two of them made containers.
@@ -222,6 +224,28 @@ check('the installer is named what the engine will ask for',
 check('and that file is really here',
   shipped.includes(`${app.toLowerCase().replace(/ /g, '')}-install.sh`), true);
 
+
+// --- the banner ----------------------------------------------------------
+// The engine keeps its headers in its own repository, generated from the script
+// repos, so an app from outside never has one there: `get_header` 404s on every
+// run and `header_info` prints the words "Community Scripts" and the app's name
+// instead. `_CS_FALLBACK_HEADER` is the seam it leaves, and the drawing goes in
+// there.
+//
+// Two things would mangle the drawing without anybody noticing until a Proxmox
+// host drew it: an unquoted heredoc, because the art holds a backtick and
+// backslashes and bash would eat both, and a `read` without an empty `IFS`,
+// which strips the leading space off the first line and shifts it one column.
+// Checked on the text, since the only other way to find out is to install.
+const banner = (ct.match(/IFS= read -r -d '' _CS_FALLBACK_HEADER <<'ART'[^\n]*\n([\s\S]*?)\nART\n/) || [])[1];
+check('the banner is the app\'s own drawing, set through the seam the engine leaves',
+  [typeof banner === 'string', (banner || '').split('\n').length], [true, 10]);
+check('and the heredoc is quoted and the read keeps its leading spaces',
+  [/<<'ART'/.test(ct), /^IFS= read -r -d '' _CS_FALLBACK_HEADER/m.test(ct)], [true, true]);
+check('so the backtick and the backslashes survive to the screen',
+  [(banner || '').includes('`'), (banner || '').includes('\\')], [true, true]);
+check('and the words it is there to replace are nowhere in the script',
+  /Community Scripts/.test(live(ct)), false);
 
 // The line Frank was missing: the address, at the end, in their shape.
 check('the helper script ends by saying where the app now is',
