@@ -247,6 +247,25 @@ check('so the backtick and the backslashes survive to the screen',
 check('and the words it is there to replace are nowhere in the script',
   /Community Scripts/.test(live(ct)), false);
 
+// --- the container's Notes panel ------------------------------------------
+// The one place this app has a picture of itself on somebody's hypervisor. The
+// engine writes its own logo there, a donate badge, and an "Open Script Page"
+// button pointing at a page that does not exist for an app it does not host.
+// There is no seam for the image the way there is for the banner, so the whole
+// function is replaced — and these are the three things that would be wrong if
+// it were replaced carelessly.
+check('the Notes panel shows the app\'s own icon, from a URL that serves a picture',
+  [/img src='\$\{icon\}'/.test(ct), /icon="https:\/\/raw\.githubusercontent\.com\/.*icon-128\.png"/.test(ct)],
+  [true, true]);
+check('and sends nobody to a script page that does not exist for this app',
+  /community-scripts\.org/.test(live(ct)), false);
+// The engine's description() set IP as a side effect, and the closing lines read
+// it. Replacing the function without that makes every URL printed at the end
+// `http://:8523` — which is the sort of thing nobody notices until a stranger
+// installs it.
+check('and it still works out the address, which the closing lines read',
+  /^description\(\) \{\n\s*#[\s\S]*?\n\s*IP=\$\(pct exec "\$CTID"/m.test(ct), true);
+
 // The line the owner was missing: the address, at the end, in their shape.
 check('the helper script ends by saying where the app now is',
   [/Completed successfully/.test(ct), /Access it using the following URL/.test(ct),

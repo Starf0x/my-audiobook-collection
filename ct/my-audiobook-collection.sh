@@ -102,6 +102,58 @@ function update_script() {
   exit
 }
 
+# The container's Notes panel in the Proxmox GUI, which is the one place this
+# app has a picture of itself on somebody's hypervisor. The engine writes its
+# own there — its logo, a donate badge, and an "Open Script Page" button
+# pointing at community-scripts.org/scripts/myaudiobookcollection, which is a
+# page that does not exist for an app they do not host. There is no seam for the
+# image the way there is for the banner, so this replaces the whole function;
+# everything else of theirs is left alone, and the MIT notice at the top of this
+# file is where their licence is honoured.
+#
+# Unquoted heredoc on purpose: ${APP} and ${IP} are meant to be substituted, and
+# there is no backtick or bare $ in the HTML below.
+#
+# The icon is the PNG rather than public/icon.svg. It is the same drawing — the
+# Unraid template has pointed at it for as long as there has been one — and a
+# PNG is what Proxmox's Notes panel is certain to draw.
+description() {
+  # The engine's version sets IP as a side effect and the closing lines below
+  # read it, so this has to set it too, or every URL printed at the end is
+  # http://:8523.
+  IP=$(pct exec "$CTID" ip a s dev eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
+
+  local icon="https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/public/icon-128.png"
+  local repo="https://github.com/Starf0x/my-audiobook-collection"
+  local notes
+  notes=$(
+    cat <<EOF
+<div align='center'>
+  <a href='${repo}' target='_blank' rel='noopener noreferrer'>
+    <img src='${icon}' alt='${APP}' width='128' height='128' style='width:128px;height:128px;'/>
+  </a>
+
+  <h2 style='font-size: 24px; margin: 20px 0;'>${APP}</h2>
+
+  <p style='margin: 16px 0;'>
+    <a href='http://${IP}:8523' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>http://${IP}:8523</a>
+  </p>
+
+  <span style='margin: 0 10px;'>
+    <a href='${repo}' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>GitHub</a>
+  </span>
+  <span style='margin: 0 10px;'>
+    <a href='${repo}/wiki' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Manual</a>
+  </span>
+  <span style='margin: 0 10px;'>
+    <a href='${repo}/issues' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Issues</a>
+  </span>
+</div>
+EOF
+  )
+  pct set "$CTID" -description "$notes"
+}
+
 start
 build_container
 description
