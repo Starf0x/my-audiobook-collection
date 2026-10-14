@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1668 | Express app: every route, and nothing else |
+| `server/index.js` | 1706 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 217 | schema, migrations, settings, library list |
 | `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
@@ -130,6 +130,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
 | `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
 | `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
+| `server/updates.js` | 114 | whether a newer version is out, and asking for it without being able to install it |
 | `server/finished.js` | 67 | what "finished" means: the three senses of the word, and the one every count asks |
 | `server/listeners.js` | 369 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
@@ -148,8 +149,8 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 407 | the admin page: columns, dialogs |
-| `public/app.js` | 1598 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/index.html` | 415 | the admin page: columns, dialogs |
+| `public/app.js` | 1677 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
@@ -456,6 +457,45 @@ that is discovered.
 
 The ct script sets `var_unprivileged=0` where theirs default to 1, for the
 id-shifting reason below.
+
+**Taking a new version, and why the app does not take it itself.** The line of
+numbers says which version is answering, which tells you whether this is the new
+one only if you already knew what the new one was. *Settings → Version* is the
+other half: `updates.js` asks GitHub for the repository's tags, keeps the answer
+for an hour — sixty unauthenticated calls an hour, and the answer changes weekly
+— and sulks for ten minutes after a failure rather than retrying on every page
+load.
+
+Which of two versions is newer is **compared by number, part by part**. This
+project counts in eights and rolls over, so it reaches 2.11.64 while 2.9.80
+still exists, and as text `2.9.80` sorts above `2.11.64` because `9` is after
+`1`. A string compare would offer an update backwards, or stay silent on a real
+one for ever; `packaging` checks that exact pair.
+
+The app **asks** for an update and does not perform one. It runs as `PUID` —
+`user.js` drops before anything is created — so it can neither write in `/opt`
+nor restart a unit, and that is the point rather than an obstacle to work
+around: a page that can run a root script runs it for whoever reaches it, and
+with no `ADMIN_PASSWORD` set the admin page is open to the network by design.
+So `POST /api/update` writes a file in `DATA_DIR`, a root-owned **path unit**
+watching for it starts a oneshot, and `install/update.sh` does the work. The
+oneshot takes **no argument**, so the file carries the fact that somebody asked
+and nothing else; the whole of the root side's behaviour is fixed. `packaging`
+checks the app never gains a `child_process`, and that the `ExecStart` stays a
+bare path.
+
+The updater **clears the request first** — left behind, the path unit fires again
+the moment the oneshot exits and the container updates in a loop — **stops the
+app before `npm ci`** replaces what it is running from, and **looks again a few
+seconds after starting it**, since a unit that dies in its first second leaves
+`systemctl start` perfectly happy. It leaves its outcome in `update-said.json`,
+because it restarted whoever asked and there is no reply to send; Settings reads
+that, which is how a failed update is heard about at all.
+
+`howInstalled()` decides what is offered: a git checkout with the unit beside it
+takes the button, a checkout without it gets the two commands, and an image is
+told to pull a new one — which is the host's job and not something this could do
+if it wanted to.
 
 **An unprivileged container is the thing that catches people**, and Proxmox makes
 one by default. Every id is shifted by 100000: `PUID=99` inside is 100099 on the
@@ -3302,6 +3342,7 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.11.72 | the app says when a newer version is out, and on an LXC install offers to take it — three ways that are one procedure: the button, `my-audiobook-collection-update` in the container, and the `ct/` command again on the host. It **asks** rather than installs: it runs as PUID and a page that can run a root script runs it for whoever reaches it, so it writes a file and a root-owned path unit that takes no argument does the work |
 | 2.11.64 | one command on a Proxmox host, and it is the standard one. The hand-rolled creator is gone: offering it beside the helper script is what had Frank run the wrong one twice — he pasted the command he already had, saw my menus, and said the GUI was still wrong. There is a standard for this and a second way of doing the same job is not a kindness. And it ends by saying how to mount the two folders, with the container's own id filled in: that is the moment somebody needs it, because the app is up and has nothing to show until the host hands the collection over |
 | 2.11.56 | **`ct/my-audiobook-collection.sh`**: a real Proxmox VE Helper Script, asked for outright. Not an imitation of the look but their engine, loaded from `community-scripts/core` — so the banner, Default and Advanced settings, the storage radiolist and the closing line with the address are the real ones. An app outside their repository can use it because the engine resolves `ct/` and `install/` from `COMMUNITY_SCRIPTS_URL`, which this points here |
 | 2.11.48 | the storage pool can be chosen, which it could not be from the quick path: it was offered only under *Advanced*, so Default silently took whichever pool `pvesm` listed first. It is a `--radiolist` with the free space beside each name now, the shape `select_storage` uses in the scripts this is modelled on, and it is asked in both paths — unless the host has one pool, which is not a choice |

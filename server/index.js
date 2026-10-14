@@ -7,6 +7,7 @@ import url from 'node:url';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR, googleCountry, GOOGLE_COUNTRY_KEY } from './db.js';
 import { countsAsRead, keptOne, readCount } from './finished.js';
+import { newestRelease, howInstalled, askForUpdate, lastUpdate, waiting as updateWaiting, newer } from './updates.js';
 import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
 import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries,
   GOOGLE_COUNTRIES } from './google.js';
@@ -575,6 +576,43 @@ app.post('/api/trash/:id/purge', requireAdmin, wrap(async (req, res) => res.json
 // A backup nobody can see is half a backup: it fails silently and is believed
 // for months. Settings says when the last one was taken and how many are kept,
 // and the button is there for the moment before doing something drastic.
+// --- is there a newer version ---------------------------------------------
+// The line of numbers says which version is answering, which tells you whether
+// this is the new one only if you already knew what the new one was. This is the
+// other half.
+//
+// Asking GitHub is slow and rate-limited, so `newestRelease` caches; `?ask=1` is
+// the button in Settings saying look again now.
+app.get('/api/update', requireAdmin, wrap(async (req, res) => {
+  const seen = await newestRelease({ force: req.query.ask === '1' });
+  const how = howInstalled();
+  res.json({
+    running: VERSION,
+    newest: seen.newest,
+    error: seen.error,
+    behind: !!seen.newest && newer(seen.newest, VERSION),
+    how,
+    // Only an LXC install can take it from here. An image is updated by pulling
+    // a new one, which is the host's job; a plain folder has the same two
+    // commands but nothing root-owned to run them.
+    canInstall: how === 'lxc',
+    asked: updateWaiting(),
+    last: lastUpdate(),
+  });
+}));
+
+// Asks. It does not update: the app runs as PUID and can neither write in /opt
+// nor restart a unit, so it leaves a file and a root-owned path unit does the
+// work — and restarts this process in the middle of it, which is why the answer
+// goes out first and the page learns it worked by the version changing.
+app.post('/api/update', requireAdmin, (req, res) => {
+  try {
+    return res.json(askForUpdate());
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/backups', requireAdmin, (req, res) => res.json({
   folder: path.join(DATA_DIR, 'backups'), keep: BACKUPS_KEPT, items: listBackups(),
 }));

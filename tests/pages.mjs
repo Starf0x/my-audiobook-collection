@@ -496,6 +496,57 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   }
 }
 
+// --- is there a newer version --------------------------------------------
+// The line of numbers under every page says which version is answering, which
+// tells you whether this is the new one only if you already knew what the new
+// one was. Settings says it outright — and offers to install it exactly where
+// that can work, which is an LXC install and nowhere else.
+{
+  const settings = async (update) => {
+    const page = await open('index.html', { '/api/update': update });
+    await settle();
+    page.window.eval('loadUpdate(false)');
+    await settle(120);
+    return page.document;
+  };
+
+  {
+    const d = await settings({ running: '2.11.64', newest: '2.11.64', behind: false, how: 'lxc', canInstall: true });
+    check('on the newest version it says so, and offers nothing to do',
+      [/the newest there is/.test(d.querySelector('#updateState').textContent),
+        d.querySelector('#updateNow').hidden], [true, true]);
+  }
+  {
+    const d = await settings({ running: '2.11.64', newest: '2.11.72', behind: true, how: 'lxc', canInstall: true });
+    check('behind, it names both versions',
+      d.querySelector('#updateState').textContent, 'Running v2.11.64 — v2.11.72 is out.');
+    check('and an LXC install is offered the button',
+      [d.querySelector('#updateNow').hidden,
+        /stops the app for a moment/.test(d.querySelector('#updateHow').textContent)], [false, true]);
+  }
+  {
+    const d = await settings({ running: '2.11.64', newest: '2.11.72', behind: true, how: 'image', canInstall: false });
+    check('the image is told to pull a new one, and offered no button it cannot honour',
+      [d.querySelector('#updateNow').hidden,
+        /pulling a new one/.test(d.querySelector('#updateHow').textContent)], [true, true]);
+  }
+  {
+    const d = await settings({ running: '2.11.64', newest: '', error: 'GitHub answered 403', how: 'lxc', canInstall: true });
+    check('and with GitHub unreachable it says which version is running and why it cannot tell',
+      [/v2\.11\.64/.test(d.querySelector('#updateState').textContent),
+        /GitHub answered 403/.test(d.querySelector('#updateState').textContent),
+        d.querySelector('#updateNow').hidden], [true, true, true]);
+  }
+  // The updater restarts the app, so the page that asked never hears how it
+  // went: it leaves word behind, and that is where a failure has to surface.
+  {
+    const d = await settings({ running: '2.11.64', newest: '2.11.64', behind: false, how: 'lxc',
+      canInstall: true, last: { ok: false, said: 'it updated but the service did not stay up' } });
+    check('a failed update is reported even though it restarted whoever asked',
+      /did not stay up/.test(d.querySelector('#updateState').textContent), true);
+  }
+}
+
 // --- following a job the server is doing ---------------------------------
 // Frank got "Writing tags failed: lost contact with the server" on a tag write
 // that had almost certainly finished perfectly well. Two faults, one shape:

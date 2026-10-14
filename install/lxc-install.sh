@@ -177,7 +177,23 @@ fi
 
 say "The service"
 install -m 0644 "$APP_DIR/install/$UNIT" "/etc/systemd/system/$UNIT"
+
+# And the updater, which is how this copy takes a new version without anybody
+# going to the host. The app runs as PUID and can neither write in /opt nor
+# restart a unit — so it leaves a file in its own data folder, and this path
+# unit, which is root, notices and does the work. DATA_DIR is substituted in,
+# because the watch has to point at the folder this install actually uses.
+install -m 0755 "$APP_DIR/install/update.sh" /usr/local/bin/my-audiobook-collection-update
+install -m 0644 "$APP_DIR/install/my-audiobook-collection-update.service" \
+  /etc/systemd/system/my-audiobook-collection-update.service
+sed "s|^PathExists=.*|PathExists=${data_dir%/}/update-wanted|" \
+  "$APP_DIR/install/my-audiobook-collection-update.path" \
+  > /etc/systemd/system/my-audiobook-collection-update.path
+chmod 0644 /etc/systemd/system/my-audiobook-collection-update.path
+
 systemctl daemon-reload
+systemctl enable --quiet my-audiobook-collection-update.path
+systemctl restart my-audiobook-collection-update.path
 systemctl enable --quiet "$UNIT"
 systemctl restart "$UNIT"
 
