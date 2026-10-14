@@ -331,23 +331,46 @@ table.cmp th, table.cmp td { text-align: left; padding: 5px 8px; border-bottom: 
 table.cmp th { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 table.cmp td:first-child { color: var(--dim); }
 table.cmp td.better { color: #7ee2a8; font-weight: 600; }
-/* A volume you do not have, shown as the book it would be: the same card, but
-   its cover is not a button and the whole thing sits back a little, so a shelf
-   of these never reads as part of the collection. */
-.card.missing-book { border-style: dashed; }
-.card.missing-book .cover { cursor: default; }
-.card.missing-book img { opacity: .55; }
-.card.missing-book .actions button,
-.card.missing-book .actions a { white-space: nowrap; }
-/* the two ways out of a card you cannot play — Wikipedia and the Wikidata entry
-   — are links, because they go somewhere and a middle click should work, but
-   they sit in a column of buttons and have to read as buttons */
-.card.missing-book .actions a.ghost {
-  display: block; text-align: center; text-decoration: none;
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
-  padding: 7px 12px; color: var(--text); font-weight: 500;
+/* A volume you do not have, as one line in a list under its series.
+
+   It used to be a full card — a drawn cover, a heading, the author, badges, a
+   sentence of explanation and three buttons. With sixty-eight series short of
+   something, that is several hundred cards: a page nobody scrolls, where the one
+   question being asked — which books am I missing? — costs a card's worth of
+   reading per answer. The series keeps the heading; what is missing from it is
+   a list. */
+.missing-vols { list-style: none; margin: 4px 0 14px; padding: 0; }
+.missing-vol {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 4px 10px; border-left: 2px solid var(--line);
+  /* The columns' own `li` is a row with a count pushed to the far end, and
+     these inherit that: it put an inch of empty row between a title and the
+     button that copies it. A list of titles is read from the left. */
+  justify-content: flex-start;
 }
-.card.missing-book .actions a.ghost:hover { filter: brightness(1.15); }
+.missing-vol:hover { background: var(--panel2); border-left-color: #ffa8a8; }
+/* the volume number in a column of its own, so the titles line up under each
+   other however many digits there are */
+.missing-vol .no {
+  min-width: 2.2em; text-align: right; color: #ffa8a8;
+  font-variant-numeric: tabular-nums; font-weight: 600;
+}
+.missing-vol .what em { color: var(--dim); }
+/* The two things to do with a line you cannot play: copy it, or go and read
+   about it. They sit beside the title rather than out at the right margin —
+   `flex: 1` on the title put them an inch of empty row away from the thing they
+   act on.
+
+   `.linkish` has no style of its own anywhere: it is always scoped to where it
+   is used, so a button carrying it and nothing else falls back to the ordinary
+   purple one. Said here, or these read as two buttons per line in a list that is
+   meant to read as titles. */
+.missing-vol .linkish {
+  background: none; border: 0; padding: 0; font-size: 12px;
+  color: var(--accent2); opacity: .45; text-decoration: none; cursor: pointer;
+}
+.missing-vol:hover .linkish { opacity: .8; }
+.missing-vol .linkish:hover { opacity: 1; color: #fff; filter: none; }
 .series-head .copy-search,
 .series-head .open-series { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
 
@@ -468,9 +491,7 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   .card { grid-template-columns: 84px 1fr; gap: 12px; padding: 10px; }
   .card img { width: 84px; height: 126px; }
   .card .actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 8px; }
-  /* the links on a card you cannot play share that row with the buttons */
-  .card .actions button,
-  .card.missing-book .actions a.ghost { flex: 1 1 45%; }
+  .card .actions button { flex: 1 1 45%; }
   .card .actions .row2 { flex: 1 1 100%; }
   .fix { grid-template-columns: 1fr; }
   .fix .actions { flex-wrap: wrap; }
