@@ -439,10 +439,11 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('a listener who has never signed in still is',
     rowOf('Newcomer').querySelector('.badge.untagged')?.textContent, 'no password yet');
   // One tick on the administrator's row, and it is the one that reaches them.
-  // *May listen* does not: they sign in with the container's password, which no
-  // tick here can take away. *May download* does, because downloading is a thing
-  // a row on this page allows — turned off on his own row, the owner went on
-  // downloading, and that is now a refusal.
+  // *May listen* does not: that tick governs signing in and the administrator
+  // does not come in that way, whichever of the two passwords is theirs. *May
+  // download* does, because downloading is a thing a row on this page allows —
+  // turned off on his own row, the owner went on downloading, and that is now a
+  // refusal.
   check('the administrator’s row offers the one tick that governs them',
     [...rowOf('MorganB').querySelectorAll('.allowed input')]
       .map((i) => Object.keys(i.dataset)), [['mayDownload']]);
@@ -468,6 +469,82 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     /Last here: here today at \d\d?:\d\d/.test(rowOf('MorganB').textContent), true);
   check('while never is still never',
     /Last here: never signed in/.test(rowOf('Newcomer').textContent), true);
+}
+
+// --- and which of the two administrators it is ----------------------------
+// This page told everybody that the administrator signs in "with the name and
+// password the container was given". Since 2.12.0 that is one of two answers:
+// an administrator who made their account at the gate on first run signs in
+// with a password kept here, hashed, and the container has nothing to do with
+// it. Being told otherwise sends them to edit a variable that is not what let
+// them in, and leaves out the one thing they would want — that setting it is
+// the way back in if they forget.
+//
+// Three places said it: the badge, the line under *May download*, and the
+// sentence at the top naming who you are. The server is the only thing that
+// knows which, so it says, and all three read that one answer.
+{
+  const asAdmin = async (adminFrom) => {
+    const page = await open('accounts.html', {
+      '/api/accounts': {
+        admin: 'MorganB',
+        ...(adminFrom ? { adminFrom } : {}),
+        accounts: [{
+          name: 'MorganB', isAdmin: true, hasPassword: false, state: 'approved', granted: true,
+          level: { name: 'Rookie Level', icon: '', at: 10, next: null },
+          started: 1, finished: 1, completed: 1, hours: 1, favourites: 0, downloads: [],
+          listening: [], signedIn: 1, reason: '', knowsAdmin: false, requestedAt: '', decidedAt: '',
+          lastSeen: new Date().toISOString(), daysAgo: 0,
+        }],
+      },
+    });
+    await settle(160);
+    const row = page.document.querySelector('.account[data-name="MorganB"]');
+    return {
+      badge: row.querySelector('.badge').title,
+      beside: row.querySelector('.allowed .sub').textContent,
+      top: page.document.querySelector('#whoRuns').textContent,
+      broke: page.broke,
+    };
+  };
+
+  {
+    const { badge, beside, top, broke } = await asAdmin('stored');
+    check('an administrator made at the gate is told where that password really is',
+      [/kept here, hashed/.test(badge), /first opened/.test(badge)], [true, true]);
+    check('and told that the container overrides it, which is the way back in',
+      [/ADMIN_USER/.test(badge), /way back in/.test(badge)], [true, true]);
+    check('and is not sent to a container variable as the thing they signed in with',
+      /sign in with ADMIN_USER/.test(badge), false);
+    check('the line beside May download follows the same answer',
+      [/first opened/.test(beside), /container/.test(beside)], [true, false]);
+    check('and so does the sentence naming who you are',
+      /from the account made when this app was first opened/.test(top), true);
+    check('with nothing thrown drawing any of it', broke, []);
+  }
+  {
+    const { badge, beside, top } = await asAdmin('env');
+    check('an administrator set on the container is still told exactly that',
+      [/ADMIN_USER and ADMIN_PASSWORD/.test(badge), /set on the container/.test(badge),
+        /first opened/.test(badge)], [true, true, false]);
+    check('and the other two lines agree with it',
+      [/container/.test(beside), /from the container/.test(top)], [true, true]);
+  }
+  {
+    // An older server does not send it. Falling back to the container reading is
+    // the safe half: it is what every install was until 2.12.0.
+    const { badge } = await asAdmin('');
+    check('and an answer that does not say which falls back to the container',
+      /set on the container/.test(badge), true);
+  }
+  {
+    // Neither version may claim this any more. *May download* reaches the
+    // administrator, and the tick beside it says so — a badge still saying every
+    // check lets them through would be the page contradicting itself.
+    const said = await Promise.all(['stored', 'env'].map(asAdmin));
+    check('and neither says every check lets them through, since one does not',
+      said.map((s) => /every check/.test(s.badge)), [false, false]);
+  }
 }
 
 // --- the maintenance column shows only what is waiting --------------------

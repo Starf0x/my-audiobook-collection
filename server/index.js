@@ -13,7 +13,7 @@ import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probe
   GOOGLE_COUNTRIES } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
-import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf, unclaimed, claim as claimAdmin, adminName } from './admin.js';
+import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf, unclaimed, claim as claimAdmin, adminName, adminState } from './admin.js';
 import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats,
   asName, WEEK, finishedABook, finishedCount, tookABook, downloadsOf, grantDownload, seenAdmin,
   find as findListener } from './listeners.js';
@@ -301,6 +301,11 @@ app.post('/api/account/signout', (req, res) => {
 // --- the admin's view of them --------------------------------------------
 app.get('/api/accounts', requireAdmin, (req, res) => res.json({
   admin: adminName(),
+  // Which of the two administrators is governing. The page says where that
+  // password lives, and since 2.12.0 there are two answers: one set on the
+  // container, or one made at the gate on first run and kept here. Saying the
+  // wrong one sends somebody to edit a variable that is not what let them in.
+  adminFrom: adminState(),
   // what each of them is in the middle of comes from the database; what is
   // playing *right now* is only known here, because only the player says so
   accounts: withStats().map((a) => {
