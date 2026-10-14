@@ -20,6 +20,11 @@ set -euo pipefail
 APP_DIR=/opt/my-audiobook-collection
 ENV_FILE=/etc/my-audiobook-collection.env
 UNIT=my-audiobook-collection.service
+# The updater: a path unit watching for the app's "please update" file, the
+# oneshot it starts, and the script that does the work.
+UPDATE_PATH=my-audiobook-collection-update.path
+UPDATE_UNIT=my-audiobook-collection-update.service
+UPDATE_BIN=/usr/local/bin/my-audiobook-collection-update
 NODESOURCE_LIST=/etc/apt/sources.list.d/nodesource.list
 NODESOURCE_KEY=/usr/share/keyrings/nodesource.gpg
 
@@ -51,6 +56,7 @@ fi
 # has to be safe to run on a machine where it half-installed, or never did.
 present=()
 [ -f "/etc/systemd/system/$UNIT" ] && present+=("the service   /etc/systemd/system/$UNIT")
+[ -f "/etc/systemd/system/$UPDATE_PATH" ] && present+=("the updater   /etc/systemd/system/$UPDATE_PATH")
 [ -d "$APP_DIR" ] && present+=("the app       $APP_DIR")
 if [ "$purge" -eq 1 ]; then
   [ -f "$ENV_FILE" ] && present+=("the settings  $ENV_FILE   (your password and tokens)")
@@ -83,6 +89,12 @@ fi
 say "The service"
 # `|| true` on each: a half-installed machine has some of these and not others,
 # and stopping something that is not running is not a failure worth exiting on.
+#
+# The updater goes first. Left behind with the app removed, its path unit would
+# still be watching a folder — and if --purge is not given that folder stays.
+systemctl stop "$UPDATE_PATH" 2>/dev/null || true
+systemctl disable "$UPDATE_PATH" 2>/dev/null || true
+rm -f "/etc/systemd/system/$UPDATE_PATH" "/etc/systemd/system/$UPDATE_UNIT" "$UPDATE_BIN"
 systemctl stop "$UNIT" 2>/dev/null || true
 systemctl disable "$UNIT" 2>/dev/null || true
 rm -f "/etc/systemd/system/$UNIT"

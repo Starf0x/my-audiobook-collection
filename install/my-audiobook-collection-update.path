@@ -1,0 +1,18 @@
+[Unit]
+Description=Watch for My Audiobook Collection asking to be updated
+Documentation=https://github.com/Starf0x/my-audiobook-collection
+
+[Path]
+# The app runs as PUID and cannot write in /opt or restart a unit — which is
+# right, and this is how it asks instead. It leaves this file in its own data
+# folder; systemd, which is root, notices and starts the update.
+#
+# The path has to match DATA_DIR in /etc/my-audiobook-collection.env. The
+# installer writes this file from the example with the real path substituted, so
+# changing DATA_DIR afterwards means changing it here too — `packaging` checks
+# the default in the two files still agrees.
+PathExists=/var/lib/my-audiobook-collection/update-wanted
+Unit=my-audiobook-collection-update.service
+
+[Install]
+WantedBy=multi-user.target

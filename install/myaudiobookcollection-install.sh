@@ -72,6 +72,19 @@ msg_ok "Set up Settings and Data"
 msg_info "Creating Service"
 install -m 0644 /opt/my-audiobook-collection/install/my-audiobook-collection.service \
   /etc/systemd/system/my-audiobook-collection.service
+# The updater, so a new version can be taken from inside the container or from
+# the app's own Settings. The app runs as PUID and can neither write in /opt nor
+# restart a unit, so it leaves a file in its data folder and this path unit --
+# which is root -- notices and does the work. DATA_DIR is substituted in.
+install -m 0755 /opt/my-audiobook-collection/install/update.sh \
+  /usr/local/bin/my-audiobook-collection-update
+install -m 0644 /opt/my-audiobook-collection/install/my-audiobook-collection-update.service \
+  /etc/systemd/system/my-audiobook-collection-update.service
+sed "s|^PathExists=.*|PathExists=${DATA_DIR%/}/update-wanted|" \
+  /opt/my-audiobook-collection/install/my-audiobook-collection-update.path \
+  >/etc/systemd/system/my-audiobook-collection-update.path
+chmod 0644 /etc/systemd/system/my-audiobook-collection-update.path
+systemctl enable -q --now my-audiobook-collection-update.path
 systemctl enable -q --now my-audiobook-collection
 msg_ok "Created Service"
 

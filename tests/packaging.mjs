@@ -177,6 +177,9 @@ for (const name of ['APP_DIR', 'ENV_FILE', 'UNIT']) {
   check(`the uninstaller's ${name} is the installer's ${name}`,
     mine(uninstaller), mine(script));
 }
+check('and takes the updater with it, or a path unit is left watching a folder',
+  [/UPDATE_PATH=/.test(live(uninstaller)), /UPDATE_BIN=/.test(live(uninstaller)),
+    /rm -f .*UPDATE_PATH/.test(live(uninstaller))], [true, true, true]);
 check('it keeps the database and the settings unless asked for --purge',
   [/--purge/.test(uninstaller), /if \[ "\$purge" -eq 1 \]/.test(live(uninstaller))], [true, true]);
 check('and reads where the database is from the settings file, not from a guess',
@@ -225,6 +228,78 @@ check('and the port it prints is the one the app listens on',
 check('and says how to mount the two folders, with the container it just made',
   [/-mp0 .*mp=\/audiobooks/.test(ct), /-mp1 .*mp=\/import/.test(ct),
     /pct reboot \$\{CTID\}/.test(ct)], [true, true, true]);
+
+// --- taking a new version --------------------------------------------------
+// The app runs as PUID, not root: `user.js` drops before anything is created.
+// So it can neither write in /opt nor restart a unit, and that is right rather
+// than an obstacle — a page that can run a root script runs it for whoever
+// reaches it, and with no ADMIN_PASSWORD set this one is open to the network by
+// design. It asks instead: a file in its own data folder, and a root-owned path
+// unit watching for it. The root side only ever does one fixed thing, and
+// nothing in that file is read, so asking is not an escalation.
+const updater = read('install/update.sh');
+const pathUnit = read('install/my-audiobook-collection-update.path');
+const oneshot = read('install/my-audiobook-collection-update.service');
+const updates = read('server/updates.js');
+
+check('the app asks for an update rather than running one',
+  [/writeFileSync\(ASK/.test(updates), /child_process|execSync|spawn/.test(updates)], [true, false]);
+check('and the thing that does it is root, started by watching for that file',
+  [/^PathExists=/m.test(pathUnit), /^Unit=my-audiobook-collection-update\.service$/m.test(pathUnit),
+    /^Type=oneshot$/m.test(oneshot)], [true, true, true]);
+check('the oneshot takes no argument, so the file cannot say what to run',
+  (oneshot.match(/^ExecStart=(.+)$/m) || [])[1], '/usr/local/bin/my-audiobook-collection-update');
+
+// The watch and the app have to agree on one folder, or the file is written
+// where nothing is looking and the button does nothing at all.
+const envDefault = (envExample.match(/^DATA_DIR=(\S+)/m) || [])[1];
+check('the path unit watches the folder the settings file names',
+  (pathUnit.match(/^PathExists=(\S+)\/update-wanted$/m) || [])[1], envDefault);
+check('and both installers substitute the real one in, for a DATA_DIR that differs',
+  [/PathExists=.*update-wanted/.test(script), /PathExists=.*update-wanted/.test(ctInstall)],
+  [true, true]);
+
+// Clearing the request first is what stops it running for ever: left behind, the
+// path unit fires again the moment the oneshot exits.
+// `indexOf` returns -1 for something that is not there, and -1 is before
+// everything — so "A comes before B" passes when A has been deleted outright,
+// which is the case worth catching. Both have to be present first.
+const before = (text, a, b) => {
+  const [i, j] = [text.indexOf(a), text.indexOf(b)];
+  return i >= 0 && j >= 0 && i < j;
+};
+check('the updater clears the request before doing anything else',
+  before(live(updater), 'rm -f "$ASK"', 'fetch --tags'), true);
+check('and stops the app before npm replaces what it is running from',
+  before(live(updater), 'systemctl stop', 'npm ci'), true);
+check('and looks again after starting it, since started is not running',
+  /is-active --quiet/.test(live(updater)), true);
+check('and leaves word of how it went, because it restarted whoever asked',
+  [/update-said\.json/.test(updater), /SAID/.test(live(updater))], [true, true]);
+
+// One update, however it is reached: the button, the command in the container
+// and the helper script on the host must not be three different procedures.
+// The steps, not the spelling: the updater runs git with `-C "$APP_DIR"` and
+// the helper script runs it from a `cd`, which is the same thing said twice.
+check('the helper script, the shell command and the button do the same thing',
+  ['fetch --tags', 'npm ci --omit=dev', 'tag --sort=-v:refname']
+    .filter((step) => !(new RegExp(step.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(live(updater))
+      && new RegExp(step.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(ct))), []);
+
+// --- which of two versions is the newer one ------------------------------
+// This project numbers in eights and rolls over, so it reaches 2.11.64 while
+// 2.9.80 still exists — and compared as text, "2.9.80" sorts above "2.11.64"
+// because "9" is after "1". A version check that got this wrong would offer an
+// update backwards, or stay silent on a real one for ever.
+const { newer: isNewer } = await import('../server/updates.js');
+check('a later minor wins, however the two read as text', [
+  isNewer('2.11.64', '2.9.80'), isNewer('2.9.80', '2.11.64'),
+], [true, false]);
+check('and the rest of it behaves', [
+  isNewer('2.11.64', '2.11.64'), isNewer('v2.11.72', '2.11.64'),
+  isNewer('3.0.0', '2.11.64'), isNewer('2.11.8', '2.11.64'),
+  isNewer('2.12.0', '2.11.64'), isNewer('', '2.11.64'),
+], [false, true, true, false, true, false]);
 
 // --- ffmpeg, which converting needs --------------------------------------
 check('both ways to install it bring ffmpeg, which converting needs',
