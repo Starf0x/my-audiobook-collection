@@ -23,6 +23,34 @@ source "$_cs_boot" 2>/dev/null || source <(curl -fsSL "${COMMUNITY_SCRIPTS_CORE_
 # Source: https://github.com/Starf0x/my-audiobook-collection
 
 APP="My Audiobook Collection"
+
+# The banner at the top of the run.
+#
+# The engine keeps its headers in its *own* repository — "they are generated
+# from the script repos, so a script repo carries none of its own" — and looks
+# for `headers/ct/myaudiobookcollection` there. An app from outside their
+# repository is never in that folder, so `get_header` 404s on every run and
+# `header_info` falls back to printing the words "Community Scripts" and the
+# app's name. This is the seam it leaves for exactly that: set, it is printed
+# instead, and those words never appear.
+#
+# The heredoc is quoted and the read has an empty IFS on purpose. The drawing
+# holds backticks and backslashes, which an unquoted heredoc would eat, and its
+# first line begins with a space, which `read` would otherwise strip and shift
+# that line one column out of true.
+IFS= read -r -d '' _CS_FALLBACK_HEADER <<'ART' || true
+ __  __            _             _ _       _                 _
+|  \/  |_   _     / \  _   _  __| (_) ___ | |__   ___   ___ | | __
+| |\/| | | | |   / _ \| | | |/ _` | |/ _ \| '_ \ / _ \ / _ \| |/ /
+| |  | | |_| |  / ___ \ |_| | (_| | | (_) | |_) | (_) | (_) |   <
+|_|  |_|\__, | /_/   \_\__,_|\__,_|_|\___/|_.__/ \___/ \___/|_|\_\
+  ____  |___/ _           _   _
+ / ___|___ | | | ___  ___| |_(_) ___  _ __
+| |   / _ \| | |/ _ \/ __| __| |/ _ \| '_ \
+| |__| (_) | | |  __/ (__| |_| | (_) | | | |
+ \____\___/|_|_|\___|\___|\__|_|\___/|_| |_|
+ART
+
 var_tags="${var_tags:-media;audiobooks}"
 var_cpu="${var_cpu:-2}"
 var_ram="${var_ram:-1024}"
