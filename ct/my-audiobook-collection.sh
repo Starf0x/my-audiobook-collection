@@ -84,7 +84,7 @@ echo -e "${INFO}${YW}Access it using the following URL:${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:8523${CL}"
 echo -e "${INFO}${YW}The page that changes things:${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:8523/admin${CL}"
-echo -e "${INFO}${YW}Settings (edit, then restart the service):${CL}"
+echo -e "${INFO}${YW}Settings (edit (Admin/password), then restart the service):${CL}"
 echo -e "${TAB}${GATEWAY}${BGN}/etc/my-audiobook-collection.env${CL}"
 # The two folders, here, because this is the moment somebody needs them: the app
 # is up and has nothing to show. They are the host's to mount and the container
