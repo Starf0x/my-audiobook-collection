@@ -941,3 +941,12 @@ here:
   `await showTagAll();` in the file. The line that says whether a Discord webhook
   is saved was blank, and nothing failed. Match on enough context to be
   unambiguous, or use the editor.
+* **"It answers" is not "it restarted".** The page that asked for an update
+  polled `/api/stats` and reloaded the moment it got a reply. But asking writes a
+  file — the path unit has to notice it, stop the service, fetch and run
+  `npm ci` — so the old app answered happily for the next half minute and the
+  page reloaded into the version it was trying to leave. When the app did not
+  come back at all the poll ran out in silence, leaving *Updating…* on screen for
+  ever. Poll for the thing that changes when the work is done, which here was the
+  version in the answer, not the answer itself; and give every wait an end that
+  says something.
