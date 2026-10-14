@@ -109,10 +109,10 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1746 | Express app: every route, and nothing else |
+| `server/index.js` | 1757 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 217 | schema, migrations, settings, library list |
-| `server/admin.js` | 186 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
+| `server/admin.js` | 191 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
 | `server/scan.js` | 650 | walking the library, reading tags, filing books |
 | `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
@@ -2039,9 +2039,9 @@ query per series.
 `ADMIN_PASSWORD` on the container. A salt is made at startup and the password is
 never stored: `scryptSync(password, bootSalt, 32)` on both sides, compared with
 `timingSafeEqual`. An unlocked browser holds a random 24-byte token in an
-`HttpOnly` cookie; sessions live in memory and are forgotten on restart. With no
-password set, `adminRequired()` is false and everything is allowed — a private
-install.
+`HttpOnly` cookie; sessions live in memory and are forgotten on restart. There
+is always an administrator — §7.12 — so there is no state in which nothing is
+locked.
 
 **The server refuses, the interface merely hides.** Every route that changes
 anything carries `requireAdmin`; hiding buttons is not what protects it.
@@ -2056,8 +2056,8 @@ with nothing on screen to say so. That was offered as a private install and it
 was a defensible thing to make possible; it was not a defensible thing to leave
 somebody on by default, which is what it was.
 
-So `adminRequired()` is now simply `true`, and the state that matters is
-`adminState()` in `admin.js`:
+So `adminRequired()` **is gone**, and the state that matters is `adminState()`
+in `admin.js`:
 
 | | |
 | --- | --- |
@@ -2081,6 +2081,20 @@ now.
 `ADMIN_PASSWORD` is asked to make an administrator the first time they open the
 app after upgrading. Nothing of theirs is lost — the listeners, the positions and
 the collection are untouched — but the app does not answer until they do.
+
+**And the old hinge came off the frame.** Making `adminRequired()` return `true`
+closed the open install; it did not remove the branches that asked. Three of
+them were the controls this whole section exists for — `whoWrites` falling back
+to a name in the request body, `whoReads` to `?user=`, and one line in
+`mayTakeABook` handing every book to everybody — each still written out, each
+one `return false` away from live, behind a function whose name invites somebody
+to make it conditional again. A closed door whose old hinge is still bolted on
+is one edit from open, and the edit looks harmless. The branches are gone, the
+call sites say `true` where a client reads the answer on the wire, and the
+function itself is gone so there is nothing left to flip. No behaviour changed,
+which is what every suite passing unaltered says; that the doors are still shut
+is `accounts`, which fails four checks the moment `whoReads` takes `?user=`
+again.
 
 Until 2.7.0 a listener was a name in a table and the listening page answered
 whoever could reach it. What kept one person out of another's place in a book was
@@ -3483,6 +3497,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.48 | **the hinge came off the door 2.12.0 closed.** Making `adminRequired()` return `true` ended the install that ran open; it left behind every branch that asked, and three of those were the controls themselves — `whoWrites` falling back to a name in the request body, `whoReads` to `?user=`, and a line in `mayTakeABook` handing every book to everybody. All three still written out, all three one `return false` away, behind a function whose name invites exactly that edit. Gone, with the function, so there is nothing left to flip. Nothing behaves differently — every suite passes unaltered — and `accounts` still fails four checks the moment the read leak is put back by hand, which is the part that matters |
 | 2.12.40 | the accounts page says **which administrator it is talking about**. It told everybody that the administrator signs in "with the name and password the container was given" — one of two answers since 2.12.0, and the wrong one for anybody who made their account at the gate on first run: it sent them to edit a variable that is not what let them in, and left out the one thing they would want, that setting it is the way back in if they forget. Three places said it; `/api/accounts` carries `adminFrom` and all three read that one answer. The old "every check here lets them through" went with it, untrue since *May download* began reaching them. The half `pages` cannot see — the route itself — is checked in `first-run`, both ways round, because a server that quietly stopped sending it would leave every administrator reading the container wording again with every page check still passing |
 | 2.12.32 | the container's **Notes panel** in the Proxmox GUI carries the app's own icon, its address and its own links, where the engine had put its logo and an *Open Script Page* button pointing at a page that does not exist for an app it does not host. `description()` is replaced outright — there is no seam for the image the way there is for the banner — and `packaging` holds the replacement to working out `IP`, which the engine's version set as a side effect and every closing line reads. And **the manual caught up with eight days of app**: a page for installing on Proxmox, an administrator that always exists, accounts where a dropdown used to be, missing volumes as lines, No Series, Unabridged, the update dot, phone-to-desktop places, and one Music Assistant provider being one listener |
 | 2.11.80 | accounts can be deleted again. Giving the administrator's row fewer controls in 2.10.64 broke the loop that wires every row: it took `[data-may-listen]` without looking, that row has none, and `forEach` stopped there — so every row after it was drawn with its buttons dead. The jsdom harness collected the error on every run for two weeks and nothing read it, because the checks asked what the markup held and the markup was perfect |

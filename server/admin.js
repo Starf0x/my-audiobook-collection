@@ -49,11 +49,16 @@ export function adminState() {
 
 export const unclaimed = () => adminState() === 'unclaimed';
 
-// An administrator governs this app, always. This used to be "is an
-// ADMIN_PASSWORD set", and everything that reads it — who a write belongs to,
-// who a read belongs to, whether a listener needs an account — took `false` to
-// mean "no locks here".
-export const adminRequired = () => true;
+// `adminRequired()` was here. It used to ask "is an ADMIN_PASSWORD set", and
+// everything that read it — who a write belongs to, who a read belongs to,
+// whether a book may be handed over — took `false` to mean "no locks here".
+// 2.12.0 made it `() => true` and left those branches standing, which is a
+// function whose name invites somebody to make it conditional again and three
+// controls that would silently reopen when they did. The branches are gone and
+// so is this, so there is nothing left to flip.
+//
+// Anything that wants the answer now has it: an administrator governs this app,
+// always, and `unclaimed()` above says whether one exists yet.
 
 // What to call them. The container's name where it governs, otherwise the one
 // chosen at the gate. Empty while unclaimed, which is the one time nobody is
