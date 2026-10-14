@@ -10,7 +10,11 @@
 </head>
 <body data-col="books">
 <header>
-  <h1 id="brand" title="Back to the shelves"><img src="icon.svg" class="mark" alt=""> My Audiobook Collection</h1>
+  <!-- The dot sits on the icon rather than anywhere in the page, because the
+       icon is the one thing on every screen and in the corner the eye starts
+       from. It carries its own title: a title on a child wins over the h1's. -->
+  <h1 id="brand" title="Back to the shelves"><span class="marked"><img src="icon.svg" class="mark"
+    alt=""><span id="updateDot" hidden title="Update available"></span></span> My Audiobook Collection</h1>
   <input id="q" type="search" class="search" placeholder="Search books, authors, series…"
     autocomplete="off" spellcheck="false">
   <div class="spacer"></div>
@@ -26,6 +30,9 @@
       <li id="openSettings">Library and maintenance</li>
       <li id="openAccounts">Accounts and statistics</li>
       <li id="openHa">Home Assistant</li>
+      <!-- Only here while there is one to install, and gone the moment there is
+           not: a menu entry that does nothing is worse than no entry. -->
+      <li id="installUpdate" class="stands-out" hidden>Install the update</li>
     </ul>
   </details>
 </header>
