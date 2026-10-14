@@ -13,8 +13,8 @@ import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probe
   GOOGLE_COUNTRIES } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
-import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf } from './admin.js';
-import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats, adminName,
+import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf, unclaimed, claim as claimAdmin, adminName } from './admin.js';
+import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats,
   asName, WEEK, finishedABook, finishedCount, tookABook, downloadsOf, grantDownload, seenAdmin,
   find as findListener } from './listeners.js';
 import { levelOf, mayDownload, LEVELS, TOP } from './levels.js';
@@ -127,7 +127,25 @@ const whoIsAsking = (req) => {
   return null;
 };
 
+// Until somebody is the administrator, nothing here answers but the three
+// routes it takes to become one. The app used to run open instead when no
+// `ADMIN_PASSWORD` was set, which on a home network meant a collection, every
+// listening position and everybody's accounts readable and deletable by anything
+// that could reach the port, with nothing on screen to say so.
+//
+// `/api/admin` so the page knows which card to show, `/api/admin/claim` to make
+// the administrator, and `/api/account/me` because every page asks it before
+// drawing anything.
+const WHILE_UNCLAIMED = new Set(['/api/admin', '/api/admin/claim', '/api/account/me']);
+
 app.use('/api', (req, res, next) => {
+  if (unclaimed()) {
+    if (WHILE_UNCLAIMED.has(req.baseUrl + req.path)) return next();
+    return res.status(401).json({
+      error: 'This app has no administrator yet. Open it in a browser and make one.',
+      unclaimed: true,
+    });
+  }
   // inside a mount, `req.path` is what is left after the mount point: this is
   // `/account/me`, not `/api/account/me`, and comparing the wrong one shut the
   // sign-in routes along with everything else
@@ -145,7 +163,19 @@ app.use('/api', (req, res, next) => {
 
 // --- who may change things ---------------------------------------------
 app.get('/api/admin', (req, res) => res.json({
-  required: adminRequired(), admin: isAdmin(req),
+  required: adminRequired(), admin: isAdmin(req), unclaimed: unclaimed(),
+}));
+
+// Making the administrator, on an app that has none. Once: `claim` refuses with
+// one in place, so a page left sitting at the gate cannot be used later to
+// replace a password somebody has since set.
+app.post('/api/admin/claim', wrap(async (req, res) => {
+  const said = await claimAdmin(req.body.name, req.body.password, req.ip || req.socket.remoteAddress || '');
+  const https = ((trustProxy() && req.headers['x-forwarded-proto']) || req.protocol || '')
+    .split(',')[0].trim() === 'https';
+  res.setHeader('Set-Cookie', `admin=${said.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+    + (https ? '; Secure' : ''));
+  return res.json({ ok: true, name: said.name });
 }));
 
 app.post('/api/admin/unlock', wrap(async (req, res) => {
@@ -1136,8 +1166,14 @@ app.post('/api/cover', requireAdmin, express.raw({ type: () => true, limit: '12m
     res.json({ cover: name, bytes: buf.length, what: kind.what });
   }));
 
-app.get('/api/cover/:id', (req, res) => {
-  const book = db.prepare('SELECT cover, title, author FROM books WHERE id = ?').get(Number(req.params.id));
+// Serving a book's picture, which two routes do: this one for the pages, and
+// the Audiobookshelf face for Music Assistant. The second used to redirect here
+// and that stopped working the moment an app without an administrator refused
+// everything — the redirect carries no token, so Music Assistant followed it
+// into a 401 and showed a shelf of blanks. It calls this instead, so the
+// authentication that already happened is the only one needed.
+const sendCover = (req, res, id) => {
+  const book = db.prepare('SELECT cover, title, author FROM books WHERE id = ?').get(Number(id));
   if (!book) return res.status(404).end();
   // No art, or art that is no longer on disk: a drawn cover rather than a hole
   // in the shelf. It is derived from the title, so it may be cached like a file.
@@ -1151,8 +1187,10 @@ app.get('/api/cover/:id', (req, res) => {
   const file = coverFile(book.cover);
   if (!file) return drawn();
   // with the marker the URL names one picture, so it need not be asked for again
-  res.sendFile(file, req.query.v ? { maxAge: '7d', immutable: true } : {});
-});
+  return res.sendFile(file, req.query.v ? { maxAge: '7d', immutable: true } : {});
+};
+
+app.get('/api/cover/:id', (req, res) => sendCover(req, res, req.params.id));
 
 // A cover for a book that is not here: the volumes Wikidata says are missing are
 // shown as cards, and a card with a hole where the picture goes reads as a
@@ -1367,8 +1405,10 @@ app.get('/api/items/:id', forMA, (req, res) => {
 // The cover and the audio, at the addresses the item says they are at. Both take
 // the token in the query, because a player fetches them itself and sends no
 // header of ours.
-app.get('/api/items/:id/cover', forMA, (req, res) =>
-  res.redirect(`/api/cover/${Number(req.params.id)}`));
+// Served, not redirected to: a redirect carries neither the token in the query
+// nor a cookie, so Music Assistant followed it into the session gate and got a
+// shelf of blanks. `forMA` has already said who this is.
+app.get('/api/items/:id/cover', forMA, (req, res) => sendCover(req, res, req.params.id));
 
 app.get('/api/items/:id/file/:trackId', forMA, (req, res) => {
   const track = db.prepare('SELECT path FROM tracks WHERE id = ? AND book_id = ?')

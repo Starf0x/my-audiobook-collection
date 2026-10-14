@@ -23,6 +23,14 @@
 // SyntaxError that stops a page dead, and that shows up here as the page failing
 // to load rather than as a grep over the source.
 //
+// **Ask `broke` wherever a page is driven, not only where it is loaded.** The
+// accounts page threw while wiring its rows for two weeks — the administrator's
+// row has no *May listen* and the loop took it without looking, so `forEach`
+// stopped there and every row after it was drawn with nothing wired. The
+// harness collected that error every single run. Nothing read it, because these
+// checks looked at the markup and markup was exactly what was right: the Delete
+// buttons were all there, and none of them did anything.
+//
 // Run: node tests/pages.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -388,7 +396,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     started: 5, finished: 4, completed: 1, hours: 3.2, favourites: 2, downloads: [],
     listening: [], signedIn: 1, reason: '', knowsAdmin: false, requestedAt: '', decidedAt: '',
   };
-  const { document } = await open('accounts.html', {
+  const { document, broke } = await open('accounts.html', {
     '/api/accounts': {
       accounts: [
         { ...base, name: 'MorganB', isAdmin: true, hasPassword: false, lastSeen: day(0), daysAgo: 0, granted: true },
@@ -401,6 +409,30 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   });
   await settle(160);
   const rowOf = (name) => document.querySelector(`.account[data-name="${name}"]`);
+
+  // Drawing the rows is half of it; the other half is the loop that hangs a
+  // handler on every tick and button, and that loop threw. The administrator's
+  // row has no *May listen* and no *Delete…*, and it took both without looking —
+  // so `forEach` stopped there and every row after it was drawn with nothing
+  // wired. The owner could not delete anybody.
+  //
+  // The page was saying so all along. These checks read the markup and never
+  // asked whether anything had thrown, which is the whole reason the harness
+  // collects it.
+  check('wiring the rows throws nothing, however short a row is', broke, []);
+  check('and every listener row can actually be deleted',
+    ['Donna', 'Newcomer'].map((n) => typeof rowOf(n).querySelector('[data-drop]').onclick),
+    ['function', 'function']);
+  check('and their ticks are wired too, not just drawn',
+    ['Donna', 'Newcomer'].flatMap((n) => [
+      typeof rowOf(n).querySelector('[data-may-listen]').onchange,
+      typeof rowOf(n).querySelector('[data-may-download]').onchange]),
+    ['function', 'function', 'function', 'function']);
+  check('the administrator’s own tick works as well, being the one it has',
+    typeof rowOf('MorganB').querySelector('[data-may-download]').onchange, 'function');
+  check('and the administrator has no Delete, which would not close that door anyway',
+    rowOf('MorganB').querySelector('[data-drop]'), null);
+
   check('the administrator is named as one', rowOf('MorganB')?.querySelector('.badge')?.textContent, 'administrator');
   check('and is not told they have no password',
     /no password yet/.test(rowOf('MorganB').textContent), false);
@@ -494,6 +526,34 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     check('it goes once you have gone somewhere else',
       document.querySelector('#trashList').hidden, true);
   }
+}
+
+// --- deleting an account, all the way through ----------------------------
+// The check above says the button has a handler. This says the handler reaches
+// the server, because "it has an onclick" and "pressing it deletes somebody" are
+// not the same claim, and it was the second one the owner was missing.
+{
+  const asked = [];
+  const row = (name, isAdmin) => ({
+    name, isAdmin, hasPassword: true, granted: false, state: 'approved',
+    level: { name: 'Rookie Level', icon: '', at: 10, next: null },
+    started: 0, finished: 0, completed: 0, hours: 0, favourites: 0, downloads: [],
+    listening: [], signedIn: 0, reason: '', knowsAdmin: false, requestedAt: '',
+    decidedAt: '', lastSeen: '', daysAgo: null,
+  });
+  const { document } = await open('accounts.html', {
+    '/api/accounts': (url, opts) => {
+      if (opts && opts.method === 'POST') { asked.push(url); return { ok: true }; }
+      // The administrator first on purpose: the row that used to stop the loop
+      // has to be the one every other row is drawn after.
+      return { accounts: [row('MorganB', true), row('Jonah', false)] };
+    },
+  });
+  await settle(160);
+  document.querySelector('.account[data-name="Jonah"] [data-drop]').click();
+  await settle(140);
+  check('pressing Delete on a listener really asks the server to remove them',
+    asked.filter((u) => u.endsWith('/remove')), ['/api/accounts/Jonah/remove']);
 }
 
 // --- is there a newer version --------------------------------------------

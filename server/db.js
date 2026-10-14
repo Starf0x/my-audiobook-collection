@@ -168,11 +168,14 @@ db.exec('DELETE FROM progress WHERE book_id NOT IN (SELECT id FROM books)');
 db.exec(`UPDATE books SET narrator = '' WHERE narrator <> '' AND narrator = author
          AND (tagged IS NULL OR tagged NOT LIKE '%narrator%')`);
 
-// The admin password used to be settable in the app; it comes from the
-// container now, so a hash left in here means nothing and is dropped.
-for (const key of ['adminHash', 'adminSalt']) {
-  db.prepare('DELETE FROM settings WHERE key = ?').run(key);
-}
+// `adminName`, `adminHash` and `adminSalt` are the administrator chosen at the
+// gate, for an install with nothing set on the container. They were deleted here
+// for a while — the password came only from the container then, so a hash left
+// behind meant nothing — and they are kept again now that an app with no
+// administrator refuses to be used rather than running open (§7.12).
+//
+// `ADMIN_PASSWORD` still wins where it is set, and that is the way back in after
+// a forgotten one: set it on the container and the stored pair is ignored.
 
 export const getSetting = (key, def = '') =>
   db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? def;

@@ -79,6 +79,21 @@
 <div id="gate" class="gate" hidden>
   <div class="gate-card">
   <h2><img src="icon.svg" class="mark" alt=""> My Audiobook Collection</h2>
+  <!-- First run: nobody is the administrator yet, and until somebody is, the app
+       answers nothing. Shown instead of the sign-in card, not beside it. -->
+  <div id="gateClaim" hidden>
+    <p class="hint">This app has no administrator yet, so nothing in it will open. Make one now —
+      it is the account that approves listeners, scans the library and changes what is in it.</p>
+    <label>A name for the administrator</label><input id="gcName" autocomplete="username">
+    <label>A password (at least 8 characters)</label>
+    <input id="gcPass" type="password" autocomplete="new-password">
+    <p class="hint missing" id="gcSaid"></p>
+    <div class="row"><button id="gcGo">Make this the administrator</button></div>
+    <p class="hint">It is kept here, hashed. Setting <code>ADMIN_USER</code> and
+      <code>ADMIN_PASSWORD</code> on the container overrides it, which is also the way back in
+      if this password is ever forgotten.</p>
+  </div>
+
   <div id="gateSignIn">
     <p class="hint">Sign in to carry on where you were. Where you got to in a book, the books
       you have finished and the ones you have hearted are kept per person.</p>

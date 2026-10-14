@@ -12,11 +12,16 @@ const gate = $('#gate');
 // above the markup: the top layer belongs to whatever the browser and its
 // extensions put there, and a page that keeps taking it is a page a password
 // manager switches itself off on.
+const FIRST_FIELD = { in: 'giName', ask: 'gaName', claim: 'gcName' };
 const showGate = (which) => {
   $('#gateSignIn').hidden = which !== 'in';
   $('#gateAsk').hidden = which !== 'ask';
+  // `claim` is the first run: nobody is the administrator yet and the app
+  // answers nothing until somebody is. Shown instead of the sign-in card, with
+  // no way past it — there is nothing behind it to reach.
+  $('#gateClaim').hidden = which !== 'claim';
   gate.hidden = false;
-  ($('#' + (which === 'in' ? 'giName' : 'gaName'))).focus();
+  $('#' + FIRST_FIELD[which]).focus();
 };
 const closeGate = () => { gate.hidden = true; };
 
@@ -193,8 +198,27 @@ async function started() {
   return window.begin();
 }
 
+// Making the administrator, on an app that has none.
+$('#gcGo').onclick = async () => {
+  const name = $('#gcName').value.trim();
+  const pass = $('#gcPass').value;
+  said('#gcSaid', '');
+  try {
+    await post('/api/admin/claim', { name, password: pass });
+  } catch (e) {
+    return said('#gcSaid', e.message);
+  }
+  // Signed in already — having just chosen the password, being asked for it is a
+  // question with no purpose — so the page can simply start.
+  closeGate();
+  return started();
+};
+
 (async () => {
+  // `/api/admin` answers while unclaimed; almost nothing else does.
+  const how = await api('/api/admin').catch(() => ({}));
+  if (how.unclaimed) return showGate('claim');
   const me = await whoAmI();
-  if (me.signedIn || !me.required) return started();
+  if (me.signedIn) return started();
   return showGate('in');
 })();
