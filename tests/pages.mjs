@@ -556,6 +556,69 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     asked.filter((u) => u.endsWith('/remove')), ['/api/accounts/Jonah/remove']);
 }
 
+// --- what Series to complete shows ---------------------------------------
+// Every missing volume used to be a full card: a drawn cover, a heading, the
+// author, badges, a sentence of explanation and three buttons. Frank had
+// sixty-eight series short of something, which is several hundred cards — a page
+// nobody scrolls, to answer *which books am I missing?*. The series keeps the
+// heading; what is missing from it is a list of lines.
+{
+  const { window, document } = await open('index.html');
+  await settle();
+
+  // Two shapes feed this pane. A hole in the collection's own numbering knows a
+  // number and no title; Wikidata knows both.
+  const gaps = {
+    looked: 2,
+    gaps: [{
+      genre: 'Fantasy', name: 'The Dark Tower', author: 'Stephen King',
+      missing: [1, 3, 4], highest: 5, unnumbered: 0, says: 'Missing: book 1, 3 and 4.',
+    }],
+    unnumbered: [],
+  };
+  const online = {
+    total: 1, lastAt: '2026-10-14T10:00:00Z',
+    series: [{
+      found: true, genre: 'Fantasy', name: 'The Stormlight Archive', author: 'Brandon Sanderson',
+      label: 'The Stormlight Archive', description: 'a series', url: 'https://www.wikidata.org/wiki/Q1',
+      volumes: [1, 2, 3, 4, 5], missing: [2, 4],
+      titles: [{ no: 2, title: 'Words of Radiance' }, { no: 4, title: 'Rhythm of War' }],
+    }],
+  };
+  window.eval(`drawSeriesBoth(${JSON.stringify(gaps)}, ${JSON.stringify(online)})`);
+  await settle(120);
+
+  check('a missing volume is a line, not a card',
+    [document.querySelectorAll('#books .card').length,
+      document.querySelectorAll('#books .missing-vol').length], [0, 5]);
+  check('and the series is what carries the heading',
+    [...document.querySelectorAll('#books .series-head')].map((h) => h.textContent.replace(/\s+/g, ' ').trim())
+      .filter((t) => t.startsWith('Series')),
+    ['Series · The Dark Tower ⧉ copy open in library',
+      'Series · The Stormlight Archive ⧉ copy']);
+
+  const lines = (series) => [...document.querySelectorAll('#books .missing-vols')]
+    .map((ul) => [...ul.querySelectorAll('.missing-vol')].map((li) => [
+      li.querySelector('.no').textContent, li.querySelector('.what').textContent]))[series];
+  check('a hole in your own numbering lists the numbers, which is all it knows',
+    lines(0), [['1', 'title unknown'], ['3', 'title unknown'], ['4', 'title unknown']]);
+  check('and one Wikidata knows about lists the titles too',
+    lines(1), [['2', 'Words of Radiance'], ['4', 'Rhythm of War']]);
+
+  // What you do next with a line you cannot play.
+  check('every line can be copied, as author - thing',
+    [...document.querySelectorAll('#books .missing-vol .copy-search')].map((b) => b.dataset.copyText),
+    ['Stephen King - The Dark Tower 1', 'Stephen King - The Dark Tower 3',
+      'Stephen King - The Dark Tower 4',
+      'Brandon Sanderson - Words of Radiance', 'Brandon Sanderson - Rhythm of War'],
+  );
+  check('a title can be looked up, and a bare number has nothing to look up',
+    [...document.querySelectorAll('#books .missing-vols')]
+      .map((ul) => ul.querySelectorAll('a[href*="wikipedia"]').length), [0, 2]);
+  check('and the Wikidata entry is named once for the series, not once per volume',
+    document.querySelectorAll('#books a[href*="wikidata"]').length, 1);
+}
+
 // --- is there a newer version --------------------------------------------
 // The line of numbers under every page says which version is answering, which
 // tells you whether this is the new one only if you already knew what the new

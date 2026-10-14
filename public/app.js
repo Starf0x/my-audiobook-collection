@@ -1029,45 +1029,38 @@ function onlineWords(s) {
   return `Asked about ${s.total} series; Wikidata knew ${s.found}.`;
 }
 
-// A volume that is not here, drawn as the book it would be. It is a card like
-// any other — cover, title, author, series and number — because that is what a
-// reader is looking for: the thing to go and find. What it does not get is a
-// Play button, and its cover is drawn rather than a hole in the shelf.
-// It is one card whether the title is known or not. Wikidata gives a title; the
-// collection's own numbering gives only a number, and *Book 9* with the series
-// under it is still the thing to go and look for.
-const missingCard = ({ name, author, genre, no, title, why, extra = '' }) => {
-  const shown = title || `Book ${no}`;
+// A volume that is not here, as one line.
+//
+// It used to be a full card — a drawn cover, a heading, the author, badges, a
+// sentence of explanation and three buttons — on the grounds that a missing book
+// is still a book and that is what a reader is looking for. With sixty-eight
+// series to complete and several volumes short in each, that is several hundred
+// cards: a page nobody scrolls, where the one question being asked — *which
+// books am I missing?* — needs a card's worth of reading per answer.
+//
+// So the series is the thing with a heading, and what is missing from it is a
+// list under it. The number and the title, which is the whole answer; a copy
+// button, because what you do next is paste it into a shop or a search; and
+// Wikipedia where there is a title to look up.
+//
+// Wikipedia by its own search rather than a guessed article address: measured,
+// `index.php?search=` answers 302 straight to the article when the name is a
+// page — *The Dark Tower III: The Waste Lands* and *Dragonriders of Pern* both
+// land on theirs — and where there is no article it shows the search instead of
+// a red link. A volume with no title of its own has nothing to look up, so it
+// gets no link; the series head has one.
+const missingLine = ({ name, author, no, title }) => {
   const search = [author, title || `${name} ${no}`].filter(Boolean).join(' - ');
-  // Wikipedia by its own search rather than a guessed article address: measured,
-  // `index.php?search=` answers 302 straight to the article when the name is a
-  // page — *The Dark Tower III: The Waste Lands* and *Dragonriders of Pern* both
-  // land on theirs — and where there is no article it shows the search instead of
-  // a red link. A volume with no title of its own has nothing to look up, so that
-  // card asks about the series, which is the page that lists the books anyway.
-  const wiki = `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(title || name)}`;
-  return `<div class="card missing-book">
-    <div class="cover">
-      <img src="/api/drawn-cover?title=${encodeURIComponent(shown)}&author=${encodeURIComponent(author || '')}"
-        alt="" loading="lazy" decoding="async">
-    </div>
-    <div>
-      <h3>${esc(shown)}</h3>
-      <div class="sub">${esc(author) || 'author unknown'}</div>
-      <div class="sub series-of">Series · ${esc(name)} · book ${no}</div>
-      <div class="sub" style="margin-top:6px">
-        <span class="badge untagged">Not in your collection</span>
-        <span class="badge">${esc(genre)}</span>
-      </div>
-      <div class="desc">${esc(why)}</div>
-    </div>
-    <div class="actions">
-      <button class="copy-search" data-copy-text="${esc(search)}">⧉ Copy to search</button>
-      <a class="ghost" href="${esc(wiki)}" target="_blank" rel="noopener"
-        title="Read about ${esc(title || name)} on Wikipedia, in a new tab">Wikipedia ↗</a>
-      ${extra}
-    </div>
-  </div>`;
+  const wiki = title
+    ? `<a class="linkish" href="https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(title)}"
+        target="_blank" rel="noopener" title="Read about ${esc(title)} on Wikipedia, in a new tab">↗</a>`
+    : '';
+  return `<li class="missing-vol">
+    <span class="no">${esc(String(no))}</span>
+    <span class="what">${title ? esc(title) : '<em>title unknown</em>'}</span>
+    <button class="copy-search linkish" data-copy-text="${esc(search)}"
+      title="Copy “${esc(search)}” to search for it">⧉</button>${wiki}
+  </li>`;
 };
 
 // One series, headed the way the library heads a series, with its own copy
@@ -1076,12 +1069,10 @@ const missingSeries = (r) => `<div class="series-head">Series · ${esc(r.name)}
     <button class="copy-search linkish" data-copy-text="${esc([r.author, r.name].filter(Boolean).join(' - '))}"
       title="Copy “author - series” to search for it">⧉ copy</button></div>
   <div class="series-gap missing">${r.missing.length} of ${r.volumes.length} volume(s) not here${r.byTitle
-  ? ' — your books in it carry no numbers, so this was matched by title' : ''}</div>
-  ${r.titles.filter((v) => v.no && r.missing.includes(v.no)).map((v) => missingCard({
-  name: r.name, author: r.author, genre: r.genre, no: v.no, title: v.title,
-  why: `Wikidata lists this as book ${v.no} of ${r.label}${r.description ? ` (${r.description})` : ''}.`,
-  extra: `<a class="ghost" href="${esc(r.url)}" target="_blank" rel="noopener">On Wikidata</a>`,
-})).join('')}`;
+  ? ' — your books in it carry no numbers, so this was matched by title' : ''}
+    <a class="linkish" href="${esc(r.url)}" target="_blank" rel="noopener">on Wikidata ↗</a></div>
+  <ul class="missing-vols">${r.titles.filter((v) => v.no && r.missing.includes(v.no))
+  .map((v) => missingLine({ name: r.name, author: r.author, no: v.no, title: v.title })).join('')}</ul>`;
 
 // The same, for a hole in the collection's own numbering. There is no title to
 // show — nothing here knows what book 9 is called — so the number is the name,
@@ -1091,12 +1082,11 @@ const ownGapSeries = (g) => `<div class="series-head">Series · ${esc(g.name)}
       title="Copy “author - series” to search for it">⧉ copy</button>
     <button class="open-series linkish" data-genre="${esc(g.genre)}"
       data-series="${esc(g.name)}">open in library</button></div>
-  <div class="series-gap missing">${esc(g.says)}</div>
-  ${g.missing.map((no) => missingCard({
-  name: g.name, author: g.author, genre: g.genre, no, title: '',
-  why: `Your own books in this series run up to book ${g.highest}, with nothing on ${no}.`
-    + (g.unnumbered ? ` ${g.unnumbered} book(s) here carry no volume number, so this may be one of them.` : ''),
-})).join('')}`;
+  <div class="series-gap missing">${esc(g.says)}${g.unnumbered
+  ? ` ${g.unnumbered} book(s) here carry no volume number, so one of these may be among them.`
+  : ''}</div>
+  <ul class="missing-vols">${g.missing
+  .map((no) => missingLine({ name: g.name, author: g.author, no, title: '' })).join('')}</ul>`;
 
 // The pane, browsed the way the library is: this author's missing volumes, or
 // everybody's when no author is picked.

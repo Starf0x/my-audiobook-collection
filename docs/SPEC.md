@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1706 | Express app: every route, and nothing else |
+| `server/index.js` | 1741 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 217 | schema, migrations, settings, library list |
 | `server/admin.js` | 186 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
@@ -150,12 +150,12 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 415 | the admin page: columns, dialogs |
-| `public/app.js` | 1677 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/app.js` | 1667 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 133 | the listening page |
 | `public/shelf.js` | 318 | the listening page’s behaviour |
-| `public/style.css` | 849 | the whole look, every page, phone included |
+| `public/style.css` | 870 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -666,7 +666,6 @@ and an empty genre is a fair question with an empty answer.
 | `POST /api/books/:id/unabridged` | admin | `{on}`: the whole book, or a shortened reading. A fact about the book, so the admin states it and everybody sees it |
 | `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
 | `POST /api/cover` | admin | raw image bytes in, `{cover, bytes, what}` out — a pasted cover, written to `covers/` and adopted by the next Save |
-| `GET /api/drawn-cover?title=&author=` | — | a drawn cover for a book that is **not** in the library: the volumes Wikidata says are missing are shown as cards |
 | `GET/POST /api/ha/config` | admin | the address, whether a token is saved, how often to send, which listener; the token itself is write-only |
 | `POST /api/ha/test` | admin | ask Home Assistant who it is, with the saved token |
 | `GET /api/ha/players` | admin | every `media_player.*` HA knows, by friendly name |
@@ -1833,21 +1832,27 @@ hides behind a browser string is one Wikimedia may rightly block.
 
 **Browsed the way the library is.** *Series to complete* sits in the left column
 under Maintenance, and the pane behind it is not a report: the **authors column**
-fills with whoever is short of something, with a count, and a missing volume is
-drawn as the **card it would be** — cover, title, author, `Series · name · book
-N` — because what a reader wants is the thing to go and find. The card has no
-Play button, its cover is drawn by `/api/drawn-cover` from the title, and it is
-dashed and dimmed so a shelf of them never reads as part of the collection.
-Under that button the card carries **Wikipedia ↗**, in a new tab, and — where
-Wikidata answered — *On Wikidata* under it. They are `<a>` elements styled as
-buttons, not buttons that navigate, so a middle click opens a tab and the address
-can be copied. The Wikipedia address is that site's **own search**,
-`index.php?search=<name>`, rather than a guessed article path: measured, it
-answers 302 straight to the article when the name is a page — *The Dark Tower
-III: The Waste Lands* and *Dragonriders of Pern* both land on theirs — and where
-there is no article it shows the search instead of a red link. A card from the
-collection's own numbering has no title to look up, so it asks about the
-**series**, which is the page that lists the volumes anyway.
+fills with whoever is short of something, with a count, and under each series
+head comes the **list of what is missing** — one line per volume, its number,
+its title where one is known, and nothing else. The question the pane answers is
+*which series are not complete, and which books am I short of*, and a list
+answers it in the space a list takes. It used to draw each missing volume as the
+**card it would be**, cover and all, from `/api/drawn-cover`: a series with
+eleven holes was eleven covers tall, and a reader scrolled past pictures of books
+that do not exist to find out that three were missing. The drawn cover for a book
+that is not in the library had no other caller, so that route is gone with it.
+
+Each line carries a **copy button** and, where the title is known, **↗** to
+Wikipedia in a new tab. They are `<a>` elements styled as links, not buttons that
+navigate, so a middle click opens a tab and the address can be copied. The
+Wikipedia address is that site's **own search**, `index.php?search=<name>`,
+rather than a guessed article path: measured, it answers 302 straight to the
+article when the name is a page — *The Dark Tower III: The Waste Lands* and
+*Dragonriders of Pern* both land on theirs — and where there is no article it
+shows the search instead of a red link. A line from the collection's own
+numbering has no title to look up, so it has no ↗ at all; the series head has
+the Wikidata link, which is the page that lists the volumes anyway, and one
+series needs it once, not once per hole.
 
 Every card and every series head carries a **copy button** that puts
 `author - title` (or `author - series`) on the clipboard, through the same two
@@ -1861,15 +1866,14 @@ what **Wikidata knows and you do not have** was asked of the world. A series it
 could not place is listed with its reason, never folded into either.
 
 **Both halves are drawn the same way**: a series head carrying the sentence and
-the two buttons, then **one card per missing volume, one under the other**. The
-local half has no title to put on a card — nothing in the collection knows what
-book 3 of *Wide Gap* is called — so the number is the name, `Book 3`, and that
-card's copy button searches `author - series N` instead of `author - title`. The
-caveat about books with no volume number sits on the series head, where it
-qualifies the whole group, and is repeated on each card as the reason it is
-there: *your own books in this series run up to book 4, with nothing on 3.* A
-dense one-line list was what this replaced; a hole in a series is a book to go
-and find, and it reads as one only when it is drawn as one.
+its buttons, then **one line per missing volume, one under the other**. The
+local half has no title to put on a line — nothing in the collection knows what
+book 3 of *Wide Gap* is called — so it says *title unknown* beside the number,
+and that line's copy button searches `author - series N` instead of
+`author - title`. The caveat about books with no volume number sits on the series
+head, where it qualifies the whole group: *your own books in this series run up
+to book 4, with nothing on 3.* The sentence belongs to the series, so it is said
+once there rather than repeated under every hole.
 
 It is a job with a progress object, like a scan: network work over every series
 is minutes, the page can be closed while it runs, and it is never started by a
@@ -3388,6 +3392,7 @@ to insert order and looks broken when the app is right.
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
 | 2.12.0 | **there is always an administrator, and until there is, nothing opens.** An install with no `ADMIN_PASSWORD` ran open — `isAdmin()` answered true for everybody, so the collection, every listening position and all the accounts were there for anything that could reach the port, with nothing on screen to say so. The gate asks for one on first run, keeps it hashed in `settings`, and three routes answer until it is made. `ADMIN_PASSWORD` on the container still wins, which is the way back in after a forgotten one. This locks an install that was open yesterday: nothing is lost, but it asks before it answers |
+| 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.11.80 | accounts can be deleted again. Giving the administrator's row fewer controls in 2.10.64 broke the loop that wires every row: it took `[data-may-listen]` without looking, that row has none, and `forEach` stopped there — so every row after it was drawn with its buttons dead. The jsdom harness collected the error on every run for two weeks and nothing read it, because the checks asked what the markup held and the markup was perfect |
 | 2.11.72 | the app says when a newer version is out, and on an LXC install offers to take it — three ways that are one procedure: the button, `my-audiobook-collection-update` in the container, and the `ct/` command again on the host. It **asks** rather than installs: it runs as PUID and a page that can run a root script runs it for whoever reaches it, so it writes a file and a root-owned path unit that takes no argument does the work |
 | 2.11.64 | one command on a Proxmox host, and it is the standard one. The hand-rolled creator is gone: offering it beside the helper script is what had Frank run the wrong one twice — he pasted the command he already had, saw my menus, and said the GUI was still wrong. There is a standard for this and a second way of doing the same job is not a kindness. And it ends by saying how to mount the two folders, with the container's own id filled in: that is the moment somebody needs it, because the app is up and has nothing to show until the host hands the collection over |
