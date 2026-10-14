@@ -112,7 +112,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/index.js` | 1706 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 217 | schema, migrations, settings, library list |
-| `server/admin.js` | 97 | the one password, sessions, `requireAdmin` |
+| `server/admin.js` | 186 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
 | `server/scan.js` | 650 | walking the library, reading tags, filing books |
 | `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
 | `server/pool.js` | 42 | the lane cap and the item pool for disk work |
@@ -143,7 +143,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 209 | its behaviour — the statistics, the two ticks, and the administrator's own row |
+| `public/accounts.js` | 220 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 402 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
@@ -1969,6 +1969,40 @@ anything carries `requireAdmin`; hiding buttons is not what protects it.
 
 ### 7.12 Who is listening (`listeners.js`, `guessing.js`)
 
+**There is always an administrator, and until there is, nothing opens.** An
+install with no `ADMIN_PASSWORD` used to run open — `adminRequired()` was false,
+`isAdmin()` answered **true for everybody**, and the collection, every listening
+position and all the accounts were there for anything that could reach the port,
+with nothing on screen to say so. That was offered as a private install and it
+was a defensible thing to make possible; it was not a defensible thing to leave
+somebody on by default, which is what it was.
+
+So `adminRequired()` is now simply `true`, and the state that matters is
+`adminState()` in `admin.js`:
+
+| | |
+| --- | --- |
+| `env` | `ADMIN_PASSWORD` is set on the container. It wins, as it always has |
+| `stored` | a name and a password chosen at the gate, kept in `settings` as a scrypt hash with a salt of its own |
+| `unclaimed` | neither. **Three routes answer and nothing else does**: `/api/admin` so the page knows which card to show, `/api/admin/claim` to make one, and `/api/account/me` because every page asks it before drawing anything |
+
+The gate shows a third card on first run — a name and a password, at least eight
+characters, the same floor a listener's account has — and `claim()` **refuses
+once there is one**, so a page left sitting open at the gate is not a way to
+replace a password somebody has since set. Claiming signs the claimer in: having
+just chosen the password, being asked for it is a question with no purpose.
+
+`ADMIN_PASSWORD` on the container still wins over a stored one, and that is the
+way back in after a forgotten one — set it, restart, and the stored pair is
+ignored rather than deleted. `db.js` kept `adminHash` and `adminSalt` deleted at
+startup for as long as the password came only from the container; it keeps them
+now.
+
+**This locks an install that was open yesterday.** Anybody running without
+`ADMIN_PASSWORD` is asked to make an administrator the first time they open the
+app after upgrading. Nothing of theirs is lost — the listeners, the positions and
+the collection are untouched — but the app does not answer until they do.
+
 Until 2.7.0 a listener was a name in a table and the listening page answered
 whoever could reach it. What kept one person out of another's place in a book was
 that *a browser is only ever offered the names it has said itself* — honest about
@@ -3127,6 +3161,17 @@ is a trap worth naming:
   suite. The order is the point — a second copy of the list would be a thing to
   keep in step.
 
+**Asking `broke` is half the point, and it was being asked in one place.** The
+accounts page threw while wiring its rows for two weeks: the administrator's row
+has no *May listen* — their sign-in does not go through it — and the loop that
+hangs a handler on every row took it without looking, so `forEach` stopped on
+that row and every row drawn after it was left with nothing wired. The Delete
+buttons were all there and none of them did anything, which is a state no
+rendering check can see. The harness collected the error on every run and the
+checks read markup instead. They assert `broke` wherever a page is **driven**
+now, not only where it is loaded, and a control is checked for a handler and for
+reaching the far end when pressed.
+
 A route the suite has not been told about **refuses**, so the page's own
 `.catch(() => …)` supplies the empty shape, which is what it does when a route is
 off or a share is not mounted. A route that gains a caller with no fallback shows
@@ -3160,15 +3205,15 @@ whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage
 **What is in the repository, and what is only described here.** Until 2.6.64 the
 suites lived on one machine and nothing in `tests/` was committed at all: this
 table named seventy-four of them and a clone had none, so the checks the spec
-leans on could not be run by anybody who had only the spec. These seventeen are in
-`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the fifteen that run
+leans on could not be run by anybody who had only the spec. These eighteen are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the sixteen that run
 anywhere — `ogg-lengths` among them, which needs `ffmpeg` to make the Ogg it
 checks and says so and checks nothing where there is none, rather than passing
 quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `first-run` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -3342,6 +3387,8 @@ to insert order and looks broken when the app is right.
 | 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
 | 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
 | 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.12.0 | **there is always an administrator, and until there is, nothing opens.** An install with no `ADMIN_PASSWORD` ran open — `isAdmin()` answered true for everybody, so the collection, every listening position and all the accounts were there for anything that could reach the port, with nothing on screen to say so. The gate asks for one on first run, keeps it hashed in `settings`, and three routes answer until it is made. `ADMIN_PASSWORD` on the container still wins, which is the way back in after a forgotten one. This locks an install that was open yesterday: nothing is lost, but it asks before it answers |
+| 2.11.80 | accounts can be deleted again. Giving the administrator's row fewer controls in 2.10.64 broke the loop that wires every row: it took `[data-may-listen]` without looking, that row has none, and `forEach` stopped there — so every row after it was drawn with its buttons dead. The jsdom harness collected the error on every run for two weeks and nothing read it, because the checks asked what the markup held and the markup was perfect |
 | 2.11.72 | the app says when a newer version is out, and on an LXC install offers to take it — three ways that are one procedure: the button, `my-audiobook-collection-update` in the container, and the `ct/` command again on the host. It **asks** rather than installs: it runs as PUID and a page that can run a root script runs it for whoever reaches it, so it writes a file and a root-owned path unit that takes no argument does the work |
 | 2.11.64 | one command on a Proxmox host, and it is the standard one. The hand-rolled creator is gone: offering it beside the helper script is what had the owner run the wrong one twice — he pasted the command he already had, saw my menus, and said the GUI was still wrong. There is a standard for this and a second way of doing the same job is not a kindness. And it ends by saying how to mount the two folders, with the container's own id filled in: that is the moment somebody needs it, because the app is up and has nothing to show until the host hands the collection over |
 | 2.11.56 | **`ct/my-audiobook-collection.sh`**: a real Proxmox VE Helper Script, asked for outright. Not an imitation of the look but their engine, loaded from `community-scripts/core` — so the banner, Default and Advanced settings, the storage radiolist and the closing line with the address are the real ones. An app outside their repository can use it because the engine resolves `ct/` and `install/` from `COMMUNITY_SCRIPTS_URL`, which this points here |

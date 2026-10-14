@@ -35,10 +35,15 @@ export const WEEK = 7 * 24 * 60 * 60 * 1000;
 const A_NAME = 40;
 const SHORTEST = 8;
 
-// The admin is one account and it is not in this table: it comes from the
-// container, the way the password always has, so it survives an emptied appdata
-// folder and cannot be changed from inside the app.
-export const adminName = () => (process.env.ADMIN_USER || '').trim();
+// The admin is one account and it is not in this table. It comes from the
+// container where `ADMIN_PASSWORD` is set — the way it always has, so it
+// survives an emptied appdata folder — and otherwise from the one chosen at the
+// gate on first run. Either way `admin.js` is what knows which, so the name
+// comes from there; it is re-exported because everything that asks this file
+// for it was written before that was true.
+import { adminName } from './admin.js';
+
+export { adminName };
 
 const scrypt = (password, salt) => new Promise((ok, no) => {
   crypto.scrypt(password, salt, 32, (err, key) => (err ? no(err) : ok(key)));
