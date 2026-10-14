@@ -1,0 +1,20 @@
+[Unit]
+Description=Update My Audiobook Collection
+Documentation=https://github.com/Starf0x/my-audiobook-collection
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root, and it has to be: it writes in /opt and restarts the app's unit. That is
+# exactly why the app itself is not allowed to — it runs as PUID — and why this
+# does one fixed thing rather than anything it is told. Nothing is passed in: the
+# file that triggers it carries no instructions, only the fact that somebody
+# asked.
+ExecStart=/usr/local/bin/my-audiobook-collection-update
+# It stops and starts the app's own unit, so it must not be torn down with it.
+RemainAfterExit=no
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

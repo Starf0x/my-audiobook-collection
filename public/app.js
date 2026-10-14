@@ -885,6 +885,82 @@ async function loadAccounts() {
 // count because that is the one thing worth seeing without going to look.
 $('#accountList').onclick = () => { location.href = '/accounts'; };
 
+// --- is there a newer version ---------------------------------------------
+// The version in the line of numbers answers "is this the new one?" only for
+// somebody who already knows what the new one is. This says it outright, and
+// where it can be taken from here, offers to.
+//
+// `ask` is the button: without it the server answers from what it last heard,
+// since GitHub allows sixty questions an hour and the answer changes weekly.
+const HOW_TO_UPDATE = {
+  image: 'This is the Docker image. Updating it is pulling a new one — on Unraid, '
+    + '<em>Force update</em> in the Docker tab; with compose, <code>docker compose pull &amp;&amp; '
+    + 'docker compose up -d</code>. Nothing here could do that for you.',
+  folder: 'This is a checkout without the updater beside it. From a shell in the container: '
+    + '<code>cd /opt/my-audiobook-collection &amp;&amp; git fetch --tags &amp;&amp; '
+    + 'git checkout "$(git tag --sort=-v:refname | head -1)" &amp;&amp; npm ci --omit=dev</code>, '
+    + 'then restart it.',
+  lxc: 'Installing it stops the app for a moment and starts it again on the new version. '
+    + 'Your database, settings and audiobooks are not touched. '
+    + 'The same thing from a shell: <code>my-audiobook-collection-update</code>.',
+};
+
+async function loadUpdate(ask) {
+  $('#updateState').textContent = ask ? 'Asking GitHub…' : 'Looking…';
+  const u = await api(`/api/update${ask ? '?ask=1' : ''}`).catch((e) => ({ error: e.message }));
+  const last = u.last;
+  // The update restarts the app, so the page that asked for it never hears how
+  // it went — the updater leaves word behind instead, and this is where it is
+  // read. Only worth saying when it failed, or when it is news.
+  const said = last && last.said ? `<br><span class="warn">Last update: ${esc(last.said)}</span>` : '';
+
+  if (u.error && !u.newest) {
+    $('#updateState').innerHTML = `Running <strong>v${esc(u.running || '')}</strong>. `
+      + `Could not ask GitHub: ${esc(u.error)}.${said}`;
+    $('#updateNow').hidden = true;
+    $('#updateHow').innerHTML = '';
+    return;
+  }
+  if (u.behind) {
+    $('#updateState').innerHTML = `Running <strong>v${esc(u.running)}</strong> — `
+      + `<strong class="warn">v${esc(u.newest)} is out</strong>.${said}`;
+    $('#updateNow').hidden = !u.canInstall;
+  } else {
+    $('#updateState').innerHTML = `Running <strong>v${esc(u.running)}</strong>, `
+      + `<strong class="ok">the newest there is</strong>.${said}`;
+    $('#updateNow').hidden = true;
+  }
+  $('#updateHow').innerHTML = HOW_TO_UPDATE[u.how] || '';
+}
+
+$('#updateCheck').onclick = () => work($('#updateCheck'), 'Asking GitHub', () => loadUpdate(true), false);
+
+$('#updateNow').onclick = () => work($('#updateNow'), 'Updating', async () => {
+  if (!confirm('Install the newer version?\n\nThe app stops for a moment and comes back on it. '
+    + 'Your database, settings and audiobooks are not touched.')) return null;
+  const r = await post('/api/update', {}).catch((e) => ({ error: e.message }));
+  if (r.error) return `It could not: ${r.error}`;
+  // From here the app is being stopped and started under us, so there is no
+  // answer coming: say what will happen and let the page find out by reloading.
+  $('#updateState').innerHTML = '<strong>Updating…</strong> the app stops for a moment. '
+    + 'This page will reload when it is back.';
+  waitForItBack();
+  return 'Asked. It restarts on its own.';
+}, false);
+
+// Wait for the app to answer again, then reload so the page is the new version's
+// own. Polling its own address is the only signal there is — the request that
+// asked for the update was answered before any of this began.
+function waitForItBack() {
+  let tries = 0;
+  const look = setInterval(async () => {
+    tries += 1;
+    const alive = await fetch('/api/stats').then((r) => r.ok).catch(() => false);
+    if (alive && tries > 2) { clearInterval(look); location.reload(); }
+    if (tries > 120) clearInterval(look); // four minutes, then leave it alone
+  }, 2000);
+}
+
 // --- the database's own copies --------------------------------------------
 // Said out loud, because a backup that fails quietly is believed for months and
 // then is not there. The newest one's date is the whole of the answer.
@@ -1410,6 +1486,9 @@ $('#openSettings').onclick = async () => {
   // and when the database was last copied, which is the one thing nobody thinks
   // to look at until the day it matters
   await loadBackups();
+  // and whether there is a newer version, from what the server last heard: the
+  // button beside it is what asks GitHub again
+  loadUpdate(false);
   renderLibs();
   await loadGenreFolders();
   $('#browser').hidden = true;

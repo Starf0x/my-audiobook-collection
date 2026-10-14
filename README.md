@@ -463,9 +463,28 @@ carry on as root unless you say `ALLOW_ROOT=1`.
 
 ### Updating it
 
-Run the same script again. It fetches the newest tag, reinstalls the
-dependencies, keeps your settings file exactly as it is, and restarts the
-service.
+**The app tells you.** *Settings → Version* says which version is running and
+whether a newer one is out, and on an LXC install there is an **Install it**
+button beside it. The app stops for a moment and comes back on the new version;
+the page waits and reloads itself. Your database, settings and audiobooks are
+not touched.
+
+Three ways, all doing the same thing:
+
+| | |
+| --- | --- |
+| the button | *Settings → Version → Install it* |
+| in the container | `my-audiobook-collection-update` |
+| on the Proxmox host | the same `ct/` command again — it offers to update |
+
+**The app does not update itself**, and the distinction matters. It runs as
+`PUID`, not root, so it can neither write in `/opt` nor restart a service — and
+that is right rather than an obstacle: a page that can run a root script runs it
+for whoever reaches it, and with no `ADMIN_PASSWORD` set this one is open to your
+network by design. So it *asks*: it writes a file in its own data folder, and a
+root-owned systemd path unit watching for that file does the work. That unit
+takes no argument and only ever does the one thing, so asking for it is not a
+way in.
 
 ### Taking it off again
 
