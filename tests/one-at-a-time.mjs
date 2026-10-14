@@ -37,15 +37,53 @@ const { take, busyWith } = await import('../server/onejob.js');
 await import('../server/index.js');
 await new Promise((r) => setTimeout(r, 700));
 
+// The admin's cookie, once there is an administrator. Every request below needs
+// it: an app with one is a locked app, and a request with no session is answered
+// the same way whoever sent it.
+let asAdmin = '';
 const post = async (where, body) => {
   const r = await fetch(`${BASE}${where}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(asAdmin ? { Cookie: asAdmin } : {}) },
+    body: JSON.stringify(body),
   });
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
+const get = (where) => fetch(`${BASE}${where}`, { headers: asAdmin ? { Cookie: asAdmin } : {} });
 
 db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
             VALUES (7, '/x', 'Fantasy', 'An Author', 'A Book', 60)`).run();
+
+// --- nothing at all, until somebody is the administrator -----------------
+// An install with no `ADMIN_PASSWORD` used to run open: whoever reached the port
+// could do anything, and the whole collection and everybody's listening was
+// there for the taking with nothing on screen to say so. It refuses now, and
+// says what to do about it.
+{
+  const shut = await post('/api/move/7', { genre: 'Fantasy', author: 'A', title: 'B' });
+  check('with no administrator, a route that moves files refuses',
+    [shut.status, shut.body.unclaimed], [401, true]);
+  const told = await get('/api/admin').then((r) => r.json());
+  check('and the page is told which card to show', told.unclaimed, true);
+}
+
+// Made the way the container makes one. (The gate's own way — a name and a
+// password typed on first run — is `accounts.mjs`.)
+//
+// A name as well as a password, because the administrator listens under their
+// own name: with `ADMIN_USER` empty their places are kept under the empty one,
+// and a route that writes a place refuses for want of somebody to write it
+// against. The body's `user` is not an answer to that any more — it was, while
+// an unconfigured app ran open, and that is what these routes used to take.
+process.env.ADMIN_USER = 'Frank';
+process.env.ADMIN_PASSWORD = 'a password';
+const unlocked = await fetch(`${BASE}/api/admin/unlock`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ password: 'a password' }),
+});
+asAdmin = (unlocked.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+check('and with one set on the container, the administrator can unlock',
+  [unlocked.status, /^admin=/.test(asAdmin)], [200, true]);
 
 // --- the lock -----------------------------------------------------------
 check('nothing holds it to begin with', busyWith(), '');
@@ -97,21 +135,15 @@ check('and carries no control characters', asName(`Fr${NUL}ank`).includes(NUL), 
 check('a name of nothing but space is no name', asName('   '), '');
 check('and the spaces around one are not part of it', asName('  Frank  '), 'Frank');
 
-// --- what the open book route hands out ---------------------------------
+// --- what the book route hands out, and to whom --------------------------
 // Where a book sits on disk is the edit dialog's and Move…'s business, and
 // neither of those is on the listening page — which is the page this route
-// answers to anybody. `adminRequired()` reads the environment every time it is
-// asked, so a password can be put on this running server and taken off again.
-const bookNow = async () => (await fetch(`${BASE}/api/books/7`)).json();
-
-const wideOpen = await bookNow();
-check('with no password set, everybody is the admin and gets the path',
-  typeof wideOpen.path, 'string');
-
-// With a password set the route is behind the gate, so the question becomes what
-// a signed-in *listener* is given — somebody who may play the book and may not
-// edit it. (A browser with no account gets nothing at all; that is accounts.mjs.)
-process.env.ADMIN_PASSWORD = 'a password';
+// answers. So the question is what a signed-in *listener* is given: somebody who
+// may play the book and may not edit it.
+//
+// What an app with no administrator hands out is checked at the top: nothing.
+// That check used to read "with no password set, everybody is the admin and gets
+// the path", and it was true — which is what changed.
 const { requestAccount, decide } = await import('../server/listeners.js');
 await requestAccount({
   name: 'Ann', password: 'a good long one', reason: 'I would like to listen to these books',
@@ -130,7 +162,7 @@ check('nor the name of the cover file on disk', 'cover' in locked, false);
 check('but still everything the listening page plays with',
   [locked.title, Array.isArray(locked.tracks), typeof locked.coverV],
   ['A Book', true, 'string']);
-delete process.env.ADMIN_PASSWORD;
+// The administrator stays: an app with one is what an app looks like now.
 
 // --- Move… does not need an import folder ---------------------------------
 // The dialog asked `/api/import` for the list of genres, and that route walks
@@ -139,11 +171,11 @@ delete process.env.ADMIN_PASSWORD;
 // importing, and `moveBook` is an inline handler, so the throw went nowhere
 // anybody would see: the button simply did nothing on an install that had never
 // imported. This install has no import folder, which is the case that broke.
-const asksImport = await fetch(`${BASE}/api/import`);
+const asksImport = await get('/api/import');
 check('asking about imports without an import folder is refused',
   [asksImport.status, (await asksImport.json()).error],
   [400, 'No import folder set yet. Add one in Settings.']);
-const asksGenres = await fetch(`${BASE}/api/genrefolders`);
+const asksGenres = await get('/api/genrefolders');
 check('but the genres can still be had', asksGenres.status, 200);
 
 // What Move… does with those two answers is `pages`, which opens the dialog for
@@ -175,7 +207,7 @@ check('but the genres can still be had', asksGenres.status, 200);
   for (let i = 0; i < 50 && (said.running !== false || !said.error); i++) {
     // eslint-disable-next-line no-await-in-loop -- polling is the shape of this
     await new Promise((r) => setTimeout(r, 100));
-    said = await fetch(`${BASE}/api/convert/status`).then((r) => r.json()).catch(() => ({}));
+    said = await get('/api/convert/status').then((r) => r.json()).catch(() => ({}));
   }
   check('and what went wrong arrives in the status instead',
     [said.running, /\S/.test(said.error || '')], [false, true]);

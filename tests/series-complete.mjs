@@ -80,10 +80,17 @@ if (inUse) {
 }
 
 const server = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')],
-  { env: { ...process.env, DATA_DIR: DATA, PORT: String(PORT) }, stdio: 'inherit' });
+  { env: { ...process.env, DATA_DIR: DATA, PORT: String(PORT),
+      // An app with no administrator refuses to be used at all, so this suite
+      // makes one the way a container does and unlocks below.
+      ADMIN_USER: 'frank', ADMIN_PASSWORD: 'a very good password' },
+    stdio: 'inherit' });
+
+// Filled in once the server answers; every request below carries it.
+let asAdmin = '';
 
 const get = async (query) => {
-  const r = await fetch(`${BASE}/api/books?${query}`);
+  const r = await fetch(`${BASE}/api/books?${query}`, { headers: { Cookie: asAdmin } });
   if (!r.ok) throw new Error(`${r.status} on ${query}`);
   return r.json();
 };
@@ -107,6 +114,16 @@ const up = async () => {
 
 try {
   if (!await up()) throw new Error(`the server never answered on ${PORT} — last tried: ${lastSaid}`);
+
+  // Unlocked before anything is asked. The app is locked by an administrator
+  // now, always — an install with none refuses to be used rather than running
+  // open — so a suite that asks it anything has to be somebody.
+  const letMeIn = await fetch(`${BASE}/api/admin/unlock`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: 'a very good password' }),
+  });
+  asAdmin = (letMeIn.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+  if (!asAdmin) throw new Error(`could not unlock: ${letMeIn.status}`);
 
   const bySeries = async (name) => (await get(`genre=Fantasy&series=${encodeURIComponent(name)}`)).series[0];
   const byAuthor = async (name) => (await get(`genre=Fantasy&author=${encodeURIComponent(name)}`));
@@ -154,7 +171,7 @@ try {
   check('every series on an author page gets a state', (await byAuthor('Robin Hobb')).series.length, 1);
 
   // --- the whole collection at once, for Settings ------------------------
-  const all = await (await fetch(`${BASE}/api/series-gaps`)).json();
+  const all = await (await fetch(`${BASE}/api/series-gaps`, { headers: { Cookie: asAdmin } })).json();
   check('every series in the collection is looked at', all.looked, 8);
   check('only the ones with a hole are listed, biggest hole first then by name',
     all.gaps.map((s) => s.name), ['Wide Gap', 'Farseer', 'Late Start', 'The Dark Tower']);

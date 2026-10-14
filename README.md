@@ -305,7 +305,7 @@ check the paths it filled in:
 | Import folder | empty → `/import` | where new audiobooks arrive; leave empty if you do not import |
 | User ID / Group ID | `99` / `100` | **who the app writes as.** Leave these: without them it runs as root, and every folder it creates on your share belongs to root, so you are refused permission to write in it yourself |
 | File mode mask | `000` | the mode of what it creates. `000` is what an Unraid share normally is; `022` makes it read-only to others |
-| Admin password | empty | guards everything that changes the collection; the only place it is set |
+| Admin password | empty | guards everything that changes the collection. Leave it empty and the app asks you to make an administrator the first time you open it — see below |
 | Google Books API key | empty | for looking up missing metadata; the only place it is set |
 | `MA_TOKEN` | empty | the password Music Assistant logs in with. Empty means that whole face of the app is not there |
 | Home Assistant token | empty | only for the polling addresses: set it to make `/api/ha…` ask for it. The page above needs no container setting |
@@ -533,6 +533,28 @@ author. Emptying the box — or pressing Escape — puts back whatever was on sc
 before; picking a genre or an author lets go of the search.
 
 ## Two pages, and who may change things
+
+### The first time you open it
+
+**There is always an administrator, and until there is, nothing opens.** If you
+left the admin password empty on the container, the first page you get is one
+asking you to make one — a name and a password of at least eight characters. It
+is kept here, hashed, and signs you straight in.
+
+Before that, the app answers nothing at all. It used to run the other way: with
+no password set, whoever opened it could do anything — scan, move, delete,
+read everybody's listening — and nothing on screen said so. That was fine as a
+choice and poor as a default, which is what it had become.
+
+Setting `ADMIN_USER` and `ADMIN_PASSWORD` on the container still wins over the
+one made here, and **that is the way back in if you forget it**: set them,
+restart, and the stored one is ignored.
+
+Upgrading an install that ran open? Nothing of yours is lost — your listeners,
+their places and your collection are untouched — but you will be asked to make an
+administrator before the app will answer again.
+
+### Where things are
 
 There are no file names in the addresses. **`http://your-server:8523/`** is the
 listening page — it browses, plays and keeps each person's place, and is the one

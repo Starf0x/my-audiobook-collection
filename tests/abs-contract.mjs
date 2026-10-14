@@ -150,7 +150,12 @@ if (inUse) {
 }
 
 const server = spawn(process.execPath, [path.join(ROOT, 'server', 'index.js')],
-  { env: { ...process.env, DATA_DIR: DATA, PORT: String(PORT), MA_TOKEN: TOKEN }, stdio: 'inherit' });
+  { env: { ...process.env, DATA_DIR: DATA, PORT: String(PORT), MA_TOKEN: TOKEN,
+      // An app with no administrator refuses to be used at all, Music Assistant
+      // included: there is nobody to have let it in. The MA token is still what
+      // these routes authenticate with -- this only gets past the first gate.
+      ADMIN_USER: 'frank', ADMIN_PASSWORD: 'a very good password' },
+    stdio: 'inherit' });
 
 const up = async () => {
   for (let i = 0; i < 50; i++) {

@@ -165,12 +165,23 @@ async function load() {
 // One place that talks to the server for both ticks, so a refusal puts the tick
 // back wherever it was pressed.
 function wire() {
+  // Every row is wired here, and not every row has every control: the
+  // administrator's has only *May download* — no *May listen*, which their
+  // sign-in does not go through, and no *Delete…*, which would not close that
+  // door either. This took all three without looking, so the administrator's row
+  // threw, `forEach` stopped on it, and every row drawn after it was left with
+  // nothing wired at all. The ticks did nothing and the Delete buttons did
+  // nothing, which is how the accounts page came to be read-only.
+  //
+  // So each one is hung only where it exists. A row that lacks a control is not
+  // an error; a row whose controls do nothing is.
   document.querySelectorAll('.account').forEach((card) => {
     const name = card.dataset.name;
     const listen = card.querySelector('[data-may-listen]');
     const download = card.querySelector('[data-may-download]');
+    const drop = card.querySelector('[data-drop]');
 
-    listen.onchange = async () => {
+    if (listen) listen.onchange = async () => {
       const on = listen.checked;
       try {
         await post(`/api/accounts/${encodeURIComponent(name)}/state`, { state: on ? 'approved' : 'denied' });
@@ -182,7 +193,7 @@ function wire() {
       return load();
     };
 
-    download.onchange = async () => {
+    if (download) download.onchange = async () => {
       const on = download.checked;
       try {
         await post(`/api/accounts/${encodeURIComponent(name)}/download`, { may: on });
@@ -194,7 +205,7 @@ function wire() {
       return load();
     };
 
-    card.querySelector('[data-drop]').onclick = async () => {
+    if (drop) drop.onclick = async () => {
       if (!confirm(`Delete the account “${name}”?\n\nEverything that was only about them `
         + 'goes with it: where they were in every book, what they had finished, what they had '
         + 'hearted, and every browser signed in as them. The books themselves are untouched.')) return;
