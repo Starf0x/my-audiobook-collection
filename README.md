@@ -428,25 +428,16 @@ That maps gid 100 straight through; use the gid that owns your audiobooks, which
 which kind of container it is in and prints this if it finds a shift, so you do
 not have to decide now.
 
-### Into a container you already have
+### What the container ends up holding
 
-Inside it, as root — on Unraid's LXC, or a container you made yourself, or any
-Debian or Ubuntu machine with systemd:
+The helper script above installs node and ffmpeg, clones the **newest released
+version** — a tag, not whatever `main` happens to be — installs the three
+dependencies, writes `/etc/my-audiobook-collection.env`, installs a systemd
+service and starts it. At the end it prints the address.
 
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/install/lxc-install.sh)"
-```
-
-**This one installs onto whatever machine it runs on**, so it is not the one to
-paste at a Proxmox host prompt: there it would put node, ffmpeg and a service on
-the hypervisor itself. It now refuses to, and says which script to use instead —
-but if an earlier run already did it, the uninstaller below takes it off again.
-
-It installs node and ffmpeg, clones the **newest released version** — a tag, not
-whatever `main` happens to be — installs the three dependencies, writes
-`/etc/my-audiobook-collection.env`, installs a systemd service and starts it. At
-the end it prints the address, and if the service did not stay running it prints
-what the log said instead of claiming success.
+There is one way in and it is the one above. There were three once, two of them
+making containers, and the only thing that came of the choice was running the
+wrong one twice. Proxmox has a standard for this and the app follows it.
 
 | Where | What |
 | --- | --- |
@@ -503,10 +494,11 @@ Install again and it picks both up where they are.
 | `--yes` | do not ask. For a container you are about to destroy anyway |
 | `--nodesource` | also remove the apt repository it added for node. Node itself stays: something else may want it |
 
-Nothing it removes is inside your audiobooks. It is also what to run on a Proxmox
-host that an earlier `lxc-install.sh` was pasted into — it is safe on a machine
-where only some of it got as far as installing, and says so rather than failing
-when there is nothing of it there.
+Nothing it removes is inside your audiobooks. It is safe on a machine where only
+some of it got as far as installing, and says so rather than failing when there
+is nothing of it there — which is also what to run on a Proxmox host that an
+older one-liner was once pasted into, when it put the app on the hypervisor
+instead of in a container.
 
 If you made the container with the Proxmox script and want the whole thing gone,
 `pct stop <id> && pct destroy <id>` is shorter.

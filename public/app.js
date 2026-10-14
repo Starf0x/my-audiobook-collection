@@ -905,9 +905,32 @@ const HOW_TO_UPDATE = {
     + 'The same thing from a shell: <code>my-audiobook-collection-update</code>.',
 };
 
+// A red dot on the icon, and the way to act on it in the pulldown. Both say the
+// same thing and both are drawn from the same answer: there is a newer version,
+// and this install can take it. Settings is three clicks away and nobody opens
+// it to find out whether there is news, so the news comes to the page instead.
+// The menu entry is removed again the moment there is nothing to install — once
+// the update has run, the next answer says so and takes it away.
+function showUpdate(u) {
+  const behind = !!(u && u.behind);
+  $('#updateDot').hidden = !behind;
+  $('#updateDot').title = behind ? `Update available: v${u.newest}` : '';
+  $('#installUpdate').hidden = !(behind && u.canInstall);
+}
+
+// What the dot knows on a fresh page. The answer is the server's cached one —
+// GitHub is asked at most once an hour however many browsers load the page —
+// and a listener never sees it, since the route is the admin's.
+async function updateMark() {
+  if (perm.required && !perm.admin) return;
+  const u = await api('/api/update').catch(() => null);
+  if (u) showUpdate(u);
+}
+
 async function loadUpdate(ask) {
   $('#updateState').textContent = ask ? 'Asking GitHub…' : 'Looking…';
   const u = await api(`/api/update${ask ? '?ask=1' : ''}`).catch((e) => ({ error: e.message }));
+  showUpdate(u);
   const last = u.last;
   // The update restarts the app, so the page that asked for it never hears how
   // it went — the updater leaves word behind instead, and this is where it is
@@ -935,30 +958,79 @@ async function loadUpdate(ask) {
 
 $('#updateCheck').onclick = () => work($('#updateCheck'), 'Asking GitHub', () => loadUpdate(true), false);
 
-$('#updateNow').onclick = () => work($('#updateNow'), 'Updating', async () => {
+// Asking for the update, from the button in Settings or from the pulldown. The
+// same thing either way, so it is written once.
+const askForUpdate = (button) => work(button, 'Updating', async () => {
   if (!confirm('Install the newer version?\n\nThe app stops for a moment and comes back on it. '
     + 'Your database, settings and audiobooks are not touched.')) return null;
+  const was = await version();
   const r = await post('/api/update', {}).catch((e) => ({ error: e.message }));
   if (r.error) return `It could not: ${r.error}`;
   // From here the app is being stopped and started under us, so there is no
-  // answer coming: say what will happen and let the page find out by reloading.
-  $('#updateState').innerHTML = '<strong>Updating…</strong> the app stops for a moment. '
-    + 'This page will reload when it is back.';
-  waitForItBack();
+  // answer coming: say what will happen and let the page find out by watching.
+  say('<strong>Updating…</strong> the app stops for a moment. '
+    + 'This page reloads when it is back on the new version.');
+  waitForItBack(was);
   return 'Asked. It restarts on its own.';
 }, false);
 
-// Wait for the app to answer again, then reload so the page is the new version's
-// own. Polling its own address is the only signal there is — the request that
-// asked for the update was answered before any of this began.
-function waitForItBack() {
+$('#updateNow').onclick = () => askForUpdate($('#updateNow'));
+$('#installUpdate').onclick = () => { shutMenu(); askForUpdate(null); };
+
+// Updating takes minutes and the page it was started from is usually shut by
+// then, so what it has to say is said in two places: the line in Settings, and a
+// toast, which is on the screen wherever the reader is.
+function say(html, loud = false) {
+  const line = $('#updateState');
+  if (line) line.innerHTML = html;
+  if (loud) toast(html.replace(/<[^>]+>/g, ''));
+}
+
+const version = () => fetch('/api/stats')
+  .then((r) => (r.ok ? r.json() : null)).then((d) => (d && d.version) || '').catch(() => '');
+
+// Wait for the app to come back **on a different version**, then reload so the
+// page is the new version's own.
+//
+// "It answers" was the old signal, and it is not one: nothing has stopped yet
+// when the button is pressed — the app only writes a file, and the path unit has
+// to notice it, stop the service, fetch and run `npm ci` — so the app answers
+// happily for the next half minute and the page reloaded itself into the old
+// version straight away. Worse, when it never came back the poll ran out after
+// four minutes in silence, leaving "Updating…" on the screen for ever with
+// nothing to say whether it had worked. The version is the one honest signal:
+// it changes exactly when the new code is running.
+function waitForItBack(was) {
   let tries = 0;
   const look = setInterval(async () => {
     tries += 1;
-    const alive = await fetch('/api/stats').then((r) => r.ok).catch(() => false);
-    if (alive && tries > 2) { clearInterval(look); location.reload(); }
-    if (tries > 120) clearInterval(look); // four minutes, then leave it alone
+    const now = await version();
+    if (now && was && now !== was) {
+      clearInterval(look);
+      // The reload throws this message away with the page, so the news is left
+      // where the new page will find it and said there instead.
+      try { sessionStorage.setItem('updated-to', now); } catch { /* private window */ }
+      say(`<strong class="ok">Updated to v${esc(now)}.</strong> Reloading…`, true);
+      setTimeout(() => location.reload(), 1200);
+      return;
+    }
+    if (tries === 15) say('<strong>Updating…</strong> still working — it fetches the new '
+      + 'version and installs it, which takes a few minutes on a small container.');
+    if (tries > 150) { // five minutes, then stop pretending to watch
+      clearInterval(look);
+      say('<strong class="warn">It is taking longer than it should.</strong> The app is still on '
+        + `v${esc(was)}. Reload the page to look again; <code>journalctl -u `
+        + 'my-audiobook-collection-update</code> in the container says what happened.', true);
+    }
   }, 2000);
+}
+
+// And on the page that comes up afterwards: the update ran, this is the version
+// it ran to, and nothing else would have said so.
+function sayIfUpdated() {
+  let to = '';
+  try { to = sessionStorage.getItem('updated-to') || ''; sessionStorage.removeItem('updated-to'); } catch { /* private window */ }
+  if (to) toast(`Updated to v${to}.`);
 }
 
 // --- the database's own copies --------------------------------------------
@@ -1646,7 +1718,13 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
 // knows who is asking. This page is the admin's, so it also sends anybody who is
 // merely a listener back to the shelves — that check is `loadPerm`.
 window.begin = async () => {
+  // First, both of them, and before anything that loads: this is news about the
+  // page itself and it does not depend on a single row being drawn. Last in the
+  // list is where they were, and a column that failed to load took the words
+  // "it worked" down with it — which is the one moment they were needed.
+  sayIfUpdated();
   await loadPerm();
+  updateMark();
   await loadGenres();
   await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
     loadReplaced(), loadBroken(), loadSkipped(), loadConvertible(), loadConverted(),
