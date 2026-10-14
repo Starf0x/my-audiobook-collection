@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1741 | Express app: every route, and nothing else |
+| `server/index.js` | 1746 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 217 | schema, migrations, settings, library list |
 | `server/admin.js` | 186 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
@@ -143,7 +143,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 220 | its behaviour — the statistics, the two ticks, and the administrator's own row |
+| `public/accounts.js` | 249 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 402 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
@@ -2416,10 +2416,10 @@ sits *beside* the level rather than instead of it — somebody at the top who wa
 then refused by a switch would be a puzzle. Every download is written down with
 the title and announced, and the Accounts page lists what each person has taken.
 
-**And it is the one tick that reaches the administrator.** They sign in with the
-container's password and are let through every other check, which is right for
-everything the admin page does — but downloading is a thing a row on the accounts
-page allows, so that row allows it for them too. Frank turned *May download* off
+**And it is the one tick that reaches the administrator.** They are let through
+every other check, which is right for everything the admin page does — but
+downloading is a thing a row on the accounts page allows, so that row allows it
+for them too. Frank turned *May download* off
 on his own row and went on downloading; from 2.10.64 he is refused, and told that
 his own row is where to turn it back on rather than to ask the administrator.
 
@@ -2427,6 +2427,19 @@ An administrator whose name is **not** a row keeps what they always had: there i
 nothing to turn off, and nothing that could ever turn it back on, so the rule
 would be a lock with no key. *May listen* still does not reach them in either
 case — that tick governs `signIn`, and they do not come in that way.
+
+**Where that password lives is two answers, and the page has to give the right
+one.** `adminState()` says `env` or `stored`; `/api/accounts` carries it as
+`adminFrom`, and the badge on that row, the line beside *May download* and the
+sentence naming who you are all read it. The page cannot work it out for itself
+— `ADMIN_PASSWORD` is not something a browser can see — and it used to say the
+container in every case, which told an administrator who chose their password at
+the gate to go and edit a variable that is not what let them in, and never
+mentioned the thing they would actually want: setting it is the way back in if
+they forget. An answer that does not carry `adminFrom` falls back to the
+container reading, which is what every install was before 2.12.0. `first-run`
+checks the route in both states, because `pages` stubs it and would not notice
+the server dropping the field.
 
 `mayTakeABook(who, amAdmin)` is the whole rule, asked by the route that hands the
 book over **and** by `/api/account/me`, which decides whether the page offers the
@@ -3470,6 +3483,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.40 | the accounts page says **which administrator it is talking about**. It told everybody that the administrator signs in "with the name and password the container was given" — one of two answers since 2.12.0, and the wrong one for anybody who made their account at the gate on first run: it sent them to edit a variable that is not what let them in, and left out the one thing they would want, that setting it is the way back in if they forget. Three places said it; `/api/accounts` carries `adminFrom` and all three read that one answer. The old "every check here lets them through" went with it, untrue since *May download* began reaching them. The half `pages` cannot see — the route itself — is checked in `first-run`, both ways round, because a server that quietly stopped sending it would leave every administrator reading the container wording again with every page check still passing |
 | 2.12.32 | the container's **Notes panel** in the Proxmox GUI carries the app's own icon, its address and its own links, where the engine had put its logo and an *Open Script Page* button pointing at a page that does not exist for an app it does not host. `description()` is replaced outright — there is no seam for the image the way there is for the banner — and `packaging` holds the replacement to working out `IP`, which the engine's version set as a side effect and every closing line reads. And **the manual caught up with eight days of app**: a page for installing on Proxmox, an administrator that always exists, accounts where a dropdown used to be, missing volumes as lines, No Series, Unabridged, the update dot, phone-to-desktop places, and one Music Assistant provider being one listener |
 | 2.11.80 | accounts can be deleted again. Giving the administrator's row fewer controls in 2.10.64 broke the loop that wires every row: it took `[data-may-listen]` without looking, that row has none, and `forEach` stopped there — so every row after it was drawn with its buttons dead. The jsdom harness collected the error on every run for two weeks and nothing read it, because the checks asked what the markup held and the markup was perfect |
 | 2.11.72 | the app says when a newer version is out, and on an LXC install offers to take it — three ways that are one procedure: the button, `my-audiobook-collection-update` in the container, and the `ct/` command again on the host. It **asks** rather than installs: it runs as PUID and a page that can run a root script runs it for whoever reaches it, so it writes a file and a root-owned path unit that takes no argument does the work |

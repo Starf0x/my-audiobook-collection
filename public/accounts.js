@@ -60,14 +60,34 @@ const when = (iso) => (iso ? new Date(iso).toLocaleDateString() : '');
 // room. Rows kept before 2.10.72 carry nothing and are left unlabelled.
 const VIA = { 'music-assistant': 'Music Assistant', 'home-assistant': 'Home Assistant' };
 
+// Where the administrator's password lives, which since 2.12.0 has two answers.
+// This said only the first, and said it to everybody: an administrator who made
+// their account at the gate on first run was told to go and edit a container
+// variable that is not what let them in, and not told the one thing they would
+// actually want — that setting it is the way back in if they forget.
+//
+// `May listen` is absent from their row either way, and the reason has not
+// changed: that tick governs signing in, and the administrator does not come in
+// that way. `May download` does reach them, which is what the tick beside it
+// says; "every check lets them through" was true before that and is not now.
+const ADMIN_IS = {
+  env: 'This is the administrator’s own name. They sign in with ADMIN_USER and ADMIN_PASSWORD, '
+    + 'set on the container, not with an account on this page. Changing that password means '
+    + 'changing it there and restarting.',
+  stored: 'This is the administrator’s own name. The password was chosen when this app was first '
+    + 'opened and is kept here, hashed — not on this page, and not anywhere you can read it back. '
+    + 'Setting ADMIN_USER and ADMIN_PASSWORD on the container overrides it, which is the way back '
+    + 'in if it is ever forgotten.',
+};
+// Filled from the answer, because the server is the only thing that knows which.
+let adminFrom = 'env';
+
 const row = (a) => `<div class="account" data-name="${esc(a.name)}">
     <div class="who">
       <div class="name">
         ${a.level.icon ? `<span class="badge-icon" title="${esc(a.level.name)}">${a.level.icon}</span>` : ''}
         <strong>${esc(a.name)}</strong>
-        ${a.isAdmin ? `<span class="badge" title="This is the administrator's own name. They sign in with the name
-          and password the container was given, not with an account on this page, and every check here lets them
-          through — so the ticks below do not govern them.">administrator</span>`
+        ${a.isAdmin ? `<span class="badge" title="${esc(ADMIN_IS[adminFrom] || ADMIN_IS.env)}">administrator</span>`
     : a.hasPassword ? ''
       : `<span class="badge untagged" title="A name from before accounts existed. Whoever signs in with it first
         chooses the password.">no password yet</span>`}
@@ -113,7 +133,9 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
         on this page, so this row allows it for them. Turning it off here refuses them too.">
         <input type="checkbox" data-may-download ${a.granted ? 'checked' : ''}> May download
       </label>
-      <span class="sub">Signing in is the container’s password, not this page, so there is no
+      <span class="sub">Signing in is ${adminFrom === 'stored'
+    ? 'the password made when this app was first opened'
+    : 'the container’s password'}, not this page, so there is no
         <em>May listen</em> to give or take here — and deleting the name would not close that door either.</span>
     </div>` : `<div class="allowed">
       <label class="pick" title="The approval. Off means they cannot sign in.">
@@ -147,11 +169,18 @@ async function load() {
   const waiting = d.accounts.filter((a) => a.state === 'pending');
   const rest = d.accounts.filter((a) => a.state !== 'pending');
 
+  adminFrom = d.adminFrom || 'env';
+  // "nothing is locked and anybody on your network can listen" was the other
+  // half of this line, and it cannot happen any more: there is always an
+  // administrator, and until there is, this page does not open. What is still
+  // possible is `ADMIN_PASSWORD` set on the container with no `ADMIN_USER`
+  // beside it — then the administrator governs but has no name to show here.
   $('#whoRuns').innerHTML = d.admin
-    ? `You are <strong>${esc(d.admin)}</strong>, from the container. `
+    ? `You are <strong>${esc(d.admin)}</strong>, ${adminFrom === 'stored'
+      ? 'from the account made when this app was first opened' : 'from the container'}. `
       + `${d.accounts.length} account(s) besides you.`
-    : 'No <code>ADMIN_USER</code> is set on the container, so nothing is locked and '
-      + 'anybody on your network can listen.';
+    : 'The container sets <code>ADMIN_PASSWORD</code> but no <code>ADMIN_USER</code>, so the '
+      + 'administrator has no name to show here. Set one and restart.';
 
   $('#waiting').hidden = !waiting.length;
   $('#waitingList').innerHTML = waiting.map(row).join('');

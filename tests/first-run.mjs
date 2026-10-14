@@ -126,6 +126,19 @@ check('the administrator is in the database, so it survives a restart',
 check('and the password itself is nowhere in there',
   Object.values(kept).some((v) => String(v).includes('a good long one')), false);
 
+// --- and the page of accounts is told which one it is ---------------------
+// That page says where the administrator's password lives. There are two
+// answers now and it used to give only the first, telling somebody who made
+// their account at the gate to go and edit a container variable that is not
+// what let them in. It cannot work that out for itself — `ADMIN_PASSWORD` is
+// not something a browser can see — so the answer travels with the accounts.
+//
+// This is the half `pages` cannot check: it stubs the route, so a server that
+// quietly stopped sending this would leave every administrator reading the
+// container wording again and every check there still passing.
+check('the accounts page is told the administrator was made here',
+  (await get('/api/accounts')).body.adminFrom, 'stored');
+
 // --- the container wins ---------------------------------------------------
 // Which is the way back in after a forgotten in-app password: set it on the
 // container, restart, and the stored pair is ignored.
@@ -134,6 +147,9 @@ check('with nothing on the container, the stored one governs', admin.adminState(
 process.env.ADMIN_USER = 'frank';
 process.env.ADMIN_PASSWORD = 'the container one';
 check('and with one set, the container does', [admin.adminState(), admin.adminName()], ['env', 'frank']);
+check('and the accounts page is told that too, so it says the right thing',
+  [(await get('/api/accounts')).body.adminFrom, (await get('/api/accounts')).body.admin],
+  ['env', 'frank']);
 check("the container's password opens it",
   await admin.unlock('the container one', 'a').then(() => true).catch(() => false), true);
 check('and the stored one no longer does',
