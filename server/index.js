@@ -13,7 +13,7 @@ import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probe
   GOOGLE_COUNTRIES } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
-import { adminRequired, unlock, lock, isAdmin, requireAdmin, tokenOf, unclaimed, claim as claimAdmin, adminName, adminState } from './admin.js';
+import { unlock, lock, isAdmin, requireAdmin, tokenOf, unclaimed, claim as claimAdmin, adminName, adminState } from './admin.js';
 import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats,
   asName, WEEK, finishedABook, finishedCount, tookABook, downloadsOf, grantDownload, seenAdmin,
   find as findListener } from './listeners.js';
@@ -163,7 +163,7 @@ app.use('/api', (req, res, next) => {
 
 // --- who may change things ---------------------------------------------
 app.get('/api/admin', (req, res) => res.json({
-  required: adminRequired(), admin: isAdmin(req), unclaimed: unclaimed(),
+  required: true, admin: isAdmin(req), unclaimed: unclaimed(),
 }));
 
 // Making the administrator, on an app that has none. Once: `claim` refuses with
@@ -252,18 +252,19 @@ const aWeek = (req) => {
 app.get('/api/account/me', (req, res) => {
   const listener = listenerOf(req);
   res.json({
-    name: listener || (isAdmin(req) && adminRequired() ? adminName() : ''),
+    name: listener || (isAdmin(req) ? adminName() : ''),
     admin: isAdmin(req),
-    // with no ADMIN_PASSWORD set nothing is locked and nothing has to sign in:
-    // that is still what a private install looks like
-    required: adminRequired(),
-    signedIn: !!listener || (isAdmin(req) && adminRequired()),
+    // Always, since 2.12.0. Kept on the wire because both pages read it, and
+    // because "is anything locked here" is a fair question for a client to ask
+    // even when the answer cannot be no.
+    required: true,
+    signedIn: !!listener || isAdmin(req),
     // what the page needs to draw the badge beside a name and to know whether to
     // offer a download at all — the server refuses it either way
     level: levelOf(listener ? finishedCount(listener) : 0),
     // the same rule the download route applies, and from the same place: the
     // page offering a button the server then refuses is how this was reported
-    mayDownload: mayTakeABook(listener || (isAdmin(req) && adminRequired() ? adminName() : ''), isAdmin(req)),
+    mayDownload: mayTakeABook(listener || (isAdmin(req) ? adminName() : ''), isAdmin(req)),
   });
 });
 
@@ -324,12 +325,17 @@ app.post('/api/accounts/:name/download', requireAdmin, wrap(async (req, res) =>
 app.post('/api/accounts/:name/remove', requireAdmin, wrap(async (req, res) =>
   res.json(remove(req.params.name))));
 
-// Who a write belongs to. Once anything is locked it is the signed-in listener
-// and only them: a name in the body would let one account write into another's
-// place in a book, which is the whole thing accounts were added for. With no
-// ADMIN_PASSWORD set there are no sessions and no lock — the private install the
-// app has always supported — and then the name in the request is all there is.
-const whoWrites = (req) => (adminRequired() ? (req.listener || '') : asName(req.body?.user));
+// Who a write belongs to: the signed-in listener and only them. A name in the
+// body would let one account write into another's place in a book, which is the
+// whole thing accounts were added for.
+//
+// There was an `: asName(req.body?.user)` on the end of this, for the install
+// with no ADMIN_PASSWORD that ran open. 2.12.0 ended that install — there is
+// always an administrator now — and left the branch behind, reachable the day
+// `adminRequired()` stopped being `true`. A closed door with its old hinge still
+// bolted to the frame is not closed; it is one edit from open, and the edit
+// looks harmless. So the branch is gone rather than unreachable.
+const whoWrites = (req) => req.listener || '';
 
 // Who a *read* belongs to, which is the same question and was not being asked.
 //
@@ -365,7 +371,9 @@ const whoWrites = (req) => (adminRequired() ? (req.listener || '') : asName(req.
 // always had. The top level still earns it either way; `mayDownload` is where
 // that lives.
 const mayTakeABook = (who, amAdmin) => {
-  if (!adminRequired()) return true;
+  // `if (!adminRequired()) return true;` stood here — one line that handed every
+  // book to everybody, kept alive by a function that has returned `true` since
+  // 2.12.0. Gone for the same reason as the one in `whoWrites`.
   const row = who ? findListener(who) : null;
   if (amAdmin && !row) return true;
   return mayDownload(finishedCount(who), row && row.may_download);
@@ -385,9 +393,14 @@ const mayTakeABook = (who, amAdmin) => {
 // through the Audiobookshelf face and not through here.
 const cameFrom = (req) => (req.listener === undefined ? 'home-assistant' : 'page');
 
-const whoReads = (req) => (adminRequired()
-  ? (req.listener === undefined ? asName(req.query.user) : (req.listener || ''))
-  : asName(req.query.user));
+// Who a read belongs to. A cookie session answers for itself; `req.listener` is
+// undefined only for the two machine faces, which carry no session and say whose
+// shelf they want in the query.
+//
+// The whole of the other branch was `asName(req.query.user)` — the `?user=` leak
+// closed in 2.11.0, left standing behind the same always-true function. One
+// browser could read another's places by asking for them. Gone with the rest.
+const whoReads = (req) => (req.listener === undefined ? asName(req.query.user) : (req.listener || ''));
 
 // The names this browser has signed in as. It is a convenience, not a door —
 // the door is the session cookie — and it is what fills the name in on a page
@@ -1565,10 +1578,8 @@ app.get('/api/download/:id', wrap(async (req, res) => {
   }
   // Written down for whoever it is, the administrator included: the row that
   // decides is now theirs too, so what it allowed should be as visible.
-  if (adminRequired()) {
-    tookABook(who, book.id, book.title);
-    tookTheBook(who, book.title, book.author);
-  }
+  tookABook(who, book.id, book.title);
+  tookTheBook(who, book.title, book.author);
   const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
     .map((t) => t.path)
     .filter((f) => fs.existsSync(f));
