@@ -1192,17 +1192,12 @@ const sendCover = (req, res, id) => {
 
 app.get('/api/cover/:id', (req, res) => sendCover(req, res, req.params.id));
 
-// A cover for a book that is not here: the volumes Wikidata says are missing are
-// shown as cards, and a card with a hole where the picture goes reads as a
-// broken shelf rather than a book you do not own. Drawn from the title the same
-// way a coverless book's is, so the two sit together without pretending the
-// missing one is in the library.
-app.get('/api/drawn-cover', (req, res) => res.type('image/svg+xml')
-  .set('Cache-Control', `public, max-age=${untilTomorrow()}`)
-  .send(placeholderCover({
-    title: String(req.query.title || '').slice(0, 300),
-    author: String(req.query.author || '').slice(0, 200),
-  })));
+// `/api/drawn-cover` was here: a drawn picture for a book that is *not* in the
+// collection, because the volumes Wikidata says are missing used to be shown as
+// full cards and a card with a hole where the picture goes reads as a broken
+// shelf. Those cards are a list of lines now — several hundred cards is a page
+// nobody scrolls — so nothing asks for a cover of a book that is not here, and a
+// route nothing asks is a route to take out.
 
 // --- playback ----------------------------------------------------------
 // --- Home Assistant ----------------------------------------------------
