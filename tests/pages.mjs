@@ -94,7 +94,7 @@ process.on('unhandledRejection', (e) => faults.push(`unhandled: ${e && e.message
 // Opens a page and hands back its window. `replies` is consulted first, by the
 // longest matching path, then EMPTY, then a refusal; a function is called with
 // the URL so a test can answer differently per call.
-async function open(page, replies = {}) {
+async function open(page, replies = {}, before = null) {
   const broke = [];
   faults = broke;
   const console_ = new VirtualConsole();
@@ -143,6 +143,11 @@ async function open(page, replies = {}) {
   // pass by never running.
   Object.defineProperty(window.document, 'visibilityState', { value: 'visible', configurable: true });
   Object.defineProperty(window.document, 'hidden', { value: false, configurable: true });
+
+  // A hook for what the tab already held when the page opened — a carried book,
+  // a remembered name. It has to run before the scripts do, because what those
+  // scripts do *at load* is the thing some of these checks are about.
+  if (before) before(window);
 
   for (const file of scripts) {
     const tag = window.document.createElement('script');
@@ -1201,6 +1206,114 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     window.dispatchEvent(new window.Event('focus'));
     await settle();
     check('but twice in a moment is still one return', window.eval('window.askedAgain || 0'), 1);
+  }
+}
+
+// --- the book a tab carries belongs to whoever was listening ---------------
+// Frank: sign in as somebody else and you get the previous reader's Continue
+// listening, in a private window too.
+//
+// A tab carries the book it was playing from one page of the app to the next,
+// in `sessionStorage`. A tab outlives a sign-in, and that carry said *what* but
+// never *who*: Mario listened, signed out, Luigi signed in at the same tab and
+// refreshed — and the player came back holding Mario's book at Mario's
+// position. The private window made no difference, sessionStorage being per tab
+// rather than per person.
+//
+// It was not only shown. Picking the book up loads it, and the place is written
+// back under whoever is signed in, so Luigi ended up with a progress row on a
+// book he had never opened — which is what then appeared on his shelf. Checked
+// against the real thing: in the reproduction, Luigi came away with a place in
+// Mario's book.
+{
+  const BOOK = {
+    id: 7, title: 'A Carried Book', author: 'An Author', genre: 'Fantasy', coverV: 0,
+    tracks: [{ id: 71, idx: 0, title: 'One', duration: 600 }],
+  };
+  // `who` is what the **server** says, which is what `pickUp` asks. The tab's
+  // own `state.user` is deliberately set to somebody else here: it is the thing
+  // that used to be trusted, and the checks below are only honest if trusting
+  // it would give a different answer.
+  const carrying = async (carry, who) => {
+    const page = await open('listen.html', {
+      '/api/books': { ...BOOK, progress: null },
+      '/api/account/me': { signedIn: !!who, name: who, admin: false, required: true },
+    });
+    page.window.eval('state.user = "somebody else"; state.book = null;');
+    page.window.sessionStorage.setItem('carrying', JSON.stringify(carry));
+    await page.window.pickUp();
+    await settle();
+    return {
+      loaded: page.window.eval('state.book && state.book.id') || null,
+      left: page.window.sessionStorage.getItem('carrying'),
+      broke: page.broke,
+    };
+  };
+
+  const mine = { who: 'Luigi', id: 7, track: 0, position: 120, playing: false };
+  {
+    const { loaded, left, broke } = await carrying(mine, 'Luigi');
+    check('a tab carries its own reader’s book back, which is what this is for',
+      [loaded, !!left], [7, true]);
+    check('and nothing throws doing it', broke, []);
+  }
+  {
+    // the reproduction, in one check
+    const { loaded, left } = await carrying({ ...mine, who: 'Mario' }, 'Luigi');
+    check('but somebody else’s book is not picked up by the next reader',
+      loaded, null);
+    check('and it is not left in the tab for them to find later', left, null);
+  }
+  {
+    // written by a version that carried no name. Not ours to guess about.
+    const { who, ...nameless } = mine;
+    const { loaded, left } = await carrying(nameless, 'Luigi');
+    check('a carry from before this carried a name is dropped, not assumed',
+      [loaded, left], [null, null]);
+  }
+  {
+    // Signed in as nobody — which is what the sign-in gate is. The pick-up used
+    // to run at load, so this was the state it ran in every time.
+    const { loaded, left } = await carrying(mine, '');
+    check('and nobody signed in picks up nothing at all', [loaded, left], [null, null]);
+  }
+
+  // Comparing against the tab's own `state.user` would not have closed this.
+  // That is seeded from `localStorage` and holds the *previous* reader's name
+  // until a page signs in, so the carry and the name agree with each other —
+  // "Mario" against "Mario" — and the check passes itself. Asking the server is
+  // the whole difference, and this is where that shows: a page sitting at the
+  // gate, with both still in the tab and nobody signed in.
+  {
+    const page = await open('listen.html', {
+      '/api/books': { ...BOOK, progress: null },
+      '/api/account/me': { signedIn: false, name: '', admin: false, required: true },
+      '/api/admin': { required: true, admin: false, unclaimed: false },
+    }, (w) => {
+      w.localStorage.setItem('user', 'Mario');
+      w.sessionStorage.setItem("carrying", JSON.stringify({ who: "Mario", id: 7, track: 0, position: 120, playing: false }));
+    });
+    await settle(200);
+    check('a page sitting at the gate picks up nothing, though the tab still holds both',
+      [page.window.eval('state.book && state.book.id') || null,
+        page.window.eval('state.user'),
+        !page.document.querySelector('#gate').hidden],
+      [null, '', true]);
+  }
+
+  // The other half: what gets written, and that signing out takes it away.
+  {
+    const page = await open('listen.html', { '/api/books': { ...BOOK, progress: null } });
+    page.window.eval('state.user = "Mario"; state.book = ' + JSON.stringify(BOOK) + '; state.track = 0;');
+    page.window.dispatchEvent(new page.window.Event('pagehide'));
+    await settle();
+    const said = JSON.parse(page.window.sessionStorage.getItem('carrying') || '{}');
+    check('the carry records whose it is, which is the whole of the fix',
+      [said.who, said.id], ['Mario', 7]);
+
+    page.window.dropCarry();
+    check('and signing out drops it rather than leaving it for the next reader',
+      page.window.sessionStorage.getItem('carrying'), null);
   }
 }
 

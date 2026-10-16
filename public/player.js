@@ -383,7 +383,21 @@ function saveProgress(leaving) {
 // --- carried from one page of the app to the next -----------------------
 // sessionStorage, not localStorage: this is one tab carrying on where it was,
 // not every window in the browser starting to play.
+//
+// It carries **who** as well as what. A tab outlives a sign-in: Mario listens,
+// signs out, Luigi signs in at the same tab and refreshes — and the player came
+// back holding Mario's book at Mario's position, because the carry belonged to
+// the tab and nothing in it said whose it was. A private window made no
+// difference, sessionStorage being per tab rather than per person. Worse than
+// showing it: pressing play would then have written Mario's place into Luigi's
+// progress for that book.
 const CARRY = 'carrying';
+
+// Somebody else's, or from before this carried a name at all. Either way it is
+// not ours to pick up, and not ours to keep — the server has the real position,
+// so nothing is lost by dropping it.
+const dropCarry = () => { try { sessionStorage.removeItem(CARRY); } catch { /* private window */ } };
+window.dropCarry = dropCarry;
 
 // pagehide rather than beforeunload: it is the one a phone browser can be
 // relied on to send when the page goes away.
@@ -391,6 +405,7 @@ window.addEventListener('pagehide', () => {
   saveProgress(true);
   if (!state.book) return;
   sessionStorage[CARRY] = JSON.stringify({
+    who: state.user,
     id: state.book.id,
     track: state.track,
     position: audio.currentTime,
@@ -398,11 +413,23 @@ window.addEventListener('pagehide', () => {
   });
 });
 
+// Whose carry it is, asked of the **server** rather than of this tab.
+//
+// `state.user` is seeded from `localStorage` before anything is asked, so it
+// holds the *previous* reader's name until a page signs in — and comparing the
+// carry against that would have it agree with itself. Asking also means this
+// works on every page that loads the player, however that page boots: `/ha`
+// loads `player.js` without `account.js`, so anything hung off the listening
+// pages' `started()` would have quietly stopped the book carrying to the Home
+// Assistant page, which is a thing `plays-on` checks and found.
 async function pickUp() {
   const said = sessionStorage[CARRY];
   if (!said) return;
   let carried;
-  try { carried = JSON.parse(said); } catch { return; }
+  try { carried = JSON.parse(said); } catch { return dropCarry(); }
+  const me = await api('/api/account/me').catch(() => null);
+  const who = (me && me.name) || '';
+  if (!who || carried.who !== who) return dropCarry();
   // the book may have been deleted from the collection while this tab was open
   try { await playBook(carried.id, carried); } catch { return; }
   if (!carried.playing) return;
@@ -414,4 +441,7 @@ async function pickUp() {
     : `It could not carry on playing: ${e.name}`));
 }
 
+window.pickUp = pickUp;
+// At load, on every page that has a player. It asks the server who this is
+// before it takes anything, so the moment it runs no longer matters.
 pickUp();

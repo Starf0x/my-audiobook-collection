@@ -60,6 +60,10 @@ async function whoAmI() {
 
 $('#signOut').onclick = async () => {
   await post('/api/account/signout', {}).catch(() => {});
+  // The book this tab was carrying goes with the session. `pickUp` would refuse
+  // it anyway now, asking the server whose it is, but leaving one person's
+  // listening in the next person's tab is not something to be talked out of.
+  window.dropCarry?.();
   location.reload();
 };
 
@@ -194,6 +198,12 @@ async function favouritesOf(name, li) {
 // --- starting the page ----------------------------------------------------
 async function started() {
   await whoAmI();
+  // For the sign-in that happens without a page load: somebody signs in at the
+  // gate of a tab that was already carrying their own book, and the pick-up at
+  // load ran while nobody was signed in. `pickUp` asks the server whose the
+  // carry is, so calling it again here costs one question and can take nothing
+  // it should not.
+  window.pickUp?.();
   await loadFavourites();
   return window.begin();
 }
