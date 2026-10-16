@@ -148,13 +148,13 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/player.js` | 462 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 435 | browsing the collection: what both pages do the same way, in one copy |
+| `public/browse.js` | 439 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 448 | the admin page: columns, dialogs |
-| `public/app.js` | 1748 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/app.js` | 1762 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 159 | the listening page |
-| `public/shelf.js` | 321 | the listening page’s behaviour |
+| `public/shelf.js` | 335 | the listening page’s behaviour |
 | `public/style.css` | 997 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
@@ -2641,11 +2641,31 @@ and either the tags the files carry or *Not in MP3*), the description, and the
 actions — *Play*, *Find metadata*, *Write into MP3s*, *Edit metadata*, *Move…*,
 *Delete…*. The listening page shows the same card with *Play* only.
 
-**Landing view** (`#home`): shelves of tiles — *Continue listening* with a
-progress bar, and *Recently added*. `keptBooks(user)` reads every book the
-listener has a place in, each carrying `finished`; the shelf takes the ones that
-are not, whole rather than twelve at a time in SQL, or a dozen finished books
-would hide the one being listened to.
+**Landing view** (`#home`): the book you are in the middle of as a **card**,
+then shelves of tiles — the rest of *Continue listening* with a progress bar,
+and *Recently added*. `keptBooks(user)` reads every book the listener has a
+place in, each carrying `finished`; the shelf takes the ones that are not, whole
+rather than twelve at a time in SQL, or a dozen finished books would hide the
+one being listened to.
+
+The card is Frank's, pointing at a screenshot: the page led with a *tile* — a
+cover, a title and a sliver of progress — so the thing he had come back for was
+the thing with the least said about it. A card is what the rest of the app draws
+a book as, and the first of *Continue listening* is drawn as one: cover, series,
+year, how long, what it is about, Listened, and the one button. The shelf under
+it keeps the others, and the book on the card is **not** repeated as the first
+tile.
+
+`cardFor(b, apart, extra)` is lifted out of `drawBooks` for this rather than
+copied, so the home page cannot drift into drawing a card that says something
+subtly different from every other card. Each page keeps its own — the admin's
+carries *Unabridged* and five more buttons.
+
+The `extra` class earns its keep: the card is marked `carry-on`, and what tells
+a returning page that the shelves are on screen looks for **the shelf or the
+card**. It looked only for the shelf, and a reader with exactly one book on the
+go has no shelf — that book is the card — so coming back stopped refreshing for
+precisely the reader the refresh was written for.
 
 **The Listened section** sits in the genres column, under the genres and above
 Maintenance on the admin page: a `col-title` and one row with a count, both
@@ -3647,6 +3667,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.96 | **the page opens with the book you are in the middle of, as a card.** Frank, pointing at a screenshot: the home page led with a *tile* — a cover, a title and a sliver of progress — so the thing he had come back for was the thing with the least said about it. The first of *Continue listening* is a card now, the one the rest of the app draws a book as, and the shelf under it keeps the others without repeating it. `cardFor` is lifted out of `drawBooks` rather than copied, so a card on the home page cannot drift from every other card. And the marker that tells a returning page the shelves are on screen counts the **card** as well as the shelf — it looked only for the shelf, and a reader with one book on the go has none, so coming back stopped refreshing for exactly the reader it was written for |
 | 2.12.88 | **nothing in the player bar changes width while you look at it.** The bar wraps on a phone, so what a row demands decides how tall the bar is — and a bar that gains a row moves *up*, under the thumb pressing it. `#pPlay` was eleven pixels wider saying "▶ Resume" than saying "⏸ Pause", and the clock grows a field when a book passes an hour. Both hold one width now, in `em` and `ch` so the reservation grows with the device's own font. Frank reported the jump on a **Galaxy S25**; it was never reproduced here, where the row had 28px of slack — which is about what a different system font is worth, and is an argument for the fix rather than proof of it. The check is on the thing that could move the bar, not on the bar staying put on a device nobody here has |
 | 2.12.80 | **the book a tab carries now says whose it is.** Frank: sign in as somebody else and you get the previous reader's *Continue listening*, in a private window too. A tab outlives a sign-in and `sessionStorage` belongs to the tab, so the carried book — which said *what* but never *whose* — came back in the next reader's player at the previous reader's position. It was not only shown: picking a book up loads it and the place is written back under whoever is signed in, so the reproduction left Luigi with a **progress row in a book he had never opened**. `pagehide` records the name, `pickUp` asks `/api/account/me` whether that is who is here and drops anything else, and signing out drops it outright. Asked of the *server*, not of `state.user` — that is seeded from `localStorage`, holds the previous reader's name, and would have agreed with the stale carry. Asking also makes the timing irrelevant, which `/ha` needs: it loads `player.js` without `account.js` |
 | 2.12.72 | **a long chapter name widened the whole page.** A `<select>` sizes itself to its widest option and a flex item's automatic minimum is its content, so one chapter called *23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the box 575px wide inside a 375px window — and 498px inside a 1265px one, so the **desktop** had a sideways scrollbar too and nobody had noticed. `min-width: 0`, outside the phone rules, because a long name is long on any screen. The bar also has **its own play/pause back**, saying `⏸ Pause` or `▶ Resume` rather than leaving a glyph to be recognised: taking it out in 2.12.56 left the cover and the book's card, and the card is only on screen while you are looking at that book. And the mute and the volume slider are one element, after the bar wrapped between them and left the slider across the full width, where a yellow bar under a yellow bar reads as a second progress line |
