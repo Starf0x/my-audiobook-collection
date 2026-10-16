@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1757 | Express app: every route, and nothing else |
+| `server/index.js` | 1782 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 217 | schema, migrations, settings, library list |
 | `server/admin.js` | 191 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
@@ -148,14 +148,14 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/player.js` | 410 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
+| `public/browse.js` | 435 | browsing the collection: what both pages do the same way, in one copy |
 | `public/index.html` | 444 | the admin page: columns, dialogs |
-| `public/app.js` | 1745 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/app.js` | 1748 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 155 | the listening page |
-| `public/shelf.js` | 318 | the listening page’s behaviour |
-| `public/style.css` | 929 | the whole look, every page, phone included |
+| `public/shelf.js` | 321 | the listening page’s behaviour |
+| `public/style.css` | 950 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -735,6 +735,7 @@ and an empty genre is a fair question with an empty answer.
 | `POST /api/series-online` | admin | starts the Wikidata check over every series (§7.10b) |
 | `GET /api/series-online/status` | admin | how far it is, and what each series came back with |
 | `GET /api/search?q=` | — | cards, across everything |
+| `GET /api/year?year=` | — | every book of one year, across every genre. Four digits or an empty list |
 | `GET /api/listened` | — | every book that listener has finished, the Listened section's own list |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
@@ -1866,6 +1867,46 @@ At most 6 words; fewer than two characters in total returns nothing. `COALESCE`
 on every column matters — concatenating a NULL in SQLite yields NULL and the book
 would never match. Results carry the same fields as an ordinary book list, so
 both pages render them with the code they already have.
+
+### 7.10a The three things on a card that are also a way somewhere
+
+A card names the **author**, the **year** and — where it is not already the
+answer — the **genre**, and each of those is the start of the next question:
+*what else has this one written*, *what else is from 2015*, *what else is in
+Fantasy*. The way to ask was to read the word off the card, find it in a column
+and click that. A search made it worse: a result can come from any shelf at all,
+and the only way back to where it lives was to go hunting for the author's name.
+
+So each is a button. `byLine`, `yearBadge` and `genreBadge` live in `browse.js`,
+which both pages load, and `wireCardLinks()` hangs the handlers on after each
+draw the way the cover handlers already are — so a card drawn by either page's
+`drawBooks` behaves the same. They carry **`data-` attributes rather than an
+inline `onclick`**: these hold names, and an author called *O'Brian* ends an
+inline handler's string argument in the middle, leaving whatever the rest of the
+name spells to run as code.
+
+The author and the genre go where they already went — `openInLibrary(genre,
+author)` and `selectGenre` — and the year is the one new route, `/api/year`:
+every book of that year across the whole collection, since a year is not a shelf
+and what is wanted is the run of them across all of the shelves.
+
+**Whether to say the genre is asked of the answer, not of the column.** A view
+that spans the shelves sends a genre with each book; `/api/books` is given one
+and so sends none back. That is the whole test, and the card needs no flag. It
+asked `state.genre` first — what the *column* has selected — and a search run
+after browsing an author showed no genres at all, the column still holding the
+one from before. Found by looking, in a browser, after every check passed; it is
+a check now.
+
+`/api/year` takes four digits or answers with an empty list. An **empty** year
+is the part of that guard which does something: the column is text and an
+undated book holds `''`, so without it `?year=` hands back every undated book in
+the collection. The rest of the guard — `201`, `MMXV`, a quote and an `OR` —
+rejects input that the parameterised query would match no row for anyway.
+Checks for those four were written, passed, and were **taken out again**: each
+would have passed with the whole guard deleted, which makes it a check that
+cannot fail. The guard stays, because bounding what reaches a query is worth
+doing either way; the suite simply does not pretend to cover it.
 
 ### 7.10b Which volumes a series actually has (`wikidata.js`)
 
@@ -3531,6 +3572,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.64 | **the author, the year and the genre on a card are each a way somewhere.** A card names all three and each is the start of the next question — *what else has this one written*, *what else is from 2015* — and the way to ask was to read the word, find it in a column and click that. A search was worst: a result from any shelf at all, and nothing on it saying which. The author opens their shelf with the genre selected beside it, the year opens `/api/year` (every book of it, across the shelves), and the genre is **said** on any view that spans them. Which views those are the answer already knows: `/api/books` is given a genre and sends none back, and everything that reaches across sends it — asking `state.genre` instead meant a search run after browsing an author showed no genres at all. `data-` attributes rather than inline handlers, because an author called *O'Brian* ends a string argument in the middle |
 | 2.12.56 | **the player on a phone is four rows, each one thing.** Frank sent a screenshot with five faults on one screen: *Sign out* stranded mid-row, the bar's own pause button beside a cover that is the same button, a bare ⤓ next to a volume slider, ✕ parked mid-bar, and the chapter line — the longest text there — clipped to 45% of the width. `order` on each control arranges the bar now; `#pPlay` is not drawn at all, because three ways to pause is two too many and the cover is the one that stays, so it is wrapped to carry the same `⏸`/`▶` every other cover in the app does; and `#pGet` says **Download**, there being no hovering on a phone and it being the one control in the bar that writes a file to somebody's device. None of it is visible to `pages` — jsdom has no layout engine — so `plays-on` takes a **phone-sized pass** and reads the computed positions, and `pages` holds the two copies of the bar to each other control for control |
 | 2.12.48 | **the hinge came off the door 2.12.0 closed.** Making `adminRequired()` return `true` ended the install that ran open; it left behind every branch that asked, and three of those were the controls themselves — `whoWrites` falling back to a name in the request body, `whoReads` to `?user=`, and a line in `mayTakeABook` handing every book to everybody. All three still written out, all three one `return false` away, behind a function whose name invites exactly that edit. Gone, with the function, so there is nothing left to flip. Nothing behaves differently — every suite passes unaltered — and `accounts` still fails four checks the moment the read leak is put back by hand, which is the part that matters |
 | 2.12.40 | the accounts page says **which administrator it is talking about**. It told everybody that the administrator signs in "with the name and password the container was given" — one of two answers since 2.12.0, and the wrong one for anybody who made their account at the gate on first run: it sent them to edit a variable that is not what let them in, and left out the one thing they would want, that setting it is the way back in if they forget. Three places said it; `/api/accounts` carries `adminFrom` and all three read that one answer. The old "every check here lets them through" went with it, untrue since *May download* began reaching them. The half `pages` cannot see — the route itself — is checked in `first-run`, both ways round, because a server that quietly stopped sending it would leave every administrator reading the container wording again with every page check still passing |

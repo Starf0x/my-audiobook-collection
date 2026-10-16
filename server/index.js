@@ -1013,6 +1013,31 @@ app.get('/api/search', (req, res) => {
     finished: countsAsRead({ ...b, trackSeconds }) })));
 });
 
+// Every book of one year, from the year on a card. A card already says 2015;
+// the question that follows is "what else is from 2015", and until now the only
+// way to ask it was to type the number in the search box and get every book
+// whose description happens to contain it.
+//
+// The whole collection, not one genre: a year is not a shelf, and what is
+// wanted is the run of books across all of them. Ordered by author and then
+// title, which is the order the shelves read in everywhere else.
+app.get('/api/year', (req, res) => {
+  const year = String(req.query.year || '').trim();
+  // Four digits or nothing. The column is text — a tag can hold anything — so
+  // this is what keeps "2015 OR 1=1" from being a year.
+  if (!/^\d{4}$/.test(year)) return res.json([]);
+  const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
+                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
+                                  p.position > 0 AS started, ${KEPT}
+                           FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
+                           WHERE b.year = ?
+                           ORDER BY b.author, b.series_no, b.title
+                           LIMIT 500`)
+    .all(whoReads(req), year);
+  res.json(rows.map(({ trackSeconds, ...b }) => ({ ...b, coverV: coverV(b),
+    finished: countsAsRead({ ...b, trackSeconds }) })));
+});
+
 app.post('/api/listened', (req, res) => {
   const user = whoWrites(req);
   const bookId = Number(req.body.bookId);

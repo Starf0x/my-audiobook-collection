@@ -104,6 +104,79 @@ const seriesLine = (b) => (b.series
   ? `<div class="sub series-of">Series · ${esc(b.series)}${b.series_no ? ` · book ${b.series_no}` : ''}</div>`
   : '<div class="sub no-series" title="This book is not part of a series">No Series</div>');
 
+// --- the three things on a card that are also a way somewhere --------------
+//
+// A card already names the author, the year and (where it is not obvious) the
+// genre. Each of those is the start of the next question — *what else has this
+// one written*, *what else is from 2015*, *what else is in Fantasy* — and the
+// answer was to read the word, find it in a column and click that. Searching
+// made it worse: a result from any shelf at all, and the only way back to where
+// it lives was to notice the author's name and go hunting.
+//
+// So each of the three is a button. `data-` attributes rather than an inline
+// `onclick`, because these carry names — an author called *O'Brian* ends an
+// inline handler's string argument in the middle, and the handler that follows
+// is whatever the rest of the name happens to spell.
+const byLine = (b) => (b.genre && b.author
+  ? `<button class="linkish by-author" data-genre="${esc(b.genre)}" data-author="${esc(b.author)}"
+      title="Everything by ${esc(b.author)}, on their own shelf">${esc(b.author)}</button>`
+  : esc(b.author || ''));
+
+const yearBadge = (b) => (b.year
+  ? `<button class="badge linkish" data-year="${esc(b.year)}"
+      title="Every book in the collection from ${esc(b.year)}">${esc(b.year)}</button>`
+  : '');
+
+// Only where it is not already the answer: browsing one genre, every card on
+// screen is in it, and a badge saying so on all of them is a word repeated
+// forty times. A search, Favourites, Listened, a year and the maintenance lists
+// all reach across the shelves, and there the genre is the thing a card does
+// not otherwise say.
+//
+// Which of those a view is, the answer already knows: `/api/books` takes a
+// genre and so does not send one back, and every route that spans them does.
+// This asked `state.genre` instead, which is what the *column* has selected —
+// so a search run after browsing an author showed no genres at all, the column
+// still holding the one from before. The payload is the honest test.
+const genreBadge = (b) => (b.genre
+  ? `<button class="badge linkish" data-genre="${esc(b.genre)}"
+      title="Everything in ${esc(b.genre)}">${esc(b.genre)}</button>`
+  : '');
+
+// Every book of one year, across the whole collection. Not a shelf, so it has
+// no genre and no author selected — which is also what makes the genre badge
+// appear on each card, since none of them is the obvious one any more.
+async function booksOfYear(year) {
+  const books = await api(`/api/year?year=${encodeURIComponent(year)}`).catch(() => []);
+  state.genre = null;
+  state.author = null;
+  state.series = null;
+  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+  $('#authors ul').innerHTML = '';
+  await drawBooks(books, `${year} · ${books.length} book${books.length === 1 ? '' : 's'}`, 'Year');
+}
+
+// Hung on after each draw, the way the cover handlers are. One pass over the
+// three kinds, so a card drawn by either page's `drawBooks` behaves the same.
+function wireCardLinks() {
+  const list = $('#books .list');
+  if (!list) return;
+  list.querySelectorAll('.by-author').forEach((el) => {
+    el.onclick = (e) => { e.stopPropagation(); openInLibrary(el.dataset.genre, el.dataset.author); };
+  });
+  list.querySelectorAll('[data-year]').forEach((el) => {
+    el.onclick = (e) => { e.stopPropagation(); booksOfYear(el.dataset.year); };
+  });
+  list.querySelectorAll('[data-genre]:not([data-author])').forEach((el) => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const li = [...document.querySelectorAll('#genres ul li[data-name]')]
+        .find((g) => g.dataset.name === el.dataset.genre);
+      selectGenre(el.dataset.genre, li);
+    };
+  });
+}
+
 // --- coming back, after listening somewhere else --------------------------
 // A place in a book is kept on the server, so listening on a phone moves it for
 // every page — but nothing here ever read it again. The player wrote every ten
