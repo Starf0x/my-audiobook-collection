@@ -153,11 +153,29 @@ footer .meta span { color: var(--dim); font-size: 12px; }
    sits in the app's own dark instead of the browser's light grey slab. */
 footer audio { display: none; }
 /* Glyph and word together, so the one control the bar exists for is the one
-   thing in it that does not have to be recognised. `nowrap` because "⏸ Pause"
-   breaking over two lines changes the bar's height every time it is pressed. */
-footer #pPlay { font-size: 14px; line-height: 1; padding: 7px 12px; white-space: nowrap; }
+   thing in it that does not have to be recognised.
+
+   And **one width whatever it says**. On a phone the bar wraps, so what the row
+   demands decides how many rows the bar has and therefore how tall it is —
+   and "▶ Resume" is eleven pixels wider than "⏸ Pause". Press pause on a screen
+   where the row had less than eleven pixels to spare and it wraps, the bar
+   gains a row, and it jumps up under the thumb mid-press. The owner, on a Galaxy
+   S25; measured here the row had 28px of slack and never tipped, which is what
+   a different system font is worth and why this is sized in `em` rather than
+   trusted to one machine's metrics. Nothing the button says may move anything.
+   `nowrap` for the same reason, over two lines instead of one. */
+footer #pPlay {
+  font-size: 14px; line-height: 1; padding: 7px 12px; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 7.2em;
+}
 footer #pPlay.playing { background: var(--accent); border-color: transparent; }
-footer .tick { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
+/* Wide enough for an hours clock — "13:26:10" — so a book passing the hour does
+   not widen the row. `ch` rather than pixels: the reservation then grows with
+   whatever font the device actually draws in, instead of being a number
+   measured on one machine. `tabular-nums` is the other half, or the width
+   changes with the digits. */
+footer .tick { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 5.5ch; text-align: center; }
 footer #seek { flex: 1; min-width: 120px; }
 footer #vol { width: 96px; flex: 0 0 auto; }
 /* the mute and the slider as one thing, which is what they are to a reader */
@@ -603,7 +621,6 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   footer .vol #vol { width: 110px; }
   /* and the seek line last, with a row to itself */
   footer #seek { order: 11; flex: 1 0 100%; }
-  footer .tick { min-width: 40px; }
 
   /* a dialog is a sheet: the whole screen, and it scrolls */
   dialog {

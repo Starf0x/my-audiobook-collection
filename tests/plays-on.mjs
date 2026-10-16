@@ -667,6 +667,37 @@ async function run() {
     check('the bar has its own play/pause', phone.play.shown, true);
     check('and it says what pressing it does, not only a glyph',
       /Pause|Resume|Play/.test(phone.play.text), true);
+    // One width whatever it says. The bar wraps on a phone, so what its row
+    // demands decides how many rows the bar has and therefore how tall it is —
+    // and "▶ Resume" is wider than "⏸ Pause". On a screen with less to spare
+    // than that difference, pressing pause wraps the row, the bar gains a row,
+    // and it moves up under the thumb mid-press. The owner reported exactly that on
+    // a Galaxy S25; it was never reproduced here, where the row had 28px of
+    // slack, which is roughly what a different system font is worth.
+    //
+    // So this does not check that the bar stays put — it checks the thing that
+    // could move it. The clock is held to one width for the same reason, or a
+    // book crossing an hour does the same thing on its own.
+    const labels = await evaluate(`(() => {
+      const b = document.querySelector('#pPlay');
+      const was = b.textContent;
+      const widths = {};
+      for (const t of ['⏸ Pause', '▶ Resume', '▶ Play']) {
+        b.textContent = t;
+        widths[t] = Math.round(b.getBoundingClientRect().width);
+      }
+      b.textContent = was;
+      const tick = document.querySelector('#pOf');
+      const tickWas = tick.textContent;
+      tick.textContent = '9:59';
+      const short = Math.round(tick.getBoundingClientRect().width);
+      tick.textContent = tickWas;
+      return { widths, short, reserved: Math.round(tick.getBoundingClientRect().width) };
+    })()`);
+    check('and it is one width whatever it says, so pressing it moves nothing',
+      new Set(Object.values(labels.widths)).size, 1);
+    check('and the clock has a width of its own rather than the time’s',
+      labels.short >= 30, true);
     check('and the cover says the same, being the same button', phone.glyph, '⏸');
     // ✕ was parked mid-bar beside the chapter pulldown.
     check('✕ is at the top right of the bar',
