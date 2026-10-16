@@ -145,7 +145,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 249 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 447 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 462 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 435 | browsing the collection: what both pages do the same way, in one copy |
@@ -2747,6 +2747,16 @@ enough on its own:
 * Signing out drops the carry outright. `pickUp` would refuse it anyway; leaving
   one person's listening in the next person's tab is not something to be talked
   out of.
+
+Two things that took a second attempt. `pickUp` runs **once per page** however
+many things ask — it is called at load and again from `started()`, for the
+sign-in that happens without one, and two runs racing both call `playBook` on
+the same book, the second re-seeking the first back to the carried position
+after it had moved on. `plays-on` caught that on the build machine, where the
+two calls are far enough apart to collide, and not here. And at the **gate**,
+with nobody signed in, it takes nothing but **keeps** the carry: the person
+about to sign in may be the one who left it, and dropping it there would lose
+their own book on the way back in.
 
 **Paused is not this.** A book stopped for a moment is still the book you are
 listening to, and the bar is the way back into it — hiding it on `pause` would

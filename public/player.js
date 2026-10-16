@@ -422,14 +422,29 @@ window.addEventListener('pagehide', () => {
 // loads `player.js` without `account.js`, so anything hung off the listening
 // pages' `started()` would have quietly stopped the book carrying to the Home
 // Assistant page, which is a thing `plays-on` checks and found.
+// Once per page, however many things ask. It is called at load and again from
+// `started()`, for the sign-in that happens without one — and two runs racing
+// each other both call `playBook` on the same book, the second re-seeking the
+// first to the carried position after it had already moved on. That is what
+// `/ to /admin: it carried on from where it was` caught on the build machine,
+// where the two are far enough apart to collide.
+let pickingUp = false;
+
 async function pickUp() {
+  if (pickingUp) return;
   const said = sessionStorage[CARRY];
   if (!said) return;
   let carried;
   try { carried = JSON.parse(said); } catch { return dropCarry(); }
   const me = await api('/api/account/me').catch(() => null);
   const who = (me && me.name) || '';
-  if (!who || carried.who !== who) return dropCarry();
+  // Nobody signed in — the sign-in gate. Not ours to take and **not ours to
+  // throw away**: the person about to sign in may be the one who left it, and
+  // dropping it here would lose their own book on the way back in. `started()`
+  // asks again once there is a name.
+  if (!who) return;
+  if (carried.who !== who) return dropCarry();
+  pickingUp = true;
   // the book may have been deleted from the collection while this tab was open
   try { await playBook(carried.id, carried); } catch { return; }
   if (!carried.playing) return;
