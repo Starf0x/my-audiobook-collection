@@ -145,17 +145,17 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 249 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 410 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 417 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 435 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 444 | the admin page: columns, dialogs |
+| `public/index.html` | 448 | the admin page: columns, dialogs |
 | `public/app.js` | 1748 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
-| `public/listen.html` | 155 | the listening page |
+| `public/listen.html` | 159 | the listening page |
 | `public/shelf.js` | 321 | the listening page’s behaviour |
-| `public/style.css` | 950 | the whole look, every page, phone included |
+| `public/style.css` | 980 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2878,16 +2878,37 @@ pause button sitting next to a cover that is the same button, a bare **⤓** bes
 a volume slider, **✕** parked mid-bar, and the chapter line — the longest text
 there — clipped to 45% of the width.
 
-So: `#pPlay` is **not drawn on a phone**. Three ways to pause on that screen is
-two too many, and the one that stays is the cover, which every other cover in the
-app has been since covers became play buttons. It was clickable and said nothing,
-which was survivable while a button sat beside it and is not now — so it is
-wrapped in the same `.cover` the cards use and `drawPlay()` gives it the same
-`⏸`/`▶`. The wrapper is `display: flex`, or a block would leave a sliver of
-line-height under the picture where a click would miss the image, which is what
-carries the handler and what the cover's right-click menu looks for. And `#pGet`
-**says "Download"**: there is no hovering on a phone to read a title from, and it
-is the one control in the bar that writes a file to somebody's device.
+`#pPlay` was **taken out of the phone bar** in 2.12.56, on the grounds that the
+cover beside it is the same button and the book's own card carries a third.
+The owner asked for it back, and he was right: the card is only on screen while you
+are looking at that book, and a cover that happens to be a button is something
+you have to already know. The one control the bar exists for belongs in it. It
+**says what it does** — `⏸ Pause`, `▶ Resume`, or `▶ Play` where there is no
+place to carry on from — and sits on the row *below* the chapter rather than
+beside it, which is what it used to do and what cost the chapter its width.
+
+The cover keeps the affordance it gained: it is wrapped in the same `.cover` the
+cards use and `drawPlay()` gives it the same `⏸`/`▶`. The wrapper is
+`display: flex`, or a block would leave a sliver of line-height under the picture
+where a click would miss the image, which is what carries the handler and what
+the cover's right-click menu looks for. And `#pGet` **says "Download"**: there is
+no hovering on a phone to read a title from, and it is the one control in the bar
+that writes a file to somebody's device.
+
+The six controls cannot share a line at 375px — measured, they want 549px of 351
+— so the two with words on them, the ones pressed on purpose, take a row and the
+measurements take the next. The mute and the volume slider are **one element**,
+`<span class="vol">`: loose, the bar wrapped between them and left the slider
+alone across the full width, where a yellow bar under a yellow bar reads as a
+second progress line.
+
+**A long chapter name used to widen the whole page.** A `<select>` sizes itself
+to its widest option and a flex item's automatic minimum is its content, so
+*23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the
+box 575px wide inside a 375px window — and 498px inside a 1265px one, which gave
+the **desktop** a sideways scrollbar too. `min-width: 0` is the whole fix, and it
+belongs outside the phone rules, because a long chapter name is long on any
+screen. The phone gives the box the row; the desktop caps it at 240px.
 
 None of that is visible to `pages` — jsdom has no layout engine, so a stylesheet
 that puts a control in the wrong place is a change no portable suite can notice.
@@ -3395,7 +3416,7 @@ quietly on an empty library:
 | In the repository | |
 | --- | --- |
 | `first-run` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
-| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 32 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
+| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 36 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
 **A failing suite says why again at the end.** `run-all` streams each suite's
@@ -3572,6 +3593,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.72 | **a long chapter name widened the whole page.** A `<select>` sizes itself to its widest option and a flex item's automatic minimum is its content, so one chapter called *23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the box 575px wide inside a 375px window — and 498px inside a 1265px one, so the **desktop** had a sideways scrollbar too and nobody had noticed. `min-width: 0`, outside the phone rules, because a long name is long on any screen. The bar also has **its own play/pause back**, saying `⏸ Pause` or `▶ Resume` rather than leaving a glyph to be recognised: taking it out in 2.12.56 left the cover and the book's card, and the card is only on screen while you are looking at that book. And the mute and the volume slider are one element, after the bar wrapped between them and left the slider across the full width, where a yellow bar under a yellow bar reads as a second progress line |
 | 2.12.64 | **the author, the year and the genre on a card are each a way somewhere.** A card names all three and each is the start of the next question — *what else has this one written*, *what else is from 2015* — and the way to ask was to read the word, find it in a column and click that. A search was worst: a result from any shelf at all, and nothing on it saying which. The author opens their shelf with the genre selected beside it, the year opens `/api/year` (every book of it, across the shelves), and the genre is **said** on any view that spans them. Which views those are the answer already knows: `/api/books` is given a genre and sends none back, and everything that reaches across sends it — asking `state.genre` instead meant a search run after browsing an author showed no genres at all. `data-` attributes rather than inline handlers, because an author called *O'Brian* ends a string argument in the middle |
 | 2.12.56 | **the player on a phone is four rows, each one thing.** the owner sent a screenshot with five faults on one screen: *Sign out* stranded mid-row, the bar's own pause button beside a cover that is the same button, a bare ⤓ next to a volume slider, ✕ parked mid-bar, and the chapter line — the longest text there — clipped to 45% of the width. `order` on each control arranges the bar now; `#pPlay` is not drawn at all, because three ways to pause is two too many and the cover is the one that stays, so it is wrapped to carry the same `⏸`/`▶` every other cover in the app does; and `#pGet` says **Download**, there being no hovering on a phone and it being the one control in the bar that writes a file to somebody's device. None of it is visible to `pages` — jsdom has no layout engine — so `plays-on` takes a **phone-sized pass** and reads the computed positions, and `pages` holds the two copies of the bar to each other control for control |
 | 2.12.48 | **the hinge came off the door 2.12.0 closed.** Making `adminRequired()` return `true` ended the install that ran open; it left behind every branch that asked, and three of those were the controls themselves — `whoWrites` falling back to a name in the request body, `whoReads` to `?user=`, and a line in `mayTakeABook` handing every book to everybody. All three still written out, all three one `return false` away, behind a function whose name invites exactly that edit. Gone, with the function, so there is nothing left to flip. Nothing behaves differently — every suite passes unaltered — and `accounts` still fails four checks the moment the read leak is put back by hand, which is the part that matters |
