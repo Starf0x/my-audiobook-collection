@@ -155,7 +155,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
 | `public/listen.html` | 159 | the listening page |
 | `public/shelf.js` | 321 | the listening page’s behaviour |
-| `public/style.css` | 980 | the whole look, every page, phone included |
+| `public/style.css` | 997 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2931,6 +2931,21 @@ measurements take the next. The mute and the volume slider are **one element**,
 alone across the full width, where a yellow bar under a yellow bar reads as a
 second progress line.
 
+**Nothing in the bar may change width while you look at it.** The bar wraps on a
+phone, so what a row demands decides how many rows the bar has and therefore how
+tall it is — and a bar that gains a row moves *up*, under the thumb that is
+pressing it. Two things in it used to change: `#pPlay`, where "▶ Resume" is
+eleven pixels wider than "⏸ Pause", and the clock, which grows a field when a
+book passes an hour. Both now hold one width, in `em` and `ch` rather than
+pixels so the reservation grows with whatever font the device actually draws in.
+
+Frank reported the jump on a **Galaxy S25** and it was never reproduced here: at
+360px the row had 28px of slack and at 320 it had already wrapped in both
+states. That is roughly what a different system font is worth, which is the
+argument for the fix and not proof of it. `plays-on` checks the thing that could
+move the bar — that the button is one width whatever it says — rather than
+claiming the bar stays put on a device nobody here has.
+
 **A long chapter name used to widen the whole page.** A `<select>` sizes itself
 to its widest option and a flex item's automatic minimum is its content, so
 *23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the
@@ -3445,7 +3460,7 @@ quietly on an empty library:
 | In the repository | |
 | --- | --- |
 | `first-run` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
-| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 36 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
+| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 38 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
 **A failing suite says why again at the end.** `run-all` streams each suite's
@@ -3622,6 +3637,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.88 | **nothing in the player bar changes width while you look at it.** The bar wraps on a phone, so what a row demands decides how tall the bar is — and a bar that gains a row moves *up*, under the thumb pressing it. `#pPlay` was eleven pixels wider saying "▶ Resume" than saying "⏸ Pause", and the clock grows a field when a book passes an hour. Both hold one width now, in `em` and `ch` so the reservation grows with the device's own font. Frank reported the jump on a **Galaxy S25**; it was never reproduced here, where the row had 28px of slack — which is about what a different system font is worth, and is an argument for the fix rather than proof of it. The check is on the thing that could move the bar, not on the bar staying put on a device nobody here has |
 | 2.12.80 | **the book a tab carries now says whose it is.** Frank: sign in as somebody else and you get the previous reader's *Continue listening*, in a private window too. A tab outlives a sign-in and `sessionStorage` belongs to the tab, so the carried book — which said *what* but never *whose* — came back in the next reader's player at the previous reader's position. It was not only shown: picking a book up loads it and the place is written back under whoever is signed in, so the reproduction left Luigi with a **progress row in a book he had never opened**. `pagehide` records the name, `pickUp` asks `/api/account/me` whether that is who is here and drops anything else, and signing out drops it outright. Asked of the *server*, not of `state.user` — that is seeded from `localStorage`, holds the previous reader's name, and would have agreed with the stale carry. Asking also makes the timing irrelevant, which `/ha` needs: it loads `player.js` without `account.js` |
 | 2.12.72 | **a long chapter name widened the whole page.** A `<select>` sizes itself to its widest option and a flex item's automatic minimum is its content, so one chapter called *23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the box 575px wide inside a 375px window — and 498px inside a 1265px one, so the **desktop** had a sideways scrollbar too and nobody had noticed. `min-width: 0`, outside the phone rules, because a long name is long on any screen. The bar also has **its own play/pause back**, saying `⏸ Pause` or `▶ Resume` rather than leaving a glyph to be recognised: taking it out in 2.12.56 left the cover and the book's card, and the card is only on screen while you are looking at that book. And the mute and the volume slider are one element, after the bar wrapped between them and left the slider across the full width, where a yellow bar under a yellow bar reads as a second progress line |
 | 2.12.64 | **the author, the year and the genre on a card are each a way somewhere.** A card names all three and each is the start of the next question — *what else has this one written*, *what else is from 2015* — and the way to ask was to read the word, find it in a column and click that. A search was worst: a result from any shelf at all, and nothing on it saying which. The author opens their shelf with the genre selected beside it, the year opens `/api/year` (every book of it, across the shelves), and the genre is **said** on any view that spans them. Which views those are the answer already knows: `/api/books` is given a genre and sends none back, and everything that reaches across sends it — asking `state.genre` instead meant a search run after browsing an author showed no genres at all. `data-` attributes rather than inline handlers, because an author called *O'Brian* ends a string argument in the middle |
