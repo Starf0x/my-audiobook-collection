@@ -950,3 +950,13 @@ here:
   ever. Poll for the thing that changes when the work is done, which here was the
   version in the answer, not the answer itself; and give every wait an end that
   says something.
+* **A tab outlives a sign-in, and `sessionStorage` belongs to the tab.** The
+  book a tab was carrying between pages said *what* but not *whose*, so Mario
+  listened, signed out, Luigi signed in at the same tab and refreshed — and the
+  player came back holding Mario's book at Mario's position. A private window
+  made no difference. Worse than showing it: picking a book up loads it and the
+  place is written back under whoever is signed in, so Luigi came away with a
+  progress row in a book he had never opened. Anything kept per tab that is
+  *about a person* has to record which person, and the name has to come from the
+  server — `state.user` is seeded from `localStorage` and holds the previous
+  reader's name until something asks, so it agrees with the stale carry.

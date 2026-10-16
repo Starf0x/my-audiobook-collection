@@ -141,11 +141,11 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/ha.js` | 467 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 200 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 234 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 249 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 417 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 447 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 435 | browsing the collection: what both pages do the same way, in one copy |
@@ -2719,6 +2719,35 @@ bar standing either. Removing the carry matters as much as hiding the bar:
 `sessionStorage` would have the next page of the app pick the book straight back
 up and the bar would reappear on its own.
 
+**The carry says whose it is, and `pickUp` asks the server whether that is who
+is here.** It used to say only *what*, and a tab outlives a sign-in: The owner
+reported signing in as somebody else and getting the previous reader's
+*Continue listening*, in a private window too — sessionStorage being per tab
+rather than per person. Mario listened, signed out, Luigi signed in at the same
+tab and refreshed, and the player came back holding Mario's book at Mario's
+position.
+
+It was not only shown. Picking a book up loads it, and the place is written back
+under whoever is signed in — so in the reproduction Luigi came away with a
+**progress row in a book he had never opened**, which then appeared on his shelf
+as his own. A leak that writes is worse than one that reads.
+
+Three things close it, and the middle one is the only one that would have been
+enough on its own:
+
+* `pagehide` records `who: state.user` beside the book.
+* `pickUp` asks **`/api/account/me`** for the name and drops any carry that is
+  not that person's — including one with no name at all, from before this. Not
+  `state.user`: that is seeded from `localStorage` and holds the *previous*
+  reader's name until a page signs in, so comparing against it would have the
+  carry agree with itself. Asking also makes the call's timing irrelevant, which
+  matters because `/ha` loads `player.js` **without** `account.js` — hanging the
+  pick-up off the listening pages' `started()` stopped the book carrying to the
+  Home Assistant page, and `plays-on` caught it.
+* Signing out drops the carry outright. `pickUp` would refuse it anyway; leaving
+  one person's listening in the next person's tab is not something to be talked
+  out of.
+
 **Paused is not this.** A book stopped for a moment is still the book you are
 listening to, and the bar is the way back into it — hiding it on `pause` would
 leave no way to resume. What ends the bar is the book ending, or being asked.
@@ -3593,6 +3622,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.80 | **the book a tab carries now says whose it is.** the owner: sign in as somebody else and you get the previous reader's *Continue listening*, in a private window too. A tab outlives a sign-in and `sessionStorage` belongs to the tab, so the carried book — which said *what* but never *whose* — came back in the next reader's player at the previous reader's position. It was not only shown: picking a book up loads it and the place is written back under whoever is signed in, so the reproduction left Luigi with a **progress row in a book he had never opened**. `pagehide` records the name, `pickUp` asks `/api/account/me` whether that is who is here and drops anything else, and signing out drops it outright. Asked of the *server*, not of `state.user` — that is seeded from `localStorage`, holds the previous reader's name, and would have agreed with the stale carry. Asking also makes the timing irrelevant, which `/ha` needs: it loads `player.js` without `account.js` |
 | 2.12.72 | **a long chapter name widened the whole page.** A `<select>` sizes itself to its widest option and a flex item's automatic minimum is its content, so one chapter called *23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the box 575px wide inside a 375px window — and 498px inside a 1265px one, so the **desktop** had a sideways scrollbar too and nobody had noticed. `min-width: 0`, outside the phone rules, because a long name is long on any screen. The bar also has **its own play/pause back**, saying `⏸ Pause` or `▶ Resume` rather than leaving a glyph to be recognised: taking it out in 2.12.56 left the cover and the book's card, and the card is only on screen while you are looking at that book. And the mute and the volume slider are one element, after the bar wrapped between them and left the slider across the full width, where a yellow bar under a yellow bar reads as a second progress line |
 | 2.12.64 | **the author, the year and the genre on a card are each a way somewhere.** A card names all three and each is the start of the next question — *what else has this one written*, *what else is from 2015* — and the way to ask was to read the word, find it in a column and click that. A search was worst: a result from any shelf at all, and nothing on it saying which. The author opens their shelf with the genre selected beside it, the year opens `/api/year` (every book of it, across the shelves), and the genre is **said** on any view that spans them. Which views those are the answer already knows: `/api/books` is given a genre and sends none back, and everything that reaches across sends it — asking `state.genre` instead meant a search run after browsing an author showed no genres at all. `data-` attributes rather than inline handlers, because an author called *O'Brian* ends a string argument in the middle |
 | 2.12.56 | **the player on a phone is four rows, each one thing.** the owner sent a screenshot with five faults on one screen: *Sign out* stranded mid-row, the bar's own pause button beside a cover that is the same button, a bare ⤓ next to a volume slider, ✕ parked mid-bar, and the chapter line — the longest text there — clipped to 45% of the width. `order` on each control arranges the bar now; `#pPlay` is not drawn at all, because three ways to pause is two too many and the cover is the one that stays, so it is wrapped to carry the same `⏸`/`▶` every other cover in the app does; and `#pGet` says **Download**, there being no hovering on a phone and it being the one control in the bar that writes a file to somebody's device. None of it is visible to `pages` — jsdom has no layout engine — so `plays-on` takes a **phone-sized pass** and reads the computed positions, and `pages` holds the two copies of the bar to each other control for control |
