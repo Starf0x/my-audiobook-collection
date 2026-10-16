@@ -219,8 +219,15 @@ $('#pPlay').onclick = () => {
   if (!state.book) return;
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 };
+// What the button does next, in a word as well as a glyph. A lone ⏸ in a box is
+// readable once you know the bar; the word is what makes it the obvious control
+// on a screen where it is the only one — and *Resume* rather than *Play* when
+// there is a place to carry on from, which is the thing the reader is actually
+// about to do.
 const drawPlay = () => {
-  $('#pPlay').textContent = audio.paused ? '▶' : '⏸';
+  const playing = !audio.paused;
+  const word = playing ? 'Pause' : (audio.currentTime > 0 ? 'Resume' : 'Play');
+  $('#pPlay').textContent = `${playing ? '⏸' : '▶'} ${word}`;
   $('#pPlay').classList.toggle('playing', !audio.paused);
   // And the bar's own cover, which is the same button and the only one of the
   // two a phone is shown: the glyph says what a tap will do, the way every
