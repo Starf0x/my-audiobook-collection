@@ -1024,6 +1024,88 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   }
 }
 
+// --- and the three things on it that are a way somewhere -------------------
+// A card names the author, the year and — where it is not already the answer —
+// the genre, and each of those is the start of the next question: *what else
+// has this one written*, *what else is from 2015*, *what else is in Fantasy*.
+// The answer was to read the word, find it in a column, and click that. A
+// search made it worse: a result from any shelf at all, and the only way back
+// to where it lives was to go hunting for the author's name.
+//
+// Both pages draw their own cards from their own `drawBooks`, so both are
+// asked. The three helpers are in `browse.js`, which both load.
+{
+  // The genre is what says whether a view spans the shelves: `/api/books` is
+  // given one and sends none back, every route that reaches across them sends
+  // it. So a card with a genre is one on a cross-shelf view, and it is the only
+  // card that has anywhere to go.
+  const ACROSS = [
+    { id: 1, title: 'Oathbringer', author: "Brandon O'Sanderson", genre: 'Fantasy', year: '2017', duration: 60, tracks: 1 },
+    { id: 2, title: 'A Shelved Book', author: 'Someone', genre: '', year: '', duration: 60, tracks: 1 },
+  ];
+  for (const page of ['index.html', 'listen.html']) {
+    // eslint-disable-next-line no-await-in-loop -- two pages, one after the other
+    const { window, document } = await open(page, {
+      '/api/year': (url) => { window.__askedFor = String(url); return []; },
+    });
+    window.eval(`drawBooks(${JSON.stringify(ACROSS)}, '', 'Search', [])`);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    const card = (id) => document.querySelector(`.card[data-id="${id}"]`);
+
+    check(`${page}: the author on a card from across the shelves is a way to their shelf`,
+      [!!card(1).querySelector('.by-author'), card(1).querySelector('.by-author')?.textContent],
+      [true, "Brandon O'Sanderson"]);
+    // The apostrophe is the whole reason these carry `data-` attributes rather
+    // than an inline `onclick`: in one of those, the name ends the string
+    // argument in the middle and what follows is whatever the rest spells.
+    check('and a name with an apostrophe in it survives being put on the card',
+      [card(1).querySelector('.by-author').dataset.author,
+        card(1).querySelector('.by-author').dataset.genre],
+      ["Brandon O'Sanderson", 'Fantasy']);
+    check('the year is one too, carrying the year itself',
+      card(1).querySelector('[data-year]')?.dataset.year, '2017');
+    check('and the genre is said, which is the thing such a card does not otherwise say',
+      card(1).querySelector('[data-genre]:not([data-author])')?.textContent, 'Fantasy');
+
+    // A card on a genre's own shelf carries no genre, so there is nowhere for
+    // any of this to go and none of it is drawn — the author is the plain line
+    // it always was.
+    check(`${page}: a card already on its own shelf gets none of it`,
+      [!!card(2).querySelector('.by-author'), !!card(2).querySelector('[data-genre]'),
+        !!card(2).querySelector('[data-year]'), card(2).querySelector('.sub').textContent.trim()],
+      [false, false, false, 'Someone']);
+
+    // and they are wired, not merely drawn — the fault every one of these
+    // buttons would otherwise have in common
+    let went = null;
+    window.openInLibrary = (g, a) => { went = [g, a]; };
+    card(1).querySelector('.by-author').click();
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    check('clicking the author opens their shelf, in the genre the card named',
+      went, ['Fantasy', "Brandon O'Sanderson"]);
+
+    card(1).querySelector('[data-year]').click();
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle(150);
+    check('and clicking the year asks for every book of it',
+      /\/api\/year\?year=2017/.test(window.__askedFor || ''), true);
+
+    // Whether to say the genre was asked of `state.genre` — what the *column*
+    // has selected — and not of the card. Browse to an author, then search, and
+    // the column is still holding that genre: every result came back with no
+    // genre on it at all, which is the one view the badge exists for. Found by
+    // looking, in a browser, after the checks above all passed.
+    window.eval("state.genre = 'Fantasy'");
+    window.eval(`drawBooks(${JSON.stringify(ACROSS)}, '', 'Search', [])`);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    check('and a genre left selected in the column does not silence the badge',
+      card(1).querySelector('[data-genre]:not([data-author])')?.textContent, 'Fantasy');
+  }
+}
+
 // --- coming back after listening somewhere else ---------------------------
 // A place is kept on the server, so listening on a phone moves it for every
 // page — and nothing here ever read it again. A desktop left open showed where

@@ -179,10 +179,11 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
         <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
               title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
           ${esc(b.title)}</h3>
-        <div class="sub">${esc(author)}</div>
+        <div class="sub">${byLine(b)}</div>
         ${seriesLine(b)}
         <div class="sub" style="margin-top:6px">
-          ${b.year ? `<span class="badge">${esc(b.year)}</span>` : ''}
+          ${genreBadge(b)}
+          ${yearBadge(b)}
           ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
           ${b.duration ? `<span class="badge">${hms(b.duration)}</span>` : ''}
           <!-- a fact about the book, so it is shown here and set on the admin
@@ -196,6 +197,8 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
   }
   $('#books .list').innerHTML = html || '<div class="empty">No books.</div>';
   markPlaying();
+  // the author, the year and the genre on each card are each a way somewhere
+  wireCardLinks();
   show('books');
 }
 
