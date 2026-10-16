@@ -1272,10 +1272,12 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       [loaded, left], [null, null]);
   }
   {
-    // Signed in as nobody — which is what the sign-in gate is. The pick-up used
-    // to run at load, so this was the state it ran in every time.
+    // Nobody signed in — the gate. Nothing is taken, and nothing is thrown
+    // away either: the person about to sign in may be the one who left it, and
+    // dropping it here would lose their own book on the way back in.
     const { loaded, left } = await carrying(mine, '');
-    check('and nobody signed in picks up nothing at all', [loaded, left], [null, null]);
+    check('and nobody signed in takes nothing — but keeps it, it may be theirs',
+      [loaded, !!left], [null, true]);
   }
 
   // Comparing against the tab's own `state.user` would not have closed this.
