@@ -210,7 +210,11 @@ const comingBack = () => {
   // and the shelves, only when they are what is on screen. Somewhere else in
   // the library is where the reader put themselves, and redrawing over that
   // would be this page taking the view back off them.
-  if ($('#books .list')?.querySelector('[data-shelf="Continue listening"]')) window.loadHome?.();
+  // The card counts as well as the shelf. The first of *Continue listening* is
+  // drawn as a card now, so a reader with exactly one book on the go had no
+  // shelf at all — and coming back stopped refreshing for the very person it
+  // was written for, who had one book and was listening to it on their phone.
+  if ($('#books .list')?.querySelector('[data-shelf="Continue listening"], .card.carry-on')) window.loadHome?.();
 };
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) wentAway = true; else comingBack();

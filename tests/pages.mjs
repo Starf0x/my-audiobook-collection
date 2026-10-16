@@ -1186,8 +1186,12 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       '/api/home': { continue: [{ id: 4, title: 'A Book', author: 'An Author', genre: 'Fantasy', tracks: 3, track_idx: 0, duration: 1800, percent: 5 }], recent: [] },
     });
     await settle(140);
-    check('the Continue listening shelf is marked, so a refresh can tell it is on screen',
-      !!document.querySelector('[data-shelf="Continue listening"]'), true);
+    // With one book on the go there is no shelf — that book is the card — so
+    // what says "the shelves are on screen" has to count the card too. It did
+    // not, and coming back stopped refreshing for exactly the reader this was
+    // written for: one book, listened to on a phone.
+    check('what is on screen is marked, so a refresh can tell, card or shelf',
+      !!document.querySelector('[data-shelf="Continue listening"], .card.carry-on'), true);
     window.eval('window.loadHome = () => { window.askedAgain = (window.askedAgain || 0) + 1; };');
     // A page that has just loaded gets a focus of its own, and that is not a
     // return. Nothing happens until it has actually been away.
@@ -1206,6 +1210,63 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     window.dispatchEvent(new window.Event('focus'));
     await settle();
     check('but twice in a moment is still one return', window.eval('window.askedAgain || 0'), 1);
+  }
+}
+
+// --- the page opens with the book you are in the middle of -----------------
+// The owner, pointing at a screenshot: the book's own card, at the top, the way it
+// is everywhere else. The home page led with a *tile* — a cover, a title and a
+// sliver of progress — and the thing he had come back for was the thing with
+// the least said about it. The card is what the rest of the app draws a book
+// as: cover, series, year, how long, what it is about, Listened, and the one
+// button. So the first of *Continue listening* is drawn as one, and the shelf
+// under it keeps the others.
+//
+// `cardFor` is lifted out of `drawBooks` for this, rather than a second copy of
+// that template — a card on the home page that said something subtly different
+// from every other card is a thing to keep in step for ever.
+{
+  const KEPT = [
+    { id: 1, title: 'The One I Am In', author: 'An Author', genre: 'Fantasy', year: '2015', duration: 600, description: 'About a thing.', started: 1, done: 0, percent: 40, tracks: 1 },
+    { id: 2, title: 'Also Going', author: 'Another', genre: 'Fantasy', year: '2016', duration: 600, started: 1, done: 0, percent: 10, tracks: 1 },
+    { id: 3, title: 'And A Third', author: 'A Third', genre: 'Fantasy', year: '2017', duration: 600, started: 1, done: 0, percent: 5, tracks: 1 },
+  ];
+  const home = async (page, kept) => {
+    const p = await open(page, { '/api/home': { continue: kept, recent: [] } });
+    await settle();
+    p.window.eval('loadHome()');
+    await settle(160);
+    const list = p.document.querySelector('#books .list');
+    return {
+      opensWith: list.firstElementChild?.className || '',
+      cardTitles: [...list.querySelectorAll('.card h3')].map((h) => h.textContent.replace(/\s+/g, ' ').trim()),
+      tiles: [...list.querySelectorAll('.tile .t')].map((t) => t.textContent),
+      headings: [...list.querySelectorAll('.shelf-title')].map((s) => s.textContent),
+      broke: p.broke,
+    };
+  };
+
+  for (const page of ['index.html', 'listen.html']) {
+    // eslint-disable-next-line no-await-in-loop -- two pages, one after the other
+    const full = await home(page, KEPT);
+    check(`${page}: the page opens with a card, not a tile`, full.opensWith, 'card carry-on');
+    check('and it is the book you are in the middle of',
+      full.cardTitles.map((t) => t.replace('♫ ', '')), ['The One I Am In']);
+    // Drawn twice — once as the card, again as the first tile — would be the
+    // obvious way to get this wrong, and it reads as two different books.
+    check('and that book is not also a tile below it', full.tiles, ['Also Going', 'And A Third']);
+    check('the rest keep their shelf', full.headings, ['Continue listening']);
+    check('and nothing throws drawing it', full.broke, []);
+
+    // eslint-disable-next-line no-await-in-loop -- as above
+    const one = await home(page, [KEPT[0]]);
+    check('with one book there is a card and no shelf left over',
+      [one.opensWith, one.tiles.length, one.headings], ['card carry-on', 0, []]);
+
+    // eslint-disable-next-line no-await-in-loop -- as above
+    const none = await home(page, []);
+    check('and with nothing to carry on with, no card and no empty heading',
+      [none.cardTitles.length, none.tiles.length, none.headings], [0, 0, []]);
   }
 }
 

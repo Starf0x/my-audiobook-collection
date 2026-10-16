@@ -92,7 +92,13 @@ async function loadHome() {
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   $('#authors ul').innerHTML = '';
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
-  const html = shelf('Continue listening', d.continue, true) + shelf('Recently added', d.recent, false);
+  // The book you are in the middle of, as the card it is everywhere else —
+  // cover, series, year, how long, what it is about, and the one button. A tile
+  // says the title and a sliver of progress; this is what you actually came
+  // back for, so it is what the page opens with.
+  const [carryOn, ...alsoGoing] = d.continue;
+  const html = (carryOn ? cardFor(carryOn, false, 'carry-on') : '')
+    + shelf('Continue listening', alsoGoing, true) + shelf('Recently added', d.recent, false);
   $('#books .list').innerHTML = html
     || '<div class="empty">Nothing here yet — add a library folder in Settings and scan.</div>';
   show('books');
@@ -105,6 +111,8 @@ async function loadHome() {
     b.onclick = (e) => { e.stopPropagation(); playBook(Number(b.dataset.play)); };
   });
   markPlaying();
+  // the card has an author, a year and maybe a genre on it, like any other
+  wireCardLinks();
 }
 
 async function openInLibrary(genre, author) {
@@ -233,38 +241,11 @@ async function selectAuthor(author, li) {
 
 // `states` is what /api/books says each series on the page is missing; the lists
 // that do not come from there — Listened, a search — simply have none.
-async function drawBooks(books, heading, kind = 'Series', states = []) {
-  // anything drawn here that is not a search result means the box no longer says
-  // what is on screen
-  if (kind !== 'Search') $('#q').value = '';
-  const howComplete = (name) => {
-    const s = states.find((x) => x.name === name);
-    return s && s.says
-      ? `<div class="series-gap${s.missing.length ? ' missing' : ''}">${esc(s.says)}</div>` : '';
-  };
-  let html = heading ? `<div class="series-head">${kind} · ${esc(heading)}</div>` + howComplete(heading) : '';
-  let series = heading || '';
-  // A run of books in no series gets no heading of its own, so nothing marks
-  // where the series above it stopped and the cards run together — which is how
-  // a standalone book came to read as the next volume of the series above it.
-  // A heading separates one run from the next; where there is no heading, this
-  // does.
-  let apart = false;
-  for (const b of books) {
-    const author = b.author;
-    apart = false;
-    if (!heading && (b.series || '') !== series) {
-      series = b.series || '';
-      // A part names the series it is part of, so a whole series read in one
-      // view says which movement each run of books belongs to.
-      if (series) {
-        html += `<div class="series-head">Series · ${b.parent ? `${esc(b.parent)} · ` : ''}${esc(series)}</div>`
-          + howComplete(series);
-      } else {
-        apart = true;
-      }
-    }
-    html += `<div class="card${apart ? ' apart' : ''}" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
+// One book, as a card. Lifted out of `drawBooks` so the home page can draw the
+// book you are in the middle of with the same template rather than a second
+// copy of it — a card that said something subtly different from every other
+// card would be a thing to keep in step for ever.
+const cardFor = (b, apart = false, extra = '') => `<div class="card${apart ? ' apart' : ''}${extra ? ` ${extra}` : ''}" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
       <div class="cover" data-glyph="▶">
         <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
           onclick="playBook(${b.id})" title="Play or pause">
@@ -307,6 +288,39 @@ async function drawBooks(books, heading, kind = 'Series', states = []) {
         </div>
       </div>
     </div>`;
+
+async function drawBooks(books, heading, kind = 'Series', states = []) {
+  // anything drawn here that is not a search result means the box no longer says
+  // what is on screen
+  if (kind !== 'Search') $('#q').value = '';
+  const howComplete = (name) => {
+    const s = states.find((x) => x.name === name);
+    return s && s.says
+      ? `<div class="series-gap${s.missing.length ? ' missing' : ''}">${esc(s.says)}</div>` : '';
+  };
+  let html = heading ? `<div class="series-head">${kind} · ${esc(heading)}</div>` + howComplete(heading) : '';
+  let series = heading || '';
+  // A run of books in no series gets no heading of its own, so nothing marks
+  // where the series above it stopped and the cards run together — which is how
+  // a standalone book came to read as the next volume of the series above it.
+  // A heading separates one run from the next; where there is no heading, this
+  // does.
+  let apart = false;
+  for (const b of books) {
+    const author = b.author;
+    apart = false;
+    if (!heading && (b.series || '') !== series) {
+      series = b.series || '';
+      // A part names the series it is part of, so a whole series read in one
+      // view says which movement each run of books belongs to.
+      if (series) {
+        html += `<div class="series-head">Series · ${b.parent ? `${esc(b.parent)} · ` : ''}${esc(series)}</div>`
+          + howComplete(series);
+      } else {
+        apart = true;
+      }
+    }
+    html += cardFor(b, apart);
   }
   $('#books .list').innerHTML = html || '<div class="empty">No books.</div>';
   markPlaying();

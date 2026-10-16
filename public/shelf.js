@@ -31,7 +31,13 @@ async function loadHome() {
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   $('#authors ul').innerHTML = '';
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
-  $('#books .list').innerHTML = shelf('Continue listening', d.continue, true)
+  // The book you are in the middle of, as the card it is everywhere else —
+  // cover, series, year, how long, what it is about, and the one button. A
+  // tile says the title and a sliver of progress; this is what you actually
+  // came back for, so it is what the page opens with.
+  const [carryOn, ...alsoGoing] = d.continue;
+  $('#books .list').innerHTML = (carryOn ? cardFor(carryOn, false, 'carry-on') : '')
+    + shelf('Continue listening', alsoGoing, true)
     + shelf('Recently added', d.recent, false)
     || '<div class="empty">Nothing here yet.</div>';
   $('#books .list').querySelectorAll('.tile').forEach((t) => {
@@ -43,6 +49,8 @@ async function loadHome() {
     b.onclick = (e) => { e.stopPropagation(); playBook(Number(b.dataset.play)); };
   });
   markPlaying();
+  // the card has an author, a year and maybe a genre on it, like any other
+  wireCardLinks();
 }
 $('#home').onclick = loadHome;
 // --- the books you are done with ---------------------------------------
@@ -135,6 +143,39 @@ async function selectAuthor(author, li) {
 
 // `states` is what /api/books says each series on the page is missing; the lists
 // that do not come from there — Listened, a search — simply have none.
+// One book, as a card. Lifted out of `drawBooks` so the home page can draw the
+// book you are in the middle of with the same template rather than a second
+// copy of it — a card that said something subtly different from every other
+// card would be a thing to keep in step for ever.
+const cardFor = (b, apart = false, extra = '') => `<div class="card${apart ? ' apart' : ''}${extra ? ` ${extra}` : ''}" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
+      <div class="cover" data-glyph="▶">
+        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
+          onclick="playBook(${b.id})" title="Play or pause">
+        ${heart(b.id)}
+        <label class="listened">
+          <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
+        </label>
+      </div>
+      <div>
+        <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
+              title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
+          ${esc(b.title)}</h3>
+        <div class="sub">${byLine(b)}</div>
+        ${seriesLine(b)}
+        <div class="sub" style="margin-top:6px">
+          ${genreBadge(b)}
+          ${yearBadge(b)}
+          ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
+          ${b.duration ? `<span class="badge">${hms(b.duration)}</span>` : ''}
+          <!-- a fact about the book, so it is shown here and set on the admin
+               page: nothing a listener touches changes the collection -->
+          ${b.unabridged ? '<span class="badge" title="The whole book, not a shortened reading of it">Unabridged</span>' : ''}
+        </div>
+        <div class="desc">${esc(b.description) || 'No description.'}</div>
+      </div>
+      <div class="actions"><button onclick="playBook(${b.id})" data-resume="${b.started || b.done ? 1 : 0}"${b.finished ? ' data-again="1"' : ''}>${b.finished ? '▶ Play again' : b.started || b.done ? '▶ Resume' : '▶ Play'}</button></div>
+    </div>`;
+
 function drawBooks(books, heading, kind = 'Series', states = []) {
   // anything drawn here that is not a search result means the box no longer says
   // what is on screen
@@ -166,34 +207,7 @@ function drawBooks(books, heading, kind = 'Series', states = []) {
         apart = true;
       }
     }
-    html += `<div class="card${apart ? ' apart' : ''}" data-id="${b.id}" data-started="${b.started ? 1 : 0}">
-      <div class="cover" data-glyph="▶">
-        <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async"
-          onclick="playBook(${b.id})" title="Play or pause">
-        ${heart(b.id)}
-        <label class="listened">
-          <input type="checkbox" ${b.done ? 'checked' : ''} onchange="setListened(${b.id}, this)"> Listened
-        </label>
-      </div>
-      <div>
-        <h3><span class="note ${b.done ? 'done' : b.started ? 'part' : 'new'}"
-              title="${b.done ? 'Listened' : b.started ? 'Partly listened' : 'Not listened yet'}">&#9835;</span>
-          ${esc(b.title)}</h3>
-        <div class="sub">${byLine(b)}</div>
-        ${seriesLine(b)}
-        <div class="sub" style="margin-top:6px">
-          ${genreBadge(b)}
-          ${yearBadge(b)}
-          ${b.narrator ? `<span class="badge">Narrator: ${esc(b.narrator)}</span>` : ''}
-          ${b.duration ? `<span class="badge">${hms(b.duration)}</span>` : ''}
-          <!-- a fact about the book, so it is shown here and set on the admin
-               page: nothing a listener touches changes the collection -->
-          ${b.unabridged ? '<span class="badge" title="The whole book, not a shortened reading of it">Unabridged</span>' : ''}
-        </div>
-        <div class="desc">${esc(b.description) || 'No description.'}</div>
-      </div>
-      <div class="actions"><button onclick="playBook(${b.id})" data-resume="${b.started || b.done ? 1 : 0}"${b.finished ? ' data-again="1"' : ''}>${b.finished ? '▶ Play again' : b.started || b.done ? '▶ Resume' : '▶ Play'}</button></div>
-    </div>`;
+    html += cardFor(b, apart);
   }
   $('#books .list').innerHTML = html || '<div class="empty">No books.</div>';
   markPlaying();
