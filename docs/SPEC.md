@@ -109,9 +109,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1782 | Express app: every route, and nothing else |
+| `server/index.js` | 1855 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 217 | schema, migrations, settings, library list |
+| `server/db.js` | 245 | schema, migrations, settings, library list |
 | `server/admin.js` | 191 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
 | `server/scan.js` | 650 | walking the library, reading tags, filing books |
 | `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
@@ -134,26 +134,27 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/finished.js` | 67 | what "finished" means: the three senses of the word, and the one every count asks |
 | `server/listeners.js` | 369 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
-| `server/notify.js` | 142 | telling Discord: the three things worth saying, and cleaning what a person wrote |
+| `server/notify.js` | 152 | telling Discord: the things worth saying, and cleaning what a person wrote |
+| `server/requests.js` | 179 | books somebody has asked for: the matching, the answering, and who is told |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 355 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
 | `server/ha.js` | 467 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
-| `public/account.js` | 234 | signing in and the hearts, on both pages, one copy |
+| `public/account.js` | 240 | signing in and the hearts, on both pages, one copy |
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
-| `public/accounts.js` | 249 | its behaviour — the statistics, the two ticks, and the administrator's own row |
+| `public/accounts.js` | 267 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
 | `public/player.js` | 462 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
-| `public/browse.js` | 439 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 448 | the admin page: columns, dialogs |
-| `public/app.js` | 1762 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/browse.js` | 522 | browsing the collection: what both pages do the same way, in one copy |
+| `public/index.html` | 470 | the admin page: columns, dialogs |
+| `public/app.js` | 1845 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
-| `public/listen.html` | 159 | the listening page |
+| `public/listen.html` | 180 | the listening page |
 | `public/shelf.js` | 335 | the listening page’s behaviour |
 | `public/style.css` | 997 | the whole look, every page, phone included |
 
@@ -275,6 +276,23 @@ CREATE TABLE trash (
   was_path TEXT, trash_path TEXT,
   genre TEXT, author TEXT, series TEXT, title TEXT,
   files INTEGER, deleted_at TEXT
+);
+
+-- books somebody has asked for and the collection has not got (§7.14).
+-- The author and the title are kept as they were typed, because that is what
+-- the administrator reads when deciding whether to go and find it; the
+-- normalised pair a new book is matched against is worked out when needed and
+-- never stored, so changing how matching reads a name rewrites no rows.
+-- book_id is allowed to go stale rather than cascade: a request that was once
+-- filled stays filled even if the book is later deleted, because it happened.
+CREATE TABLE requests (
+  id INTEGER PRIMARY KEY,
+  who TEXT, author TEXT, title TEXT, note TEXT DEFAULT '',
+  state TEXT DEFAULT 'open',          -- open | filled | declined
+  said TEXT DEFAULT '',               -- why, when it was declined
+  book_id INTEGER,
+  asked_at TEXT, decided_at TEXT DEFAULT '',
+  told INTEGER DEFAULT 0              -- has the person who asked been shown it
 );
 
 -- SQLite hands out row ids again: without this a new book inherits a deleted
@@ -736,6 +754,13 @@ and an empty genre is a fair question with an empty answer.
 | `GET /api/series-online/status` | admin | how far it is, and what each series came back with |
 | `GET /api/search?q=` | — | cards, across everything |
 | `GET /api/year?year=` | — | every book of one year, across every genre. Four digits or an empty list |
+| `POST /api/requests` | — | ask for a book the collection has not got: `{author, title, note}`. Asking twice for the same one answers `again: true` and makes no second row |
+| `GET /api/requests/mine` | — | `{mine, news}` — what this person has asked for, and what they have not been told yet |
+| `POST /api/requests/seen` | — | `{ids}`, filtered to their own: news is said once |
+| `GET /api/requests` | admin | every request, open ones first, with the book that answered each |
+| `POST /api/requests/:id/decline` | admin | `{said}` — turned down, with a reason the person who asked is shown |
+| `POST /api/requests/:id/link` | admin | `{bookId}` — tie it to a book by hand, for what the normalised match will not catch |
+| `POST /api/requests/:id/forget` | admin | drop it altogether, their statistics included |
 | `GET /api/listened` | — | every book that listener has finished, the Listened section's own list |
 | `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
 | `GET /api/books/:id` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
@@ -2504,13 +2529,16 @@ server would refuse is the same fault wearing the other face.
 
 ### 7.13 Telling Discord (`notify.js`)
 
-A webhook address saved by the admin, and three things worth saying: somebody
+A webhook address saved by the admin, and what is worth saying: somebody
 asked for an account (with their reason and whether they claim to know you),
 somebody signed in (the admin's own sign-in is not announced — it would be noise
-about yourself), and a book started or stopped, with which book and who.
+about yourself), a book started or stopped, with which book and who, and
+somebody **asking for a book** the collection has not got (§7.14) — the one
+message that asks the administrator to go and *do* something, which is why it
+names the author and the title plainly enough to paste into a shop.
 
-All three carry text a person wrote, so all three are cleaned: `@everyone` and
-`@here` would ring every phone in the server, backticks and newlines would let a
+Every one of them carries text a person wrote, so every one is cleaned:
+`@everyone` and `@here` would ring every phone in the server, backticks and newlines would let a
 title write its own lines, and a message is bounded. The real fix for the pings
 is `allowed_mentions: { parse: [] }`, which is Discord's own switch rather than a
 guess at their syntax; the stripping is so the line still reads as words.
@@ -2528,6 +2556,65 @@ that they just pressed play. The page sends only the changes and the server keep
 one book per listener, so a page that says "started" twice is a page, not two
 starts.
 
+### 7.14 Books somebody has asked for (`requests.js`)
+
+A listener types an author and a title; the administrator is told, goes and
+finds it, and drops it in. When the collection next has that book the request is
+answered without anybody having to remember it was open: the book becomes that
+person's **favourite** and they are told the next time they open the app. The
+button sits beside their own name in the header, because it is a thing *they*
+are asking for rather than something the collection does.
+
+**Matching is the whole of the difficulty**, and it can go wrong in both
+directions. A request that is never answered and nothing says so is the quiet
+failure; a request answered by the *wrong* book is the loud one, because it
+hands somebody a favourite they did not ask for and closes a request they are
+still waiting on.
+
+So the two sides are compared **normalised** — case, accents, punctuation and a
+leading article all taken off — and **exactly** after that. Deliberately not a
+fuzzy distance: an edit distance of two makes *Dune* match *June*. Exact-after-
+normalising is a rule somebody can predict, and the author counts as well as the
+title, because titles are not unique — there is more than one book called
+*Mistborn*, and a great many called *Twilight*.
+
+What that still misses is real: *Mistborn* asked for, *Mistborn: The Final
+Empire* delivered. So the administrator can **tie a request to a book by hand**,
+and that is not a fallback bolted on afterwards but half of the design. An
+automatic match that silently never happens is worse than no automatic match,
+because nothing says so.
+
+The rest of the shape:
+
+* **Asking twice is one request.** The same person asking for the same book
+  again — however they spell it the second time — answers `again: true`, makes
+  no second row, and does not ring the administrator's phone a second time. They
+  have forgotten; two rows would be two things to decide about.
+* **The scan is where it is looked at again**, against the whole collection
+  rather than against what that scan added: a book can also arrive by an import
+  or by hand, and *what is here now* is the honest question. It is one pass over
+  the books table, and only when a request is open.
+* **One book answers at most one request, and one request at most one book.**
+  Two people asking for the same book both get it; a single request never picks
+  between two books, and where two normalise the same the lower id wins —
+  arbitrary, but fixed, so the same scan twice does the same thing.
+* **Declined with a reason**, which the person who asked is shown. It leaves the
+  administrator's list and stays in their statistics, because "you turned this
+  down in March, and this is what you said" is a question somebody asks later.
+* **The news is said once.** A book that arrived or a request turned down is a
+  thing that happened while you were not looking, so it is a toast on the way in
+  and the server is told it has been said. The ids come from a page, so
+  `/api/requests/seen` filters them to the caller's own — marking somebody
+  else's as told would quietly lose it.
+* **The heart is handed in, not reached for.** `requests.js` decides *that* an
+  answered request becomes a favourite; `index.js` knows *how* a favourite is
+  written. One place each.
+
+On the accounts page each person's row carries what they have asked for and what
+became of it — nine asked and one found is a different person to talk to than
+one and one. A row reads a lot of fields and a missing one takes the whole page
+down with it, so `requests` absent from an answer draws as zero rather than as a
+blank page; that has happened here once already, over a different field.
 
 ## 8. The interface
 
@@ -3489,7 +3576,7 @@ quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `first-run` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 38 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -3590,6 +3677,7 @@ Server suites:
 | `who-names` | a first browser is offered nobody, then only its own name; two browsers never see each other's; a shared browser is offered both; an empty name claims nothing; a forged cookie is ignored; a deleted name drops off |
 | `who-ui` | the dialog a stranger sees: asked, offered nobody though names exist, a field labelled *Your name*, an empty dropdown; after typing, remembered and not asked again |
 | `cover-fallback` | art present → the file; none → SVG with title and author; art deleted → SVG; unknown book → 404; deterministic; a rename asks for a new picture |
+| `requests` | a book asked for and the administrator told, with enough to go and find it; the same book asked for twice is one request however it is spelled, and Discord is not told again; both halves needed, and nobody signed in may ask. Then the matching, which is where this goes quietly wrong in both directions: the right author with the wrong title is not it, the right title by the wrong author is not it either, the book that *was* asked for answers it and becomes that person's favourite, and a later scan does not answer it twice. The news is waiting once and not twice; one listener cannot mark another's as told; a declined request carries the reason in the administrator's own words. Declining and tying need the administrator; a near miss is left open until tied by hand, and that path hearts the book too. The per-person tally for the accounts page, and the normalising itself — case, punctuation, accents, a leading article — with *Dune* still not *June* |
 
 UI suites: `search-ui` (the box on both pages: each match kind, multi-word,
 nothing found, clearing, letting go on a genre click), `greyed-button` (the
@@ -3667,6 +3755,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.13.0 | **you can ask for a book the collection has not got.** A button beside your own name in the header, an author and a title, and the administrator is told on Discord with enough to go and find it. When the collection next has that book the request answers itself: it becomes the asker's **favourite** and they are told the next time they open the app, once. Matching is normalised — case, accents, punctuation, a leading article — and then **exact**, on the author *and* the title, because a fuzzy distance makes *Dune* match *June* and titles are not unique. What that misses, the administrator **ties by hand**, which is half the design rather than a fallback: an automatic match that silently never happens is worse than none, because nothing says so. Asking twice is one request; a request can be turned down with a reason the asker is shown; and each person's row on the accounts page says what they have asked for and what became of it. The suite found a real one on its first run — the duplicate check ran its query with the parameter left off |
 | 2.12.96 | **the page opens with the book you are in the middle of, as a card.** Frank, pointing at a screenshot: the home page led with a *tile* — a cover, a title and a sliver of progress — so the thing he had come back for was the thing with the least said about it. The first of *Continue listening* is a card now, the one the rest of the app draws a book as, and the shelf under it keeps the others without repeating it. `cardFor` is lifted out of `drawBooks` rather than copied, so a card on the home page cannot drift from every other card. And the marker that tells a returning page the shelves are on screen counts the **card** as well as the shelf — it looked only for the shelf, and a reader with one book on the go has none, so coming back stopped refreshing for exactly the reader it was written for |
 | 2.12.88 | **nothing in the player bar changes width while you look at it.** The bar wraps on a phone, so what a row demands decides how tall the bar is — and a bar that gains a row moves *up*, under the thumb pressing it. `#pPlay` was eleven pixels wider saying "▶ Resume" than saying "⏸ Pause", and the clock grows a field when a book passes an hour. Both hold one width now, in `em` and `ch` so the reservation grows with the device's own font. Frank reported the jump on a **Galaxy S25**; it was never reproduced here, where the row had 28px of slack — which is about what a different system font is worth, and is an argument for the fix rather than proof of it. The check is on the thing that could move the bar, not on the bar staying put on a device nobody here has |
 | 2.12.80 | **the book a tab carries now says whose it is.** Frank: sign in as somebody else and you get the previous reader's *Continue listening*, in a private window too. A tab outlives a sign-in and `sessionStorage` belongs to the tab, so the carried book — which said *what* but never *whose* — came back in the next reader's player at the previous reader's position. It was not only shown: picking a book up loads it and the place is written back under whoever is signed in, so the reproduction left Luigi with a **progress row in a book he had never opened**. `pagehide` records the name, `pickUp` asks `/api/account/me` whether that is who is here and drops anything else, and signing out drops it outright. Asked of the *server*, not of `state.user` — that is seeded from `localStorage`, holds the previous reader's name, and would have agreed with the stale carry. Asking also makes the timing irrelevant, which `/ha` needs: it loads `player.js` without `account.js` |

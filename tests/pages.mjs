@@ -429,6 +429,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     state: 'approved', level: { name: 'Rookie Level', icon: '', at: 10, next: { at: 20, name: 'Listener Level' } },
     started: 5, finished: 4, completed: 1, hours: 3.2, favourites: 2, downloads: [],
     listening: [], signedIn: 1, reason: '', knowsAdmin: false, requestedAt: '', decidedAt: '',
+    requests: { asked: 3, open: 1, filled: 1, declined: 1 },
   };
   const { document, broke } = await open('accounts.html', {
     '/api/accounts': {
@@ -436,7 +437,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
         { ...base, name: 'FrankyB', isAdmin: true, hasPassword: false, lastSeen: day(0), daysAgo: 0, granted: true },
         { ...base, name: 'Donna', isAdmin: false, hasPassword: true, lastSeen: day(12), daysAgo: 12, granted: false,
           listening: [{ title: 'Abyss', author: 'Troy Denning', percent: 1, hours: 0.2, updated: day(1), via: 'music-assistant' }] },
-        { ...base, name: 'Newcomer', isAdmin: false, hasPassword: false, lastSeen: '', daysAgo: null,
+        { ...base, requests: undefined, name: 'Newcomer', isAdmin: false, hasPassword: false, lastSeen: '', daysAgo: null,
           listening: [{ title: 'A Book', author: 'An Author', percent: 40, hours: 2, updated: day(1), via: 'page' }] },
       ],
     },
@@ -503,6 +504,20 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     /Last here: here today at \d\d?:\d\d/.test(rowOf('FrankyB').textContent), true);
   check('while never is still never',
     /Last here: never signed in/.test(rowOf('Newcomer').textContent), true);
+
+  // What they have asked for, beside what they have listened to. The number is
+  // what they asked for; the line under it is what became of it, because nine
+  // asked and one found is a different person to talk to than one and one.
+  check('a row says what that person has asked for, and how it went',
+    [/3\s*requested/.test(rowOf('FrankyB').textContent.replace(/\s+/g, ' ')),
+      /1 waiting · 1 here · 1 no/.test(rowOf('FrankyB').textContent.replace(/\s+/g, ' '))],
+    [true, true]);
+  // An answer without it — an older server, a route that forgets — must not
+  // take the page down. The loop that wires every row stops on a throw, and
+  // every row after it is drawn with dead buttons; that has happened here once
+  // already, over a different missing field.
+  check('and an answer that does not carry them draws anyway, rather than nothing',
+    [/0\s*requested/.test(rowOf('Newcomer').textContent.replace(/\s+/g, ' ')), broke], [true, []]);
 }
 
 // --- and which of the two administrators it is ----------------------------

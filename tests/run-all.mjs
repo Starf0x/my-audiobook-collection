@@ -34,6 +34,7 @@ const PORTABLE = [
   'pages',
   'packaging',
   'first-run',
+  'requests',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten
