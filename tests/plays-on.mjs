@@ -568,6 +568,23 @@ async function run() {
     // only suite with a real one. The note at the top of this file says it is
     // not about the phone layout, and that was true until the phone layout was
     // the thing being reported.
+    // The long chapter name is not a phone problem, it only showed up as one.
+    // A desktop window is wider, and the select grew wider still: 498px, a bar
+    // of 1436 inside a window of 1265, and a sideways scrollbar on the page. So
+    // it is asked here too, at the width the suite has been running at all
+    // along, before anything is told it is a phone.
+    const wide = await evaluate(`(() => {
+      const sel = document.querySelector('#trackSelect');
+      sel.dataset.was = sel.options[0].textContent;
+      sel.options[0].textContent = '23. 23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn';
+      const was = { sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        selectWidth: Math.round(sel.getBoundingClientRect().width) };
+      sel.options[0].textContent = sel.dataset.was;
+      return was;
+    })()`);
+    check('a long chapter name does not widen the page on a desktop either',
+      [wide.sideways, wide.selectWidth <= 240], [false, true]);
+
     await send('Emulation.setDeviceMetricsOverride', {
       width: 375, height: 812, deviceScaleFactor: 1, mobile: true,
     });
@@ -594,7 +611,7 @@ async function run() {
         const e = document.querySelector(s);
         if (!e) return null;
         const r = e.getBoundingClientRect();
-        return { x: r.x, y: r.y, w: r.width, right: r.right, top: r.top, shown: getComputedStyle(e).display !== 'none' };
+        return { x: r.x, y: r.y, w: r.width, right: r.right, top: r.top, shown: getComputedStyle(e).display !== 'none', text: e.textContent.trim() };
       };
       const bar = document.querySelector('#player').getBoundingClientRect();
       const head = document.querySelector('header').getBoundingClientRect();
@@ -612,16 +629,45 @@ async function run() {
     })()`);
 
     check('the phone really is a phone', phone.width, 375);
+    // The bug the owner reported first, and the one no amount of looking at a short
+    // chapter name would have found. A `<select>` sizes itself to its widest
+    // option and a flex item's automatic minimum is its content, so one long
+    // chapter made the bar wider than the window and gave the whole page a
+    // sideways scrollbar — on the phone *and* on the desktop.
+    const stretched = await evaluate(`(() => {
+      const sel = document.querySelector('#trackSelect');
+      sel.dataset.was = sel.options[0].textContent;
+      sel.options[0].textContent = '23. 23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn';
+      const bar = document.querySelector('#player').getBoundingClientRect();
+      const r = sel.getBoundingClientRect();
+      return {
+        selectWidth: Math.round(r.width), barWidth: Math.round(bar.width),
+        pastTheBar: r.right > bar.right + 1,
+        sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    })()`);
+    check('a chapter with a long name stays inside the bar',
+      [stretched.pastTheBar, stretched.selectWidth <= stretched.barWidth], [false, true]);
+    check('and does not give the page a sideways scrollbar', stretched.sideways, false);
+    await evaluate(`(() => {
+      const sel = document.querySelector('#trackSelect');
+      sel.options[0].textContent = sel.dataset.was;
+    })()`);
     // Sign out sat next to the name in the middle of the row, because the block
     // that names who is signed in had nothing to take up the space beside it.
     check('Sign out is at the right edge of the header, not adrift in the middle',
       phone.head.right - phone.signOut.right < 20, true);
     check('and it is above the app’s own name, not beside it',
       phone.signOut.top < phone.brand.top, true);
-    // Three ways to pause on a screen this size is two too many. The cover is
-    // the one that stays, so it has to say so.
-    check('the bar has no play button of its own', phone.play.shown, false);
-    check('and the cover says what a tap on it will do', phone.glyph, '⏸');
+    // The bar keeps its own play/pause, and it says what it does rather than
+    // leaving a glyph in a box to be recognised. It was taken out once, on the
+    // grounds that the cover beside it is the same button — but the cover is
+    // something you have to already know, and the card's button is only on
+    // screen while you are looking at that book.
+    check('the bar has its own play/pause', phone.play.shown, true);
+    check('and it says what pressing it does, not only a glyph',
+      /Pause|Resume|Play/.test(phone.play.text), true);
+    check('and the cover says the same, being the same button', phone.glyph, '⏸');
     // ✕ was parked mid-bar beside the chapter pulldown.
     check('✕ is at the top right of the bar',
       [phone.bar.right - phone.close.right < 20, Math.abs(phone.close.top - phone.cover.top) < 6],

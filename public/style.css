@@ -152,11 +152,23 @@ footer .meta span { color: var(--dim); font-size: 12px; }
    into a track you are is yellow like the one on the shelves, and the whole thing
    sits in the app's own dark instead of the browser's light grey slab. */
 footer audio { display: none; }
-footer #pPlay { min-width: 40px; font-size: 15px; line-height: 1; padding: 7px 10px; }
+/* Glyph and word together, so the one control the bar exists for is the one
+   thing in it that does not have to be recognised. `nowrap` because "⏸ Pause"
+   breaking over two lines changes the bar's height every time it is pressed. */
+footer #pPlay { font-size: 14px; line-height: 1; padding: 7px 12px; white-space: nowrap; }
 footer #pPlay.playing { background: var(--accent); border-color: transparent; }
 footer .tick { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
 footer #seek { flex: 1; min-width: 120px; }
 footer #vol { width: 96px; flex: 0 0 auto; }
+/* the mute and the slider as one thing, which is what they are to a reader */
+footer .vol { display: inline-flex; align-items: center; gap: 8px; }
+/* A `<select>` sizes itself to its widest option, and a flex item's automatic
+   minimum is its content — so one chapter called "23 - A Memory of Light -
+   Chapter 23 - The Last Battle Begins At Dawn" made this 498px wide, pushed the
+   bar to 1436px inside a 1265px window, and gave the whole page a sideways
+   scrollbar. Here rather than only in the phone rules: a long chapter name is
+   long on any screen, and this was wrong on both. */
+footer #trackSelect { min-width: 0; max-width: 240px; }
 footer #pVolBtn { padding: 7px 9px; font-size: 14px; line-height: 1; }
 /* putting the player away is not a thing to press by accident on the way to the
    volume, so it sits quietly until it is looked for */
@@ -560,20 +572,38 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   footer #pClose { order: 3; align-self: flex-start; }
   /* The whole width. It is the longest text in the bar — "12/35 · 07 - The
      Chapter With The Long Name" — and it was the narrowest box. */
-  footer #trackSelect { order: 4; flex: 1 0 100%; max-width: none; }
-  footer #pAt { order: 5; }
-  footer #pOf { order: 6; }
-  footer #pVolBtn { order: 7; }
-  footer #vol { order: 8; flex: 1 1 60px; width: auto; min-width: 60px; }
-  footer #pGet { order: 9; }
+  /* `min-width: 0` is the whole of it. A `<select>` sizes itself to its widest
+     option, and a flex item's automatic minimum is its content — so a chapter
+     called "23 - A Memory of Light - Chapter 23 - The Last Battle Begins At
+     Dawn" made this 575px wide inside a 375px window and the *page* scrolled
+     sideways. `flex: 1 0 100%` gives it the row; this is what stops it taking
+     more than the row has. */
+  footer #trackSelect { order: 4; flex: 1 1 100%; min-width: 0; max-width: 100%; }
+  /* The bar keeps its own play/pause, and it says what it does. It was taken
+     out once, on the grounds that the cover beside it is the same button and
+     the book's own card carries a third — but the card is only on screen while
+     you are looking at that book, and a cover that happens to be a button is
+     something you have to already know. The one control the bar exists for
+     belongs in it. It sits on the row below the chapter rather than beside it,
+     which is what it used to do and what cost the chapter its width. */
+  footer #pPlay { order: 5; }
+  /* The two that are actions, on one row, one at each end: at this width the
+     six controls below cannot share a line — measured, they want 549px of 351 —
+     and the choice is which pair gets a row of its own. These two, because they
+     are the ones with words on them and the ones you press on purpose. The
+     `auto` margin takes the rest of the line, which is also what pushes the
+     measurements below onto their own. */
+  footer #pGet { order: 6; }
+  footer #pAt { order: 7; }
+  footer #pOf { order: 8; }
+  /* One item, so the mute and the slider wrap together or not at all, and a
+     width that stops the slider from spanning the bar — full width, under the
+     seek line, it read as a second progress bar rather than as the volume. */
+  footer .vol { order: 9; }
+  footer .vol #vol { width: 110px; }
   /* and the seek line last, with a row to itself */
-  footer #seek { order: 10; flex: 1 0 100%; }
+  footer #seek { order: 11; flex: 1 0 100%; }
   footer .tick { min-width: 40px; }
-  /* The bar's own play/pause goes. The cover beside it is the same button —
-     tapping it starts and stops the book, and has since the covers became play
-     buttons — and the book's own card carries a full-width one. Three ways to
-     pause is two too many on a screen this size. */
-  footer #pPlay { display: none; }
 
   /* a dialog is a sheet: the whole screen, and it scrolls */
   dialog {

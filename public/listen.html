@@ -58,8 +58,12 @@
   <input id="seek" type="range" min="0" max="1000" value="0" step="1"
     aria-label="Position in this track">
   <span id="pOf" class="tick">0:00</span>
-  <button id="pVolBtn" class="ghost" title="Mute or unmute">🔊</button>
-  <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="Volume">
+  <!-- The mute and the slider are one control wearing two hats, so they are one
+       thing to the layout as well. Loose, the bar wrapped between them on a
+       phone and left the slider alone across the full width, where a yellow bar
+       under a yellow bar reads as a second progress line. -->
+  <span class="vol"><button id="pVolBtn" class="ghost" title="Mute or unmute">🔊</button>
+    <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="Volume"></span>
   <!-- The whole book, not the one track that happens to be playing. The arrow
        carries the word with it: on a phone there is no hovering, so a lone ⤓
        beside a volume slider is a guess, and this is the one control in the bar
