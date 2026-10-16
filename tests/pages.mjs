@@ -188,6 +188,35 @@ for (const [page, own] of [['index.html', 'app.js'], ['listen.html', 'shelf.js']
   check('accounts.html loads its scripts without complaint', broke, []);
 }
 
+// --- and the player bar is written out twice, so it must stay one bar -------
+// Both pages carry their own copy of that footer. One stylesheet and one
+// `player.js` serve both, so a control added, renamed or rewrapped on one page
+// and not the other is a bar that works here and not there — and the page that
+// was missed is whichever one nobody opened. Nothing else compares them.
+//
+// `plays-on` is where the phone layout itself is checked, because that needs a
+// browser with a layout engine; this is the half that needs only the markup.
+{
+  const [a, b] = await Promise.all([open('index.html'), open('listen.html')]);
+  const bar = (d) => {
+    const f = d.querySelector('#player');
+    return {
+      // the cover is a play button, so it is wrapped to carry the glyph
+      wrapped: !!f.querySelector('.cover > #pCover'),
+      // the one control in the bar that writes a file to the device says so
+      download: f.querySelector('#pGet').textContent.replace(/\s+/g, ' ').trim(),
+      // and every control is present and in one order
+      controls: [...f.children].map((e) => e.id || e.className).filter(Boolean).join(','),
+    };
+  };
+  const [one, two] = [bar(a.document), bar(b.document)];
+  check('the player bar is the same on both pages, control for control', one, two);
+  check('the cover is wrapped so it can say what a tap will do',
+    [one.wrapped, two.wrapped], [true, true]);
+  check('and the download says what it is, not only an arrow',
+    [/Download/.test(one.download), /Download/.test(two.download)], [true, true]);
+}
+
 // --- Move… opens whatever the routes beside it say ------------------------
 // `/api/import` refuses in every one of these, deliberately. Move… used to ask
 // it for the list of genres, and that route throws when no import folder is set
