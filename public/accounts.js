@@ -82,7 +82,13 @@ const ADMIN_IS = {
 // Filled from the answer, because the server is the only thing that knows which.
 let adminFrom = 'env';
 
-const row = (a) => `<div class="account" data-name="${esc(a.name)}">
+// A row reads a lot of fields, and a missing one takes the whole page down
+// with it — the loop that wires every row stops on the throw, and the rows
+// after it are drawn with dead buttons. `requests` is the newest of them, so it
+// is the one most likely to be absent from an answer: an older server, a route
+// that forgets. Nothing here is worth a blank page.
+const noRequests = { asked: 0, open: 0, filled: 0, declined: 0 };
+const row = (a0) => ((a) => `<div class="account" data-name="${esc(a.name)}">
     <div class="who">
       <div class="name">
         ${a.level.icon ? `<span class="badge-icon" title="${esc(a.level.name)}">${a.level.icon}</span>` : ''}
@@ -126,6 +132,18 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
       <div title="Time listened, from where each place sits in its book."><strong>${a.hours}</strong><span>hours</span></div>
       <div title="Books they have hearted."><strong>${a.favourites}</strong><span>♥</span></div>
       <div title="Whole books they have downloaded."><strong>${a.downloads.length}</strong><span>downloads</span></div>
+      <!-- What they have asked for, and how much of it they got. A person who
+           has asked for nine things and had one is a different person to talk
+           to than one who asked for one. The number is what they asked for; the
+           line under it is what became of it. -->
+      <div title="${a.requests.open ? `${a.requests.open} still waiting. ` : ''}${a.requests.filled} found, ${a.requests.declined} turned down.">
+        <strong>${a.requests.asked}</strong><span>requested</span>
+        ${a.requests.asked ? `<span class="sub">${[
+    a.requests.open ? `${a.requests.open} waiting` : '',
+    a.requests.filled ? `${a.requests.filled} here` : '',
+    a.requests.declined ? `${a.requests.declined} no` : '',
+  ].filter(Boolean).join(' · ')}</span>` : ''}
+      </div>
     </div>
 
     ${a.isAdmin ? `<div class="allowed">
@@ -154,7 +172,7 @@ const row = (a) => `<div class="account" data-name="${esc(a.name)}">
       <span class="sub">Downloaded:</span>
       ${a.downloads.map((d) => `<span class="badge">${esc(d.title || 'a book')} · ${esc(when(d.at))}</span>`).join(' ')}
     </div>` : ''}
-  </div>`;
+  </div>`)({ ...a0, requests: a0.requests || noRequests });
 
 async function load() {
   let d;
