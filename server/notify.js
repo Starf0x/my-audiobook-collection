@@ -128,6 +128,16 @@ export const askedForAnAccount = (who) => say(`📩 **${plain(who.name, 40)}** w
 
 export const signedIn = (name) => say(`🔑 **${plain(name, 40)}** signed in.`);
 
+// Somebody has asked for a book the collection has not got. This is the one
+// message that asks the administrator to go and *do* something, which is why it
+// says the author and the title plainly enough to paste into a shop, and why it
+// goes out once per request rather than once per asking — somebody who has
+// forgotten they already asked should not ring the phone again.
+export const askedForABook = (name, author, title, note) =>
+  say(`📚 **${plain(name, 40)}** would like *${plain(title)}*`
+    + `${author ? ` by **${plain(author, 80)}**` : ''}.`
+    + (note ? `\n> ${plain(note, 400)}` : ''));
+
 export const startedListening = (name, title, author) =>
   say(`▶️ **${plain(name, 40)}** started *${plain(title)}*${author ? ` by ${plain(author, 60)}` : ''}.`);
 

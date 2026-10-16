@@ -73,6 +73,31 @@ db.exec(`
     id INTEGER PRIMARY KEY, user TEXT, book_id INTEGER, title TEXT, at TEXT
   );
   CREATE INDEX IF NOT EXISTS downloads_user ON downloads (user, at);
+  -- Books somebody has asked for and the collection has not got.
+  --
+  -- The author and the title are kept as they were typed, because that is what
+  -- the administrator reads when deciding whether to go and find it; the
+  -- normalised pair that a new book is matched against is worked out when it is
+  -- needed, not stored, so a change to how matching reads a name does not need
+  -- every old row rewritten.
+  --
+  -- book_id is the book that answered it, kept so the request can say which,
+  -- and allowed to go stale rather than cascade: a request that was once filled
+  -- stays filled even if the book is later deleted, because it happened.
+  -- told is whether the person who asked has been shown the news yet.
+  -- (No backticks in here: this whole schema is one template literal, and a
+  --  backtick in a SQL comment ends it in the middle of a table definition.)
+  CREATE TABLE IF NOT EXISTS requests (
+    id INTEGER PRIMARY KEY,
+    who TEXT, author TEXT, title TEXT, note TEXT DEFAULT '',
+    state TEXT DEFAULT 'open',          -- open | filled | declined
+    said TEXT DEFAULT '',               -- why, when it was declined
+    book_id INTEGER,
+    asked_at TEXT, decided_at TEXT DEFAULT '',
+    told INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS requests_who ON requests (who, asked_at);
+  CREATE INDEX IF NOT EXISTS requests_state ON requests (state);
   -- a whole-collection tag write, and what is left of it: the queue is what
   -- makes the run resumable after a stop or a restart
   CREATE TABLE IF NOT EXISTS tagrun (

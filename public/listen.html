@@ -15,6 +15,10 @@
     autocomplete="off" spellcheck="false">
   <div class="spacer"></div>
   <div id="whoAmI" title="Signed in as"></div>
+  <!-- Beside the name, because it is a thing *you* are asking for rather than
+       something the collection does. Hidden until somebody is signed in: a
+       request with nobody to answer is not a request. -->
+  <button id="askForBook" class="ghost" hidden title="Ask for a book the collection has not got">＋ Request</button>
   <button id="signOut" class="ghost" hidden>Sign out</button>
   <!-- Hidden until whoAmI() says the person signed in is the administrator.
        Its own id rather than the admin page's `adminBtn`, which is that page's
@@ -38,6 +42,23 @@
   <section id="authors"><div class="col-title"><button class="back linkish" id="backGenres">‹ Genres</button>Authors</div><ul></ul></section>
   <section id="books"><div class="col-title"><button class="back linkish" id="backCol">‹ Back</button>Books <button id="home" class="linkish">Home</button></div><div class="list"></div></section>
 </main>
+
+<!-- Asking for a book the collection has not got. Two fields, because two are
+     what the administrator needs to go and find it; the third is for whatever
+     the other two do not carry — a narrator, an edition, "the one with the
+     green cover". -->
+<dialog id="askDlg">
+  <h2>Request an audiobook</h2>
+  <p class="hint">Ask for a book this collection has not got. The administrator is told, and when
+    it arrives you are too — and it goes straight into your Favourites.</p>
+  <label>Author</label><input id="askAuthor" autocomplete="off">
+  <label>Title</label><input id="askTitle" autocomplete="off">
+  <label>Anything else (optional)</label><input id="askNote" autocomplete="off"
+    placeholder="a narrator, an edition, where you saw it…">
+  <p class="hint missing" id="askSaid"></p>
+  <div class="row end"><button id="closeAsk" class="ghost">Cancel</button><button id="doAsk">Send</button></div>
+  <div id="askMine"></div>
+</dialog>
 
 <footer id="player" hidden>
   <!-- The cover is the bar's play/pause button, as every other cover in the

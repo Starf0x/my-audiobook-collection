@@ -104,6 +104,84 @@ const seriesLine = (b) => (b.series
   ? `<div class="sub series-of">Series · ${esc(b.series)}${b.series_no ? ` · book ${b.series_no}` : ''}</div>`
   : '<div class="sub no-series" title="This book is not part of a series">No Series</div>');
 
+// --- asking for a book the collection has not got --------------------------
+//
+// Both pages carry the same button and the same dialog, so the behaviour is
+// here rather than twice. The administrator asks the same way as anybody else:
+// a list of what is wanted is worth having whoever wrote it.
+
+const askedRow = (r) => {
+  const state = r.state === 'filled'
+    ? `<span class="badge tagged">Here now${r.bookTitle ? ` · ${esc(r.bookTitle)}` : ''}</span>`
+    : r.state === 'declined'
+      ? `<span class="badge untagged" title="${esc(r.said || '')}">Not this one</span>`
+      : '<span class="badge">Waiting</span>';
+  return `<li>
+    <span><strong>${esc(r.title)}</strong><span class="sub"> ${esc(r.author)}</span></span>
+    <span>${state}</span>
+  </li>`;
+};
+
+async function drawMyRequests() {
+  const box = $('#askMine');
+  if (!box) return;
+  const d = await api('/api/requests/mine').catch(() => ({ mine: [] }));
+  const mine = d.mine || [];
+  box.innerHTML = mine.length
+    ? `<div class="col-title">What you have asked for</div><ul class="asked">${mine.map(askedRow).join('')}</ul>`
+    : '';
+}
+
+// The news, said once. A book that arrived or a request that was turned down is
+// a thing that happened while you were not looking, so it is a toast on the way
+// in rather than a badge to be noticed — and the server is told it has been
+// said, or it would be said again on every page for ever.
+async function sayWhatHappened() {
+  const d = await api('/api/requests/mine').catch(() => null);
+  const news = (d && d.news) || [];
+  if (!news.length) return;
+  for (const r of news) {
+    if (r.state === 'filled') {
+      toast(`“${r.bookTitle || r.title}” is here — it is in your Favourites.`);
+    } else {
+      toast(`“${r.title}” is not one that will be added${r.said ? `: ${r.said}` : '.'}`);
+    }
+  }
+  post('/api/requests/seen', { ids: news.map((r) => r.id) }).catch(() => {});
+}
+
+function wireAsking() {
+  const open = $('#askForBook');
+  if (!open) return;
+  open.onclick = async () => {
+    $('#askSaid').textContent = '';
+    await drawMyRequests();
+    $('#askDlg').showModal();
+    $('#askAuthor').focus();
+  };
+  $('#closeAsk').onclick = () => $('#askDlg').close();
+  $('#doAsk').onclick = async () => {
+    const author = $('#askAuthor').value.trim();
+    const title = $('#askTitle').value.trim();
+    const note = $('#askNote').value.trim();
+    $('#askSaid').textContent = '';
+    if (!author || !title) { $('#askSaid').textContent = 'An author and a title, please — both.'; return; }
+    try {
+      const r = await post('/api/requests', { author, title, note });
+      // Asking twice for the same book is one request. Said plainly, or the
+      // second ask looks as though it did nothing.
+      toast(r.again ? 'You have already asked for that one — it is still on the list.'
+        : 'Asked. The administrator has been told.');
+      $('#askAuthor').value = '';
+      $('#askTitle').value = '';
+      $('#askNote').value = '';
+      await drawMyRequests();
+    } catch (e) {
+      $('#askSaid').textContent = e.message;
+    }
+  };
+}
+
 // --- the three things on a card that are also a way somewhere --------------
 //
 // A card already names the author, the year and (where it is not obvious) the
@@ -437,3 +515,8 @@ const onMenu = (act, fn) => {
 // Whether this book is ticked off, as far as the page knows: the tick on its card
 // if a card is on screen, otherwise what the player was told when it loaded it.
 const tickOf = (id) => document.querySelector(`.card .listened input[onchange*="setListened(${id},"]`);
+
+// Both pages load this file; `account.js` calls these once it knows who is
+// signed in, since neither means anything before that.
+window.wireAsking = wireAsking;
+window.sayWhatHappened = sayWhatHappened;

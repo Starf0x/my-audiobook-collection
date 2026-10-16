@@ -51,6 +51,8 @@ async function whoAmI() {
       + (under ? `<span class="level">${esc(under)}</span>` : '')
     : '';
   $('#signOut').hidden = !me.signedIn;
+  // Asking for a book needs somebody to be asking, and somebody to tell.
+  if ($('#askForBook')) $('#askForBook').hidden = !me.signedIn;
   // The listening page's way through to the admin page, shown to the one person
   // it is any use to. It is not on the admin page, where that id is the Lock
   // button, so this asks whether it is there at all.
@@ -204,6 +206,10 @@ async function started() {
   // carry is, so calling it again here costs one question and can take nothing
   // it should not.
   window.pickUp?.();
+  // A book you asked for has arrived, or will not be coming. Said on the way
+  // in, once — it happened while you were not looking.
+  window.wireAsking?.();
+  window.sayWhatHappened?.();
   await loadFavourites();
   return window.begin();
 }

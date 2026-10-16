@@ -19,7 +19,10 @@ import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats,
   find as findListener } from './listeners.js';
 import { levelOf, mayDownload, LEVELS, TOP } from './levels.js';
 import { askedForAnAccount, signedIn, startedListening, stoppedListening, tookTheBook,
-  reachedALevel, saveWebhook, webhookSet, lastSaid } from './notify.js';
+  reachedALevel, askedForABook, saveWebhook, webhookSet, lastSaid } from './notify.js';
+import { askFor, of_, newsFor, markTold, all as allRequests, howManyOpen,
+  decline as declineRequest, fill as fillRequest, forget as forgetRequest, tallyFor,
+  fillFrom } from './requests.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates, pictureKind } from './covers.js';
 import { scheduleBackups, listBackups, backupNow, KEEP as BACKUPS_KEPT } from './backup.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
@@ -312,7 +315,9 @@ app.get('/api/accounts', requireAdmin, (req, res) => res.json({
   accounts: withStats().map((a) => {
     const id = playing.get(a.name);
     const book = id && db.prepare('SELECT title, author FROM books WHERE id = ?').get(id);
-    return { ...a, nowPlaying: book ? { title: book.title, author: book.author || '' } : null };
+    // What they have asked for, beside what they have listened to: a person who
+    // has asked for nine things and had one is a different person to talk to.
+    return { ...a, requests: tallyFor(a.name), nowPlaying: book ? { title: book.title, author: book.author || '' } : null };
   }),
 }));
 
@@ -666,8 +671,25 @@ app.get('/api/backups', requireAdmin, (req, res) => res.json({
 }));
 app.post('/api/backups', requireAdmin, (req, res) => res.json(backupNow()));
 
+// --- books somebody has asked for ----------------------------------------
+// The heart is handed in rather than reached for: `requests.js` decides *that*
+// an answered request becomes a favourite, and this is the one place that knows
+// how a favourite is written. Declared here, above the scan, because that is
+// the first thing that uses it.
+const heartFor = (user, bookId) => db.prepare(`INSERT INTO favourites (user, book_id, at) VALUES (?, ?, ?)
+            ON CONFLICT(user, book_id) DO NOTHING`).run(user, bookId, new Date().toISOString());
+
 app.post('/api/scan', requireAdmin, (req, res) => {
-  if (!progress.running) scan(req.body.path || '');
+  // A scan is how a book that somebody asked for arrives, so it is where the
+  // open requests are looked at again. Against the whole collection rather than
+  // against what this scan added: a book can also arrive by an import or by
+  // hand, and "what is here now" is the honest question. It is a pass over the
+  // books table with a handful of open requests, and only when there are any.
+  if (!progress.running) {
+    scan(req.body.path || '')
+      .then(() => fillFrom([], { heart: heartFor }))
+      .catch(() => {});
+  }
   res.json({ started: true });
 });
 app.get('/api/scan/status', (req, res) => res.json(progress));
@@ -1100,6 +1122,57 @@ app.post('/api/books/:id/unabridged', requireAdmin, (req, res) => {
   db.prepare('UPDATE books SET unabridged = ? WHERE id = ?').run(on, id);
   return res.json({ ok: true, unabridged: !!on });
 });
+
+app.post('/api/requests', wrap(async (req, res) => {
+  const who = whoWrites(req);
+  if (!who) return res.status(400).json({ error: 'Sign in first.' });
+  let asked;
+  try {
+    asked = askFor({ who, ...(req.body || {}) });
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  // Only the first time. Asking again for something already on the list is
+  // answered as the same request, and the administrator is not told twice.
+  if (!asked.again) askedForABook(who, asked.author, asked.title, asked.note);
+  return res.json(asked);
+}));
+
+// What this person has asked for, and anything they have not been told yet.
+app.get('/api/requests/mine', (req, res) => {
+  const who = whoReads(req);
+  res.json({ mine: of_(who), news: newsFor(who) });
+});
+
+app.post('/api/requests/seen', (req, res) => {
+  const who = whoWrites(req);
+  // Only their own: the ids come from a page, and marking somebody else's news
+  // as told would quietly lose it.
+  const mine = new Set(of_(who).map((r) => r.id));
+  res.json({ told: markTold(((req.body || {}).ids || []).filter((id) => mine.has(Number(id)))) });
+});
+
+app.get('/api/requests', requireAdmin, (req, res) => res.json({ requests: allRequests(), open: howManyOpen() }));
+
+app.post('/api/requests/:id/decline', requireAdmin, (req, res) => {
+  try {
+    return res.json(declineRequest(req.params.id, (req.body || {}).said));
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+// Tie one to a book by hand, for everything the normalised match will not
+// catch — *Mistborn* asked for, *Mistborn: The Final Empire* delivered.
+app.post('/api/requests/:id/link', requireAdmin, (req, res) => {
+  try {
+    return res.json(fillRequest(req.params.id, (req.body || {}).bookId, { heart: heartFor }));
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/requests/:id/forget', requireAdmin, (req, res) => res.json(forgetRequest(req.params.id)));
 
 app.post('/api/favourites/:id', wrap(async (req, res) => {
   const user = whoWrites(req);

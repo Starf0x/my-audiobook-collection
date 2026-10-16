@@ -896,6 +896,89 @@ async function loadAccounts() {
   return d;
 }
 
+// --- books somebody has asked for -----------------------------------------
+// The count is the open ones, for the same reason the accounts row counts the
+// pending: those are the ones that need something doing. A request that has
+// been answered or turned down is history, and history does not want a number
+// in a column.
+async function loadRequests() {
+  const d = await api('/api/requests').catch(() => ({ requests: [], open: 0 }));
+  state.requests = d.requests;
+  counts('requestList', d.open);
+  $('#requestList').classList.toggle('wants', !!d.open);
+  return d;
+}
+
+const askedWhen = (iso) => (iso ? new Date(iso).toLocaleDateString() : '');
+
+// One row per request. The open ones carry what can be done about them; the
+// settled ones carry what was done, because "you turned this down in March, and
+// this is what you said" is the question somebody asks later.
+const requestRow = (r) => `<div class="fix" data-request="${r.id}">
+    <div>
+      <strong>${esc(r.title)}</strong>
+      <div class="sub">${esc(r.author)} · asked by ${esc(r.who)}${r.asked_at ? ` · ${esc(askedWhen(r.asked_at))}` : ''}</div>
+      ${r.note ? `<div class="sub">“${esc(r.note)}”</div>` : ''}
+      ${r.state === 'filled' ? `<div class="sub"><span class="badge tagged">Here${r.bookTitle ? ` · ${esc(r.bookTitle)}` : ''}</span></div>` : ''}
+      ${r.state === 'declined' ? `<div class="sub"><span class="badge untagged">Turned down</span> ${esc(r.said || '')}</div>` : ''}
+    </div>
+    <div class="actions">${r.state === 'open' ? `
+      <button class="ghost" data-act="link">It is here now…</button>
+      <button class="ghost" data-act="decline">Not this one…</button>` : `
+      <button class="ghost danger" data-act="forget">Forget</button>`}
+    </div>
+  </div>`;
+
+async function showRequests() {
+  document.body.classList.add('maintenance');
+  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+  $('#requestList').classList.add('active');
+  const d = await loadRequests();
+  const rows = d.requests || [];
+  $('#books .list').innerHTML = `<div class="series-head">Requests · ${d.open} waiting</div>`
+    + (rows.length ? rows.map(requestRow).join('')
+      : '<div class="empty">Nobody has asked for anything yet.</div>');
+  show('books');
+
+  $('#books .list').querySelectorAll('[data-request]').forEach((row) => {
+    const id = Number(row.dataset.request);
+    const act = (name) => row.querySelector(`[data-act="${name}"]`);
+    if (act('decline')) {
+      act('decline').onclick = async () => {
+        const said = prompt('Why not? The person who asked will be told this.');
+        if (said === null) return;
+        await post(`/api/requests/${id}/decline`, { said }).catch((e) => toast(e.message));
+        showRequests();
+      };
+    }
+    if (act('link')) {
+      // By hand, for what the normalised match will not catch. The book is
+      // named rather than picked from a list of eleven hundred: the admin has
+      // just put it there and knows what it is called.
+      act('link').onclick = async () => {
+        const name = prompt('Which book? Type enough of its title to find it.');
+        if (!name) return;
+        const found = await api(`/api/search?q=${encodeURIComponent(name)}`).catch(() => []);
+        if (!found.length) return toast('No book here by that name.');
+        const pick = found.length === 1 ? found[0]
+          : found.find((b) => confirm(`Is it “${b.title}” by ${b.author}?`));
+        if (!pick) return toast('Left as it was.');
+        await post(`/api/requests/${id}/link`, { bookId: pick.id }).catch((e) => toast(e.message));
+        return showRequests();
+      };
+    }
+    if (act('forget')) {
+      act('forget').onclick = async () => {
+        if (!confirm('Forget this request? It leaves their statistics too.')) return;
+        await post(`/api/requests/${id}/forget`, {}).catch((e) => toast(e.message));
+        showRequests();
+      };
+    }
+  });
+}
+
+$('#requestList').onclick = showRequests;
+
 // The accounts themselves live on a page of their own now (`accounts.js`): a
 // row per person with numbers on it wants width and stillness, and the column
 // beside a library is neither. This row is the way there, and it keeps the
@@ -1426,7 +1509,7 @@ const counts = (rowId, n) => {
 
 // Everything the library counts feeds off the same data, so refresh it together.
 // The shelves included: a book that just arrived belongs under Recently added.
-const MAINTENANCE_ROWS = ['needsTags', 'convertList', 'convertedList', 'brokenList', 'skippedList',
+const MAINTENANCE_ROWS = ['needsTags', 'convertList', 'convertedList', 'brokenList', 'skippedList', 'requestList',
   'importList', 'replacedList', 'trashList',
   // not maintenance, but a view of its own in the same column, and the same rule
   // holds: what is drawn again after a change is what was on screen
@@ -1446,7 +1529,7 @@ async function backToView() {
 async function refreshLibrary() {
   await Promise.all([loadGenres(), loadStats(), loadUntagged(), loadTrash(),
     loadReplaced(), loadBroken(), loadSkipped(), loadListened(), loadConvertible(),
-    loadConverted(), loadSeriesCount(), loadAccounts(), importCountOnly()]);
+    loadConverted(), loadSeriesCount(), loadAccounts(), loadRequests(), importCountOnly()]);
   await backToView();
 }
 
@@ -1745,7 +1828,7 @@ window.begin = async () => {
   await loadGenres();
   await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
     loadReplaced(), loadBroken(), loadSkipped(), loadConvertible(), loadConverted(),
-    loadSeriesCount(), loadAccounts()]);
+    loadSeriesCount(), loadAccounts(), loadRequests()]);
   await loadHome();
   // a scan another browser started is still running: follow it instead of
   // offering a button that would only be refused

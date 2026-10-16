@@ -19,6 +19,10 @@
     autocomplete="off" spellcheck="false">
   <div class="spacer"></div>
   <div id="whoAmI" title="Signed in as"></div>
+  <!-- Beside the name, because it is a thing *you* are asking for rather than
+       something the collection does. The administrator asks the same way: a
+       list of what is wanted is worth having whoever wrote it. -->
+  <button id="askForBook" class="ghost" hidden title="Ask for a book the collection has not got">＋ Request</button>
   <button id="signOut" class="ghost" hidden>Sign out</button>
   <button id="adminBtn" class="ghost" hidden>Lock</button>
   <select id="scanWhich" title="Which library folder to scan"></select>
@@ -62,6 +66,7 @@
       <li id="convertedList" hidden><span>Converted</span><span class="count" id="convertedCount">0</span></li>
       <li id="brokenList" hidden><span>Broken on disk</span><span class="count" id="brokenCount">0</span></li>
       <li id="seriesList" hidden><span>Series to complete</span><span class="count" id="seriesCount">0</span></li>
+      <li id="requestList" hidden><span>Requests</span><span class="count" id="requestCount">0</span></li>
       <li id="accountList" hidden><span>Accounts</span><span class="count" id="accountCount">0</span></li>
       <li id="skippedList" hidden><span>Not counted</span><span class="count" id="skippedCount">0</span></li>
       <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
@@ -75,6 +80,23 @@
 
 <!-- one bar per running job is added here, side by side -->
 <div id="progress" hidden></div>
+
+<!-- Asking for a book the collection has not got. Two fields, because two are
+     what the administrator needs to go and find it; the third is for whatever
+     the other two do not carry — a narrator, an edition, "the one with the
+     green cover". -->
+<dialog id="askDlg">
+  <h2>Request an audiobook</h2>
+  <p class="hint">Ask for a book this collection has not got. The administrator is told, and when
+    it arrives you are too — and it goes straight into your Favourites.</p>
+  <label>Author</label><input id="askAuthor" autocomplete="off">
+  <label>Title</label><input id="askTitle" autocomplete="off">
+  <label>Anything else (optional)</label><input id="askNote" autocomplete="off"
+    placeholder="a narrator, an edition, where you saw it…">
+  <p class="hint missing" id="askSaid"></p>
+  <div class="row end"><button id="closeAsk" class="ghost">Cancel</button><button id="doAsk">Send</button></div>
+  <div id="askMine"></div>
+</dialog>
 
 <footer id="player" hidden>
   <!-- The cover is the bar's play/pause button, as every other cover in the
