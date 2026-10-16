@@ -518,16 +518,41 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   .tile, .tile img { width: 96px; }
   .tile img { height: 144px; }
 
-  /* the player: cover and title on one line, the controls under them */
+  /* The player on a phone: four rows, each one thing.
+
+       cover · what is playing · ✕
+       which chapter, the whole width
+       the clock, the volume, the download
+       the seek line
+
+     The markup is one order for both screens and `order` does the arranging
+     here, so nothing in the two pages has to know which screen it is on.
+     Before this it was whatever fell out of wrapping: ✕ landed mid-bar beside a
+     chapter pulldown clipped to 45% of the width, so the one line that says
+     where you are in a book was the one thing with no room. */
   footer { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
-  footer img { width: 44px; height: 66px; }
-  footer .meta { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+  footer img { order: 1; width: 44px; height: 66px; }
+  footer .meta { order: 2; min-width: 0; flex: 1 1 auto; overflow: hidden; }
   footer .meta strong, footer .meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  footer #trackSelect { max-width: 45%; }
-  /* on a phone the seek line gets a row of its own, under the rest */
+  /* top right of the bar, where a thing that puts something away belongs —
+     `flex-start` against the cover's 66px, or it floats to the middle of the row */
+  footer #pClose { order: 3; align-self: flex-start; }
+  /* The whole width. It is the longest text in the bar — "12/35 · 07 - The
+     Chapter With The Long Name" — and it was the narrowest box. */
+  footer #trackSelect { order: 4; flex: 1 0 100%; max-width: none; }
+  footer #pAt { order: 5; }
+  footer #pOf { order: 6; }
+  footer #pVolBtn { order: 7; }
+  footer #vol { order: 8; flex: 1 1 60px; width: auto; min-width: 60px; }
+  footer #pGet { order: 9; }
+  /* and the seek line last, with a row to itself */
   footer #seek { order: 10; flex: 1 0 100%; }
-  footer #vol { width: 72px; }
   footer .tick { min-width: 40px; }
+  /* The bar's own play/pause goes. The cover beside it is the same button —
+     tapping it starts and stops the book, and has since the covers became play
+     buttons — and the book's own card carries a full-width one. Three ways to
+     pause is two too many on a screen this size. */
+  footer #pPlay { display: none; }
 
   /* a dialog is a sheet: the whole screen, and it scrolls */
   dialog {
@@ -576,6 +601,12 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
   /* two rows, not three: the title and who is listening, then the search and
      the scan controls */
   header h1 { order: 1; }
+  /* Who is signed in takes the first row to itself and pushes Sign out to the
+     right edge. It had no `order` at all — so it fell to 0, ahead of everything
+     here, which is how the name and Sign out ended up above the app's own name
+     with Sign out sitting in the middle of the row. Order 0 is right for the
+     row; the missing part was something to take up the space beside it. */
+  header #whoAmI { flex: 1 1 auto; min-width: 0; }
   header #user { order: 2; max-width: 120px; }
   header #adminBtn, header #toAdmin { order: 3; }
   header #openSettings { order: 4; }
@@ -627,20 +658,26 @@ table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
 /* The cover is a play button: it says what a click will do, and keeps saying it
    while that book plays. On a touch screen there is no hover, so the glyph shows
    for the book that is playing and nothing else. */
-.card .cover { position: relative; }
-.card .cover img[onclick] { cursor: pointer; }
-.card .cover::after {
+.card .cover, footer .cover { position: relative; }
+.card .cover img[onclick], footer .cover { cursor: pointer; }
+.card .cover::after, footer .cover::after {
   content: attr(data-glyph);
   position: absolute; top: 52px; left: 0; right: 0; text-align: center;
   font-size: 30px; color: #fff; text-shadow: 0 2px 10px #000;
   opacity: 0; transition: opacity .12s; pointer-events: none;
 }
-.card .cover:hover::after { opacity: .92; }
-.card .cover.playing::after { opacity: .92; }
-#pCover { cursor: pointer; }
+.card .cover:hover::after, footer .cover:hover::after { opacity: .92; }
+.card .cover.playing::after, footer .cover.playing::after { opacity: .92; }
+/* the bar's cover is 36px tall on a desktop and 66 on a phone, so the glyph is
+   sized and placed to it rather than to a card's 126 */
+footer .cover::after { top: 50%; transform: translateY(-50%); font-size: 18px; }
+/* `flex`, so the wrapper is exactly the picture. A block would leave a sliver of
+   line-height under it, and a click there would miss the image — which is what
+   carries the handler, and what the cover's right-click menu looks for. */
+footer .cover { display: flex; }
 @media (hover: none) {
-  .card .cover:hover::after { opacity: 0; }
-  .card .cover.playing::after { opacity: .92; }
+  .card .cover:hover::after, footer .cover:hover::after { opacity: 0; }
+  .card .cover.playing::after, footer .cover.playing::after { opacity: .92; }
 }
 
 /* the Home Assistant configuration, when the clipboard is not allowed */
@@ -725,12 +762,16 @@ strong.warn { color: #ffb4a8; }
 }
 
 /* the download of the whole book: a link, so the browser does the saving */
+/* The one control in the bar that writes a file to somebody's device, so it
+   says what it is rather than leaving an arrow to be guessed at — there is no
+   hovering on a phone to read a title from. */
 footer #pGet {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 38px; height: 34px; padding: 0 9px; font-size: 15px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 11px; font-size: 13px; line-height: 1; white-space: nowrap;
   border-radius: 8px; border: 1px solid var(--line); background: var(--panel2);
   color: var(--text); text-decoration: none; cursor: pointer;
 }
+footer #pGet span { font-size: 15px; }
 footer #pGet:hover { filter: brightness(1.15); }
 
 /* a tick in a dialog, which the uppercase label styling would otherwise shout */

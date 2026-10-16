@@ -554,6 +554,90 @@ async function run() {
     check('a paused book does NOT start playing by itself', after.paused, true);
     check('and its clock is not moving', after.moving, false);
 
+    // 6. the phone, which is the one layout no other suite can see
+    //
+    // The owner sent a screenshot with five faults on one screen: Sign out stranded
+    // in the middle of the top row, the bar carrying its own pause button next
+    // to a cover that is the same button, a bare ⤓ beside a volume slider, ✕
+    // parked mid-bar, and the chapter line — the longest text in the bar —
+    // clipped to 45% of the width.
+    //
+    // Every one of those is a computed position, and `pages` cannot see a single
+    // one: jsdom has no layout engine, so a stylesheet that puts a control in
+    // the wrong place is a change nothing in the suites notices. This is the
+    // only suite with a real one. The note at the top of this file says it is
+    // not about the phone layout, and that was true until the phone layout was
+    // the thing being reported.
+    await send('Emulation.setDeviceMetricsOverride', {
+      width: 375, height: 812, deviceScaleFactor: 1, mobile: true,
+    });
+    // Straight there rather than by a button: the checks above are about
+    // carrying a book between pages and this one is about where the controls
+    // land, so the listening page is a destination here, not a journey. It has
+    // to be that page and not the admin one — Sign out is only on this header.
+    await goto(`${BASE}/`, '/');
+    await pickedUp();
+    // the bar's cover is the play button on a phone, so this is also the check
+    // that it still works as one
+    await click('#pCover');
+    // Waiting for the clock to move, not for `paused` to turn false. `play()`
+    // clears `paused` on the spot and the `play` event — which is what redraws
+    // the glyph — is a task behind it, so a wait on `paused` lets the glyph be
+    // read in the gap between the two and the check fails for the suite's own
+    // timing rather than for anything the app did.
+    const resumedAt = await evaluate(`document.querySelector('#audio').currentTime`);
+    await waitFor(`document.querySelector('#audio').currentTime > ${resumedAt + 0.3}`,
+      'the book to be playing again');
+
+    const phone = await evaluate(`(() => {
+      const box = (s) => {
+        const e = document.querySelector(s);
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, right: r.right, top: r.top, shown: getComputedStyle(e).display !== 'none' };
+      };
+      const bar = document.querySelector('#player').getBoundingClientRect();
+      const head = document.querySelector('header').getBoundingClientRect();
+      return {
+        width: innerWidth,
+        bar: { left: bar.left, right: bar.right, width: bar.width },
+        head: { right: head.right },
+        signOut: box('#signOut'), brand: box('#brand'),
+        cover: box('#player .cover'), close: box('#pClose'),
+        track: box('#trackSelect'), seek: box('#seek'),
+        play: box('#pPlay'), get: box('#pGet'),
+        glyph: document.querySelector('#player .cover').dataset.glyph,
+        getSays: document.querySelector('#pGet').textContent.trim(),
+      };
+    })()`);
+
+    check('the phone really is a phone', phone.width, 375);
+    // Sign out sat next to the name in the middle of the row, because the block
+    // that names who is signed in had nothing to take up the space beside it.
+    check('Sign out is at the right edge of the header, not adrift in the middle',
+      phone.head.right - phone.signOut.right < 20, true);
+    check('and it is above the app’s own name, not beside it',
+      phone.signOut.top < phone.brand.top, true);
+    // Three ways to pause on a screen this size is two too many. The cover is
+    // the one that stays, so it has to say so.
+    check('the bar has no play button of its own', phone.play.shown, false);
+    check('and the cover says what a tap on it will do', phone.glyph, '⏸');
+    // ✕ was parked mid-bar beside the chapter pulldown.
+    check('✕ is at the top right of the bar',
+      [phone.bar.right - phone.close.right < 20, Math.abs(phone.close.top - phone.cover.top) < 6],
+      [true, true]);
+    // The longest text in the bar had the narrowest box.
+    check('the chapter line has the whole width',
+      phone.track.w > phone.bar.width - 30, true);
+    check('and so does the seek line', phone.seek.w > phone.bar.width - 30, true);
+    // A lone arrow beside a volume slider, on a screen with no hovering to read
+    // a title from, for the one control that writes a file to the device.
+    check('the download says what it is', /Download/.test(phone.getSays), true);
+    check('and it is on the same row as the clock, not on one of its own',
+      Math.abs(phone.get.top - phone.seek.top) > 10 && phone.get.top < phone.seek.top, true);
+
+    await send('Emulation.clearDeviceMetricsOverride');
+
     check('and not one page threw anything along the way', broke, []);
   } finally {
     ws.close();
