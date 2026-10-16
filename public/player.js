@@ -222,6 +222,14 @@ $('#pPlay').onclick = () => {
 const drawPlay = () => {
   $('#pPlay').textContent = audio.paused ? '▶' : '⏸';
   $('#pPlay').classList.toggle('playing', !audio.paused);
+  // And the bar's own cover, which is the same button and the only one of the
+  // two a phone is shown: the glyph says what a tap will do, the way every
+  // other cover in the app does.
+  const cover = $('#pCover').parentElement;
+  if (cover && cover.classList.contains('cover')) {
+    cover.dataset.glyph = audio.paused ? '▶' : '⏸';
+    cover.classList.toggle('playing', !audio.paused);
+  }
 };
 audio.addEventListener('play', drawPlay);
 audio.addEventListener('pause', drawPlay);

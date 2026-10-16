@@ -145,17 +145,17 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 249 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 402 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 410 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 362 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 437 | the admin page: columns, dialogs |
+| `public/index.html` | 444 | the admin page: columns, dialogs |
 | `public/app.js` | 1745 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
-| `public/listen.html` | 133 | the listening page |
+| `public/listen.html` | 155 | the listening page |
 | `public/shelf.js` | 318 | the listening page’s behaviour |
-| `public/style.css` | 888 | the whole look, every page, phone included |
+| `public/style.css` | 929 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2817,14 +2817,48 @@ any script runs.
 The rest of the phone layout is CSS only: the header wraps to two rows with the
 search across the width (explicit `order` on each control), a card becomes
 `84px 1fr` with its actions a two-up grid beneath, `.fix` rows go one column,
-dialogs become full-screen scrolling sheets, the player puts cover, title and
-track on one line with the audio control full width below, rows and buttons are at
+dialogs become full-screen scrolling sheets, rows and buttons are at
 least 40px, and `#progress` bars stack. Two details that are not cosmetic:
 **fields are set at 16px**, because a phone zooms the whole page when you focus a
 smaller one, and `height: 100dvh` on the body, because `100vh` puts the player
 behind the browser's own chrome. Between 721px and 1000px the three columns
 stay, narrower. `@media (hover: none)` drops the hover states, or a tapped button
 stays lit.
+
+**The player bar on a phone is four rows, each one thing**: the cover, what is
+playing and **✕**; the chapter, across the width; the clock, the volume and the
+download; the seek line. `order` on each control does the arranging, so the
+markup is one order for both screens and neither page has to know which it is
+on. Before that it was whatever fell out of wrapping, and Frank sent a
+screenshot with five faults on one screen: **Sign out** stranded mid-row (the
+block naming who is signed in carried no `order` at all, so it fell to 0 ahead of
+everything else, and had nothing beside it to take up the space), the bar's own
+pause button sitting next to a cover that is the same button, a bare **⤓** beside
+a volume slider, **✕** parked mid-bar, and the chapter line — the longest text
+there — clipped to 45% of the width.
+
+So: `#pPlay` is **not drawn on a phone**. Three ways to pause on that screen is
+two too many, and the one that stays is the cover, which every other cover in the
+app has been since covers became play buttons. It was clickable and said nothing,
+which was survivable while a button sat beside it and is not now — so it is
+wrapped in the same `.cover` the cards use and `drawPlay()` gives it the same
+`⏸`/`▶`. The wrapper is `display: flex`, or a block would leave a sliver of
+line-height under the picture where a click would miss the image, which is what
+carries the handler and what the cover's right-click menu looks for. And `#pGet`
+**says "Download"**: there is no hovering on a phone to read a title from, and it
+is the one control in the bar that writes a file to somebody's device.
+
+None of that is visible to `pages` — jsdom has no layout engine, so a stylesheet
+that puts a control in the wrong place is a change no portable suite can notice.
+`plays-on` drives a real browser, so it takes a phone-sized pass at the end
+(`Emulation.setDeviceMetricsOverride`, cleared after) and reads the computed
+positions: Sign out against the header's right edge and above the app's name, no
+play button in the bar, the cover's glyph, ✕ at the bar's top right, the chapter
+and seek lines at full width, and the download on the clock's row saying what it
+is. The two footers are written out **twice**, one per page, and `pages` holds
+them to each other control for control — one stylesheet and one `player.js`
+serve both, so a control added or rewrapped on one and not the other is a bar
+that works on the page somebody opened and not on the one they did not.
 
 The tag badge carries both forms — `.wide` with the list, `.narrow` with the
 count — and the media query picks one, since the full list is a paragraph on a
@@ -3320,7 +3354,7 @@ quietly on an empty library:
 | In the repository | |
 | --- | --- |
 | `first-run` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
-| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 22 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
+| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 32 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
 **A failing suite says why again at the end.** `run-all` streams each suite's
@@ -3394,7 +3428,7 @@ Server suites:
 | `progress-follows` | a place in a book going with the book: three books, the highest id ticked off and part-heard, its folder taken away; after the rescan nothing counts as listened and nothing waits on the shelf; the next book added takes that freed id and is a fresh book with no place kept in it; and a place in a book that is really there survives a rescan |
 | `download-abort` | five downloads broken off part way and a file taken away mid-send: the app is still there, still answering, nothing on stderr — no listener leak, no error thrown once the headers are out — and a download left alone still arrives whole, the promised length, with every file in it |
 | `download` | a whole book as one archive: the type, the name in both spellings, the promised length matching what arrives, **Windows extracting it** with PowerShell and every file compared byte for byte with the one on disk, two discs whose file names collide both surviving renamed apart, a missing book as a 404, and a book whose files are gone saying so instead of sending an empty archive |
-| `plays-on` | the book goes on playing across every switch the interface offers — `/` to `/admin` by the Admin button, on to `/ha` through the Settings pulldown, back to `/admin`, and `/ha` to `/` — each time the same book, not paused, its clock really moving, and picked up within a second of where it was left, never at the start and never elsewhere in the book; a book paused first comes back loaded at its place and *stays* paused; a page opened before anything has been played carries nothing and shows no player at all; and not one of the three pages throws anything into the console along the way |
+| `plays-on` | the book goes on playing across every switch the interface offers — `/` to `/admin` by the Admin button, on to `/ha` through the Settings pulldown, back to `/admin`, and `/ha` to `/` — each time the same book, not paused, its clock really moving, and picked up within a second of where it was left, never at the start and never elsewhere in the book; a book paused first comes back loaded at its place and *stays* paused; a page opened before anything has been played carries nothing and shows no player at all; and not one of the three pages throws anything into the console along the way. Then a **phone-sized pass**, which is the only automated look the phone layout gets: Sign out at the header's right edge and above the app's name, no play button in the bar, the cover carrying the `⏸` that says what a tap will do, ✕ at the bar's top right, the chapter and seek lines across the full width, and the download saying what it is on the clock's row |
 | `transport` | the player's own controls, on both pages and on a phone: no browser controls left, ours in their place, it plays and the button says how to stop it, the yellow grows as it plays, dragging the line seeks to where it was dragged, the button pauses and resumes, the volume slider sets and remembers the volume, mute says so, and a reload keeps it |
 | `played-line` | how far into a book you are, measured rather than read off the stylesheet: the line is there and part filled, its first stop is the yellow, it is 5px, and its contrast against both the track and the tile is at least 5:1 — on both pages and on a phone |
 | `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
@@ -3497,6 +3531,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.12.56 | **the player on a phone is four rows, each one thing.** Frank sent a screenshot with five faults on one screen: *Sign out* stranded mid-row, the bar's own pause button beside a cover that is the same button, a bare ⤓ next to a volume slider, ✕ parked mid-bar, and the chapter line — the longest text there — clipped to 45% of the width. `order` on each control arranges the bar now; `#pPlay` is not drawn at all, because three ways to pause is two too many and the cover is the one that stays, so it is wrapped to carry the same `⏸`/`▶` every other cover in the app does; and `#pGet` says **Download**, there being no hovering on a phone and it being the one control in the bar that writes a file to somebody's device. None of it is visible to `pages` — jsdom has no layout engine — so `plays-on` takes a **phone-sized pass** and reads the computed positions, and `pages` holds the two copies of the bar to each other control for control |
 | 2.12.48 | **the hinge came off the door 2.12.0 closed.** Making `adminRequired()` return `true` ended the install that ran open; it left behind every branch that asked, and three of those were the controls themselves — `whoWrites` falling back to a name in the request body, `whoReads` to `?user=`, and a line in `mayTakeABook` handing every book to everybody. All three still written out, all three one `return false` away, behind a function whose name invites exactly that edit. Gone, with the function, so there is nothing left to flip. Nothing behaves differently — every suite passes unaltered — and `accounts` still fails four checks the moment the read leak is put back by hand, which is the part that matters |
 | 2.12.40 | the accounts page says **which administrator it is talking about**. It told everybody that the administrator signs in "with the name and password the container was given" — one of two answers since 2.12.0, and the wrong one for anybody who made their account at the gate on first run: it sent them to edit a variable that is not what let them in, and left out the one thing they would want, that setting it is the way back in if they forget. Three places said it; `/api/accounts` carries `adminFrom` and all three read that one answer. The old "every check here lets them through" went with it, untrue since *May download* began reaching them. The half `pages` cannot see — the route itself — is checked in `first-run`, both ways round, because a server that quietly stopped sending it would leave every administrator reading the container wording again with every page check still passing |
 | 2.12.32 | the container's **Notes panel** in the Proxmox GUI carries the app's own icon, its address and its own links, where the engine had put its logo and an *Open Script Page* button pointing at a page that does not exist for an app it does not host. `description()` is replaced outright — there is no seam for the image the way there is for the banner — and `packaging` holds the replacement to working out `IP`, which the engine's version set as a side effect and every closing line reads. And **the manual caught up with eight days of app**: a page for installing on Proxmox, an administrator that always exists, accounts where a dropdown used to be, missing volumes as lines, No Series, Unabridged, the update dot, phone-to-desktop places, and one Music Assistant provider being one listener |
