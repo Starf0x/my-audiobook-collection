@@ -275,6 +275,27 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
 .badge.tagged { color: #8ee0b4; border-color: #2b5a45; background: #16241d; }
 .badge.untagged { color: #ffa8a8; border-color: #5a2b2b; background: #241616; }
 
+/* The three things on a card that are also a way somewhere: the author's name,
+   the year, and the genre where it is not already the answer. They have to go
+   on looking like the line and the badges they replaced — a card that grew two
+   purple buttons would read as a card with two new actions on it — so the only
+   thing that changes is that they light up under the pointer.
+   `.linkish` carries no style of its own anywhere (see the note further down);
+   without these a bare one falls back to the ordinary purple button, which is
+   exactly what a badge must not become. */
+.card .by-author {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+  text-align: left; cursor: pointer;
+}
+.card .by-author:hover { color: var(--accent2); filter: none; text-decoration: underline; }
+.badge.linkish {
+  font: inherit; font-size: 11px; line-height: inherit; cursor: pointer;
+  /* `.badge` is the whole look; this only has to stop a button from bringing its
+     own, and keep the pill the same height as the plain badges beside it */
+  min-height: 0; padding: 1px 8px;
+}
+.badge.linkish:hover { color: var(--text); border-color: var(--accent2); filter: none; }
+
 .fix { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
 .fix .actions { display: flex; gap: 6px; }

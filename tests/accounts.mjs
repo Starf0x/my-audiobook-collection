@@ -52,8 +52,20 @@ setSetting(KEY, 'https://discord.com/api/webhooks/1/abc');
 const bookDir = path.join(HERE, 'library', 'Fantasy', 'An Author', 'A Book');
 fs.mkdirSync(bookDir, { recursive: true });
 fs.writeFileSync(path.join(bookDir, '01.mp3'), Buffer.from(`fffb10c4${'00'.repeat(100)}`, 'hex'));
-db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
-            VALUES (3, ?, 'Fantasy', 'An Author', 'A Book', 60)`).run(bookDir);
+db.prepare(`INSERT INTO books (id, path, genre, author, title, year, duration)
+            VALUES (3, ?, 'Fantasy', 'An Author', 'A Book', '2015', 60)`).run(bookDir);
+// A second, in another genre and another year, so "every book of 2015" is a
+// question with a wrong answer available to it.
+db.prepare(`INSERT INTO books (id, path, genre, author, title, year, duration)
+            VALUES (4, ?, 'Science Fiction', 'Another Author', 'A Later Book', '2019', 60)`)
+  .run(`${bookDir}-later`);
+// And a third with no year at all, which is what makes "an empty year is not a
+// year" a check that can fail. Without one, every book has a year, so the empty
+// string matches nothing whatever the route does and the check passes for the
+// absence of data rather than for the guard.
+db.prepare(`INSERT INTO books (id, path, genre, author, title, year, duration)
+            VALUES (5, ?, 'Fantasy', 'An Author', 'An Undated Book', '', 60)`)
+  .run(`${bookDir}-undated`);
 db.prepare(`INSERT INTO tracks (book_id, idx, path, title, duration)
             VALUES (3, 0, ?, 'One', 60)`).run(path.join(bookDir, '01.mp3'));
 await import('../server/index.js');
@@ -470,7 +482,7 @@ check('and everything that was only about them goes with it',
     .map((t) => [t, db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n]),
   [['favourites', 0], ['progress', 0], ['listener_sessions', 0],
     ['completions', 0], ['downloads', 0]]);
-check('the books are untouched', db.prepare('SELECT COUNT(*) AS n FROM books').get().n, 1);
+check('the books are untouched', db.prepare('SELECT COUNT(*) AS n FROM books').get().n, 3);
 check('and the session it had is no longer a way in',
   (await get('/api/genres', again.cookies)).status, 401);
 
@@ -538,6 +550,47 @@ check('guessing starts costing after a handful of tries', refused > 0, true);
     (await get('/api/download/3', admin.cookies)).status,
     (await get('/api/account/me', admin.cookies)).body.mayDownload,
   ], [200, true]);
+}
+
+// --- every book of one year ----------------------------------------------
+// The year on a card is a question — "what else is from 2015" — and the only
+// way to ask it was to type the number in the search box, which answers with
+// every book whose description happens to contain it. This is the route behind
+// the badge.
+//
+// It is here rather than anywhere else because the interesting half is who it
+// answers for: it joins `progress` on `whoReads(req)` like every other shelf,
+// and a route that spans the whole collection is exactly the shape the `?user=`
+// leak had.
+{
+  const admin = await post('/api/account/signin', { name: 'morgan', password: 'a very good password' });
+  const of = async (year, cookie) => (await get(`/api/year?year=${year}`, cookie)).body;
+
+  check('a year answers with the books of that year, across every genre',
+    (await of('2015', admin.cookies)).map((b) => b.id), [3]);
+  check('and the year beside it is a different list',
+    (await of('2019', admin.cookies)).map((b) => b.id), [4]);
+  check('a year with nothing in it is an empty list, not an error',
+    (await of('1066', admin.cookies)), []);
+  // It carries the genre, which is what lets a card from any shelf say which
+  // shelf it is from — `/api/books` does not, having been given one.
+  check('and each book says which genre it is in, since this view spans them',
+    (await of('2015', admin.cookies)).map((b) => b.genre), ['Fantasy']);
+
+  // An empty year is not a year. The column is text and a book with no year has
+  // `''` in it, so without the guard `?year=` answers with every undated book in
+  // the collection — which is why the fixture above has one.
+  check('an empty year is not a year, and does not hand over every undated book',
+    (await of('', admin.cookies)), []);
+
+  // What is *not* checked here, and why. The guard is `/^\d{4}$/`, and the rest
+  // of what it rejects — `201`, `20155`, `MMXV`, `2015' OR '1'='1` — comes back
+  // empty whether it is there or not: the query is parameterised, so a string
+  // that is not a year simply matches no row. Checks for those four were
+  // written, passed, and were taken out again: each one would have passed with
+  // the whole guard deleted, which makes it a check that cannot fail. The guard
+  // stays — bounding what reaches a query is worth doing whether or not it is
+  // observable — but it is not pretended that this suite covers it.
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
