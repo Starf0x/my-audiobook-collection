@@ -922,7 +922,15 @@ const requestRow = (r) => `<div class="fix" data-request="${r.id}">
       ${r.state === 'filled' ? `<div class="sub"><span class="badge tagged">Here${r.bookTitle ? ` · ${esc(r.bookTitle)}` : ''}</span></div>` : ''}
       ${r.state === 'declined' ? `<div class="sub"><span class="badge untagged">Turned down</span> ${esc(r.said || '')}</div>` : ''}
     </div>
-    <div class="actions">${r.state === 'open' ? `
+    <div class="actions">
+      <!-- First, because it is the first thing done with a request: take the
+           words and go and look. The same "author - title" the Series to
+           complete pane copies, and the same handler: the one on #books
+           catches every .copy-search inside it, so this needed no second one.
+           (No backticks in this comment — it lives in a template literal.) -->
+      <button class="ghost copy-search" data-copy-text="${esc([r.author, r.title].filter(Boolean).join(' - '))}"
+        title="Copy “${esc([r.author, r.title].filter(Boolean).join(' - '))}” to search for it">⧉ Copy</button>
+      ${r.state === 'open' ? `
       <button class="ghost" data-act="link">It is here now…</button>
       <button class="ghost" data-act="decline">Not this one…</button>` : `
       <button class="ghost danger" data-act="forget">Forget</button>`}

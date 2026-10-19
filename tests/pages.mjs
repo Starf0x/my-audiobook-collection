@@ -1228,6 +1228,50 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   }
 }
 
+// --- the administrator's pane of what has been asked for -------------------
+// A request is words somebody typed, and the first thing done with it is to go
+// and look for the book online. So each row carries the same ⧉ copy the Series
+// to complete pane carries, putting "author - title" on the clipboard — the
+// same class and the same delegated handler, so there is one copy button in
+// this app rather than two that drift.
+{
+  const ASKED = {
+    open: 1,
+    requests: [
+      { id: 1, who: 'Mario', author: 'Robin Hobb', title: 'Assassin’s Apprentice', note: 'the Kramer one', state: 'open', asked_at: '2026-10-19T09:00:00.000Z' },
+      { id: 2, who: 'Luigi', author: 'Patrick Rothfuss', title: 'The Name of the Wind', note: '', state: 'declined', said: 'not on audio', asked_at: '2026-10-18T09:00:00.000Z' },
+    ],
+  };
+  const { window, document, broke } = await open('index.html', { '/api/requests': ASKED });
+  await settle();
+  window.eval('showRequests()');
+  await settle(160);
+
+  const rows = [...document.querySelectorAll('[data-request]')];
+  check('every request is a row, settled ones included', rows.length, 2);
+  check('and each carries the words to go and search with',
+    rows.map((r) => r.querySelector('.copy-search')?.dataset.copyText),
+    ['Robin Hobb - Assassin’s Apprentice', 'Patrick Rothfuss - The Name of the Wind']);
+  // The handler is the one on `#books`, which is the point of reusing the
+  // class — but a button that is drawn and never reached is the exact fault
+  // this app has had before, so it is asked rather than assumed.
+  {
+    let copied = null;
+    window.navigator.clipboard = { writeText: async (t) => { copied = t; } };
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true });
+    rows[0].querySelector('.copy-search').click();
+    await settle(120);
+    check('and pressing it really copies them', copied, 'Robin Hobb - Assassin’s Apprentice');
+  }
+  check('an open one offers what to do about it',
+    [...rows[0].querySelectorAll('[data-act]')].map((b) => b.dataset.act), ['link', 'decline']);
+  check('and a settled one says what was decided, and can be forgotten',
+    [/not on audio/.test(rows[1].textContent),
+      [...rows[1].querySelectorAll('[data-act]')].map((b) => b.dataset.act)],
+    [true, ['forget']]);
+  check('and wiring the pane throws nothing', broke, []);
+}
+
 // --- the page opens with the book you are in the middle of -----------------
 // The owner, pointing at a screenshot: the book's own card, at the top, the way it
 // is everywhere else. The home page led with a *tile* — a cover, a title and a
