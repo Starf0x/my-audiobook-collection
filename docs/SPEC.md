@@ -928,6 +928,14 @@ files:
 not from a lookup's last-resort fallback, and not kept from before by a scan.
 The owner's card read *Series · 123* with no number and no explanation.
 
+**What a track is called** (`namedTracks`, 2.14.104): its title tag only when
+the tags tell the tracks apart — every file tagged, no two alike, more than one
+file. Otherwise its file name. The owner's *Journey to the Center of the Earth*
+played its thirteen right files under "Jurassic World", the title every one of
+them carried; and this app's own tag write puts the book title in every file,
+so after one of those every track read as the book. A rescan of an unchanged
+book judges the names it already has by the same rule, from the database alone.
+
 **Taking a series off** is its own word. An empty `series` in a pick means
 "nothing to say" — a lookup with its series unticked sends one — so the edit
 dialog sends `clearSeries` when the series it showed is emptied. The dialog shows

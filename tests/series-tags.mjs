@@ -54,6 +54,22 @@ book('Skydark Spawn', {
 });
 book('Untagged Book');
 
+// And what a track is called (2.14.104). The owner's "Journey to the Center of the
+// Earth" played the right files under "Jurassic World", the title every one of
+// them carried and none of them is called on disk.
+const tracksOf = (title, names, titles) => {
+  const dir = path.join(LIB, 'Science Fiction', 'Jules Verne', title);
+  fs.mkdirSync(dir, { recursive: true });
+  names.forEach((n, i) => {
+    const file = path.join(dir, `${n}.mp3`);
+    fs.writeFileSync(file, mp3(40));
+    if (titles[i]) NodeID3.update({ title: titles[i], album: title }, file);
+  });
+};
+tracksOf('Journey to the Center of the Earth', ['01 - Chapter 1', '02 - Chapter 2', '03 - Chapter 3'],
+  ['Jurassic World', 'Jurassic World', 'Jurassic World']);
+tracksOf('Around the World', ['01', '02'], ['Phileas Fogg', 'The Wager']);
+
 fs.mkdirSync(DATA, { recursive: true });
 process.env.DATA_DIR = DATA;
 const { db, setSetting } = await import('../server/db.js');
@@ -94,6 +110,24 @@ const inFile = await parseFile(outlanders);
 check('and out of the files', inFile.common.grouping ?? '', '');
 await scan();
 check('so a scan afterwards does not read it back', said('Doom Dynasty'), ['', 0]);
+
+// --- what a track is called ----------------------------------------------------
+const names = (title) => db.prepare(`SELECT t.title FROM tracks t JOIN books b ON b.id = t.book_id
+  WHERE b.title = ? ORDER BY t.idx`).all(title).map((t) => t.title);
+check('tracks that all carry one title are named by their files instead',
+  names('Journey to the Center of the Earth'), ['01 - Chapter 1', '02 - Chapter 2', '03 - Chapter 3']);
+check('but titles that tell the tracks apart are kept, over "01" and "02"',
+  names('Around the World'), ['Phileas Fogg', 'The Wager']);
+
+// A book scanned before this, with the shared title stored for every track: the
+// next scan reads one file of it, and still puts the names right.
+db.prepare(`UPDATE tracks SET title = 'Jurassic World' WHERE book_id =
+  (SELECT id FROM books WHERE title = 'Journey to the Center of the Earth')`).run();
+await scan();
+check('and a book named that way before is put right by the next scan',
+  names('Journey to the Center of the Earth'), ['01 - Chapter 1', '02 - Chapter 2', '03 - Chapter 3']);
+check('while the book with real chapter titles keeps them through it',
+  names('Around the World'), ['Phileas Fogg', 'The Wager']);
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
