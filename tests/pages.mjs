@@ -201,6 +201,44 @@ for (const [page, own] of [['index.html', 'app.js'], ['listen.html', 'shelf.js']
   check('accounts.html loads its scripts without complaint', broke, []);
 }
 
+// --- the Home Assistant page lists its sensors, ready to copy ------------------
+// The owner asked for the list on the page, copyable: a dashboard card or an
+// automation names a sensor by its id, and reading one off "Show what will be
+// sent" to retype it is the work a copy button removes. `toClipboard` moved to
+// `copy.js` for this, so both pages that copy load one copy of it.
+{
+  const { window, document, broke } = await open('ha.html', {
+    '/api/ha/config': { url: '', every: 15, base: 'http://x', hasToken: false, listeners: ['Ada'], listener: '', lastPush: {} },
+    '/api/ha': { listening: [], continue: [] },
+    '/api/ha/entities': [
+      { entity: 'sensor.audiobooks', state: '8', attributes: { friendly_name: 'Audiobooks' } },
+      { entity: 'sensor.audiobook_ada', state: 'A Book', attributes: { friendly_name: 'Audiobook · Ada' } },
+    ],
+  });
+  await settle(150);
+  check('ha.html loads its scripts without complaint', broke, []);
+  check('the Home Assistant page lists every sensor it sends, by id and by name',
+    [...document.querySelectorAll('#haSensors li')].map((li) => [
+      li.querySelector('code')?.textContent, li.querySelector('.hint')?.textContent]),
+    [['sensor.audiobooks', 'Audiobooks'], ['sensor.audiobook_ada', 'Audiobook · Ada']]);
+  // the real one is there before it is stood in for below, or a page that never
+  // loaded copy.js would throw on the first press and this would not know
+  check('and the page has the clipboard to copy with', window.eval('typeof toClipboard'), 'function');
+  const copiedText = [];
+  window.toClipboard = async (t) => { copiedText.push(t); return true; };
+  document.querySelector('#haSensors li:nth-child(2) [data-copy]')?.click();
+  document.querySelector('#haCopyAll')?.click();
+  await settle(50);
+  check('each one copies its own id, and Copy all copies them all, one to a line',
+    [document.querySelector('#haCopyAll')?.hidden, copiedText],
+    [false, ['sensor.audiobook_ada', 'sensor.audiobooks\nsensor.audiobook_ada']]);
+}
+{
+  const { window } = await open('index.html');
+  check('and the admin page still has the clipboard, now from copy.js',
+    window.eval('typeof toClipboard'), 'function');
+}
+
 // --- and the player bar is written out twice, so it must stay one bar -------
 // Both pages carry their own copy of that footer. One stylesheet and one
 // `player.js` serve both, so a control added, renamed or rewrapped on one page

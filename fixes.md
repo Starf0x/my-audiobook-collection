@@ -855,6 +855,25 @@ test against that library's real output, not against the shape you remember.
 And where "empty" has to mean "leave it", give "remove it" a word of its own —
 otherwise the one thing nobody can do is undo.
 
+### The page started before its last script had run (2.14.88)
+
+One `plays-on` run of many failed "not one page threw anything": `markPlaying is
+not defined`, thrown from the listening page's `loadHome`. `account.js` began
+the page the moment it was itself executed — two requests, then `begin`. Classic
+scripts run in order, but while a later one (`player.js`, last on the page) is
+still being fetched, the event loop runs, and a fast answer can come back in
+that gap. `begin` then drew the home shelves and called a function that did not
+exist yet; the page stopped half drawn.
+
+**Fixed** by starting on `DOMContentLoaded`, which comes after every script.
+
+Not proven by a red run: it happened once and cannot be made to happen on
+demand. Three clean runs of the browser suite afterwards say only that it did
+not happen again, which is what any flaky fault also says.
+
+**Rule:** a script that starts work which calls into later scripts waits for
+`DOMContentLoaded`. Running in order is not the same as having all run.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

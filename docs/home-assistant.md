@@ -48,6 +48,11 @@ send lands:
 | `sensor.audiobook_next_up` | the title to carry on with | the book id, track of how many, seconds in, per cent, hours left, its playlist — and the whole **queue** |
 | `sensor.audiobook_<name>` | the book that listener is in the middle of, or `nothing` | everything on their **Continue listening** shelf with how far in they are, and the books they have **finished**, with how long they took — see below |
 
+Below that, **The sensors** lists every entity the app sends, by its id and its
+name, each with a ⧉ button that copies the id — and **⧉ Copy all** copies the
+lot, one to a line, ready for a card's `entities:` list. The list is what is
+actually sent, so a listener added is a sensor added there too.
+
 *Whose progress to report* picks the listener; with one listener it is that one.
 *Send to Home Assistant* sets how often — Home Assistant **forgets** states written
 this way when it restarts, so a repeat every 15 minutes keeps them there. **Show
