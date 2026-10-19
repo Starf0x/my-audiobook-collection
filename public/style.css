@@ -328,11 +328,21 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
    `.linkish` carries no style of its own anywhere (see the note further down);
    without these a bare one falls back to the ordinary purple button, which is
    exactly what a badge must not become. */
-.card .by-author {
+.card .by-author, .tile .by-author {
   background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
   text-align: left; cursor: pointer;
 }
-.card .by-author:hover { color: var(--accent2); filter: none; text-decoration: underline; }
+/* on a tile it is one line among others that clip, so it clips with them */
+.tile .by-author { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* the phone's thumb-sized minimum for buttons made this one line two lines tall */
+  min-height: 0; vertical-align: top; }
+.card .by-author:hover, .tile .by-author:hover { color: var(--accent2); filter: none; text-decoration: underline; }
+/* the head over an author's books: the genre in it is a way there */
+.series-head.where button.linkish {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; letter-spacing: inherit;
+  text-transform: inherit; color: var(--accent2); cursor: pointer;
+}
+.series-head.where button.linkish:hover { color: #fff; filter: none; text-decoration: underline; }
 .badge.linkish {
   font: inherit; font-size: 11px; line-height: inherit; cursor: pointer;
   /* `.badge` is the whole look; this only has to stop a button from bringing its

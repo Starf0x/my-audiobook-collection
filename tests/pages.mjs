@@ -1070,10 +1070,10 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
 // Both pages draw their own cards from their own `drawBooks`, so both are
 // asked. The three helpers are in `browse.js`, which both load.
 {
-  // The genre is what says whether a view spans the shelves: `/api/books` is
-  // given one and sends none back, every route that reaches across them sends
-  // it. So a card with a genre is one on a cross-shelf view, and it is the only
-  // card that has anywhere to go.
+  // A card links what its payload carries. Every route sends the genre since
+  // 2.14.48 — `/api/books` used to leave it off a view of one genre — so a card
+  // with no genre is a book whose genre column is empty, and it alone has
+  // nowhere to go.
   const ACROSS = [
     { id: 1, title: 'Oathbringer', author: "Brandon O'Sanderson", genre: 'Fantasy', year: '2017', duration: 60, tracks: 1 },
     { id: 2, title: 'A Shelved Book', author: 'Someone', genre: '', year: '', duration: 60, tracks: 1 },
@@ -1103,9 +1103,9 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     check('and the genre is said, which is the thing such a card does not otherwise say',
       card(1).querySelector('[data-genre]:not([data-author])')?.textContent, 'Fantasy');
 
-    // A card on a genre's own shelf carries no genre, so there is nowhere for
-    // any of this to go and none of it is drawn — the author is the plain line
-    // it always was.
+    // A book that arrives with no genre — every route sends one since 2.14.48,
+    // so this is a book with an empty genre column — has nowhere for any of
+    // this to go, and none of it is drawn: the author is a plain line.
     check(`${page}: a card already on its own shelf gets none of it`,
       [!!card(2).querySelector('.by-author'), !!card(2).querySelector('[data-genre]'),
         !!card(2).querySelector('[data-year]'), card(2).querySelector('.sub').textContent.trim()],
@@ -1138,6 +1138,58 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     await settle();
     check('and a genre left selected in the column does not silence the badge',
       card(1).querySelector('[data-genre]:not([data-author])')?.textContent, 'Fantasy');
+  }
+}
+
+// --- an author's books say where they are -------------------------------------
+// On a phone one column is on screen at a time, so a tap on an author brought
+// their books up with nothing to say whose they were or which genre they are in
+// — the two columns that say so on a wide screen were somewhere off to the side.
+// The owner asked for the genre and the author to be there. And the author on a
+// home tile is a way to their books too, the same as on a card.
+{
+  const MINE = [
+    { id: 7, title: 'Oathbringer', author: "Brandon O'Sanderson", genre: 'Fantasy', year: '2017', duration: 60, tracks: 1 },
+    { id: 8, title: 'Warbreaker', author: "Brandon O'Sanderson", genre: 'Fantasy', year: '2011', duration: 60, tracks: 1 },
+  ];
+  for (const page of ['index.html', 'listen.html']) {
+    // eslint-disable-next-line no-await-in-loop -- two pages, one after the other
+    const { window, document } = await open(page, {
+      '/api/books': { books: MINE, series: [] },
+      '/api/authors': [{ name: "Brandon O'Sanderson", books: 2 }],
+    });
+    window.eval("state.genre = 'Fantasy'; state.user = 'tester'");
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await window.eval(`selectAuthor("Brandon O'Sanderson", null)`);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    const head = document.querySelector('#books .list .series-head.where');
+    check(`${page}: an author's books are headed with the genre and the author`,
+      head?.textContent.replace(/\s+/g, ' ').trim(), "Fantasy · Brandon O'Sanderson · 2 books");
+    check('and it comes first, above the books',
+      document.querySelector('#books .list').firstElementChild === head, true);
+    check('and every card on it says its genre',
+      [...document.querySelectorAll('#books .card')]
+        .map((c) => c.querySelector('[data-genre]:not([data-author])')?.textContent),
+      ['Fantasy', 'Fantasy']);
+    let genreWent = null;
+    window.selectGenre = (g) => { genreWent = g; };
+    head?.querySelector('[data-genre]')?.click();
+    check('and the genre in the head is a way into that genre', genreWent, 'Fantasy');
+
+    // A tile's author: to their books, and *not* the tile's own click, which
+    // starts or resumes the book.
+    document.querySelector('#books .list').innerHTML = window.eval(
+      `shelf('Recently added', ${JSON.stringify(MINE)}, false)`,
+    );
+    let tileTapped = false;
+    document.querySelector('.tile').onclick = () => { tileTapped = true; };
+    window.eval('wireCardLinks()');
+    let went = null;
+    window.openInLibrary = (g, a) => { went = [g, a]; };
+    document.querySelector('.tile .by-author')?.click();
+    check(`${page}: the author on a home tile opens their books`,
+      [went, tileTapped], [['Fantasy', "Brandon O'Sanderson"], false]);
   }
 }
 

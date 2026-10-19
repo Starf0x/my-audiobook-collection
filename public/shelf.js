@@ -139,6 +139,7 @@ async function selectAuthor(author, li) {
   const r = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`
     + `&user=${encodeURIComponent(state.user)}`);
   drawBooks(r.books, '', 'Series', r.series);
+  authorHead(state.genre, author, r.books.length);
 }
 
 // `states` is what /api/books says each series on the page is missing; the lists
