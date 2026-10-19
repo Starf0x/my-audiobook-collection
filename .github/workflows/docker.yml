@@ -1,0 +1,85 @@
+name: Publish Docker image
+
+# The token this workflow is handed can only read. Nothing here writes to the
+# repository — the image goes to Docker Hub with credentials of its own — and a
+# default-write token is a write that any action in the job could make.
+permissions:
+  contents: read
+
+# Every `uses:` names a commit, not a tag — and it matters most here, because
+# this job is handed DOCKERHUB_TOKEN and pushes the image people actually run.
+# `@v3` is a branch somebody else moves; a sha is not. The version each pin is
+# goes in the comment beside it. See the note in test.yml for how to move one.
+
+# Tags only, deliberately. A tag on main used to fire this twice — once for the
+# branch, once for the tag — and both runs pushed :latest. The two images were
+# built from one commit but were not byte-for-byte equal, so whichever finished
+# last won the tag: on v2.5.64 that was the tag run by three seconds. Every
+# shipped change is tagged here anyway, so one run per release settles it and
+# :latest is always the same digest as its vX.Y.Z.
+#
+# That fixed one release racing itself. Two releases pushed together race each
+# other the same way, which is what happened on 2026-09-29: v2.7.32 and v2.7.40
+# went up in one `git push`, both built, and the *older* one finished sixteen
+# seconds later and took :latest with it. So there are two guards now. The
+# concurrency group makes these runs queue instead of overlapping, and :latest
+# is applied only by the run whose tag is the highest version in the repository
+# — which is true whatever order they finish in.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-docker
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # the whole history, or the tag list below has only the tag being built
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      # Is this tag the newest release? `-v:refname` sorts by version rather
+      # than alphabetically, so v2.7.8 comes before v2.7.32 as it should.
+      - id: newest
+        run: |
+          top=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          echo "Highest tag is $top; this run is $GITHUB_REF_NAME"
+          if [ "$top" = "$GITHUB_REF_NAME" ]; then
+            echo "isNewest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "isNewest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        id: meta
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/my-audiobook-collection
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ steps.newest.outputs.isNewest == 'true' }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      # keeps the Docker Hub page the same text as the README; on the release
+      # itself, since that is the only run there is now
+      - uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/my-audiobook-collection
+          short-description: Browse and play an audiobook collection organised as Genre / Author / Series / Book

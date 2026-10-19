@@ -1,0 +1,355 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { db, getLibraries } from './db.js';
+import { addOne } from './scan.js';
+import { writeTag } from './tagpool.js';
+import { id3Skip } from './id3.js';
+
+// ffmpeg and ffprobe come with the image, so they are always the build that image
+// is for and there is nothing to install. `-version` is still asked of them,
+// because "it is in the container" is a claim the code can check.
+export const TOOLS = ['ffmpeg', 'ffprobe'];
+export const toolAt = (name) => name;
+
+// Nothing, or why converting is not on offer. It should say nothing at all: an
+// answer here means a container built before they were part of the image.
+export function toolsWhy() {
+  const bad = toolStatus().find((t) => !t.version);
+  if (!bad) return '';
+  // a reason is the whole point of this function: never an empty one
+  return bad.error || `${bad.name} is in this container but said nothing when asked for its version.`;
+}
+
+// What the operating system says when a file that was uploaded is not a program
+// it can run. "spawn ENOEXEC" on its own sends nobody anywhere.
+const wontRun = (file, e) => {
+  const name = path.basename(file);
+  const code = e?.code || (/ENOEXEC|EACCES|ENOENT/.exec(e?.message || '') || [])[0] || '';
+  if (code === 'ENOENT') {
+    return new Error(`${name} is not in this container. It is part of the image from 2.3.0 on: `
+      + 'update the container to the newest build.');
+  }
+  return new Error(`${name} would not run (${code || 'no code'}): ${e?.message || 'no reason given'}`);
+};
+
+// Once both have answered, that stands: they are in the image and cannot change
+// under a running container. Asking again every time cost four processes per page
+// load — and the first ask after a start can fail on its own, which then switched
+// converting off for as long as that page was open.
+let answered = null;
+
+export function toolStatus() {
+  if (answered) return answered;
+  const now = statusNow();
+  if (now.every((t) => t.version)) answered = now;
+  return now;
+}
+
+function statusNow() {
+  return TOOLS.map((name) => {
+    const file = toolAt(name);
+    const r = spawnSync(file, ['-version'], { encoding: 'utf8', timeout: 15000 });
+    // what it says about itself, which is also the proof that it is there and runs
+    const line = String(r.stdout || '').split('\n')[0].trim();
+    return {
+      name,
+      version: r.status === 0 ? line : '',
+      error: r.status === 0 ? ''
+        : (r.error ? wontRun(file, r.error).message
+          : (String(r.stderr || '').split('\n')[0] || `${name} exited ${r.status}`)),
+    };
+  });
+}
+
+// --- running them ------------------------------------------------------
+// A book can take a quarter of an hour to convert, so there is no wall-clock
+// limit worth setting on ffmpeg. What there is, is a limit on *silence*: it
+// reports its position continuously, so a run that has said nothing for this
+// long has stopped being a conversion and become a process holding a folder.
+// ffprobe says nothing until it is done, so that one gets a plain limit.
+const QUIET = 5 * 60 * 1000;
+const PROBE_LIMIT = 60 * 1000;
+
+const run = (file, args, onOut, { quiet = 0, limit = 0 } = {}) => new Promise((resolve, reject) => {
+  let p;
+  // spawn throws for some of these rather than raising an error event, and a
+  // throw in here would reject with the bare libuv message
+  try {
+    p = spawn(file, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) { return reject(wontRun(file, e)); }
+  let out = '';
+  let err = '';
+  let settled = false;
+  let hush = null;
+  let cap = null;
+  const stop = (why) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(hush);
+    clearTimeout(cap);
+    try { p.kill('SIGKILL'); } catch { /* it is already gone */ }
+    reject(new Error(why));
+  };
+  const heard = () => {
+    if (!quiet || settled) return;
+    clearTimeout(hush);
+    hush = setTimeout(() => stop(`${path.basename(file)} said nothing for `
+      + `${Math.round(quiet / 60000)} minutes and was stopped.`), quiet);
+    hush.unref?.();
+  };
+  if (limit) {
+    cap = setTimeout(() => stop(`${path.basename(file)} did not finish within `
+      + `${Math.round(limit / 1000)} seconds and was stopped.`), limit);
+    cap.unref?.();
+  }
+  heard();
+  p.stdout.on('data', (d) => { heard(); if (onOut) onOut(String(d)); else out += d; });
+  // the last of it is what a failure is explained with; the rest is banner
+  p.stderr.on('data', (d) => { heard(); err = (err + d).slice(-4000); });
+  p.on('error', (e) => { if (!settled) { settled = true; clearTimeout(hush); clearTimeout(cap); reject(wontRun(file, e)); } });
+  p.on('close', (code) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(hush);
+    clearTimeout(cap);
+    return code === 0 ? resolve(out)
+      : reject(new Error(err.trim().split('\n').filter(Boolean).pop() || `${path.basename(file)} exited ${code}`));
+  });
+});
+
+// before -i, because it is how the input is opened
+const skipArgs = (file) => {
+  const n = id3Skip(file);
+  return n ? ['-skip_initial_bytes', String(n)] : [];
+};
+
+async function probe(file) {
+  // -v error, never -v quiet: quiet throws away the one line that says what is
+  // wrong with the file, and "ffprobe exited 1" sends nobody anywhere
+  const out = await run(toolAt('ffprobe'),
+    ['-v', 'error', ...skipArgs(file), '-print_format', 'json', '-show_chapters', '-show_format', file], null, { limit: PROBE_LIMIT })
+    // which file, out of the forty a book can be made of
+    .catch((e) => { throw new Error(`${path.basename(file)}: ${e.message}`); });
+  const j = JSON.parse(out || '{}');
+  const chapters = (j.chapters || [])
+    .map((c) => ({ start: Number(c.start_time) || 0, end: Number(c.end_time) || 0, title: String(c.tags?.title || '').trim() }))
+    .filter((c) => c.end > c.start)
+    .sort((a, b) => a.start - b.start);
+  return { duration: Number(j.format?.duration) || 0, chapters };
+}
+
+// a chapter title becomes a file name, so it may hold nothing a path cannot
+const safeName = (s) => s.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70);
+
+// What a conversion is doing, and what the last one did.
+//
+// This is the whole account of it now, not a by-product of one. A conversion
+// runs for minutes and used to be awaited inside the request that asked for it,
+// so the page held one HTTP call open the whole time — and anything that dropped
+// that call (a proxy's idle timeout, a laptop going to sleep, a blip) read as
+// the conversion failing: the bar said so and went, the button came back, and
+// ffmpeg carried on in the container with nobody watching. The request starts
+// the work and returns; this is what is followed, the way the scan already is.
+//
+// So `files` and `kept` live here as well: the answer has to survive the request
+// that asked for it, or a page that rejoins a conversion in progress has no way
+// to say how it went.
+export const convertProgress = {
+  running: false, done: 0, total: 0, current: '', error: '', book: 0,
+  files: 0, kept: '', finishedAt: '',
+};
+
+// Every book whose files are not all MP3: what the list in the column offers, and
+// what the tag writer cannot touch until it has been converted.
+export function convertible() {
+  const books = db.prepare(`SELECT b.id, b.genre, b.author, b.series, b.title, b.path, b.duration,
+      (SELECT COUNT(*) FROM tracks t WHERE t.book_id = b.id) AS files
+    FROM books b ORDER BY b.author, b.title`).all();
+  // which kinds of file, counted per book: the extension is a JavaScript job, not
+  // something to take a string apart for in SQL
+  const by = new Map();
+  for (const t of db.prepare("SELECT book_id, path FROM tracks WHERE LOWER(path) NOT LIKE '%.mp3'").all()) {
+    const seen = by.get(t.book_id) || { others: 0, kinds: new Set() };
+    seen.others++;
+    seen.kinds.add(path.extname(t.path).toLowerCase().replace('.', ''));
+    by.set(t.book_id, seen);
+  }
+  return books.filter((b) => by.has(b.id))
+    .map((b) => ({ ...b, others: by.get(b.id).others, kinds: [...by.get(b.id).kinds].sort().join(', ') }));
+}
+
+export function listConverted() {
+  return db.prepare('SELECT * FROM converted ORDER BY converted_at DESC').all()
+    .map((r) => ({ ...r, onDisk: fs.existsSync(r.path) }));
+}
+
+export function deleteConverted(id) {
+  const r = db.prepare('SELECT * FROM converted WHERE id = ?').get(Number(id));
+  if (!r) throw new Error('Not on the converted list');
+  fs.rmSync(r.path, { recursive: true, force: true });
+  db.prepare('DELETE FROM converted WHERE id = ?').run(r.id);
+  return { deleted: 1 };
+}
+
+export function deleteAllConverted() {
+  let n = 0;
+  for (const r of listConverted()) { deleteConverted(r.id); n++; }
+  return { deleted: n };
+}
+
+// where the originals are kept: beside the trash, inside the library folder the
+// book lives in, so moving them is a move and not a copy across volumes
+function keepRootFor(bookPath) {
+  const here = path.resolve(bookPath);
+  const entry = getLibraries().find((l) => here === path.resolve(l.path)
+    || here.startsWith(path.resolve(l.path) + path.sep));
+  if (!entry) throw new Error(`That book is not inside a library folder: ${bookPath}`);
+  return path.join(path.resolve(entry.path), '.converted');
+}
+
+// One source file. A chapter becomes a track, which is what this app calls a
+// chapter: ffmpeg writes the lot in one pass and the pieces are named and titled
+// after the chapters afterwards.
+async function convertOne(src, startNo, onSeconds, mark) {
+  const { duration, chapters } = await probe(src);
+  const dir = path.dirname(src);
+  const stem = path.basename(src, path.extname(src));
+  const cuts = chapters.slice(1).map((c) => c.start.toFixed(3));
+  // unique to this conversion, not to this process: two conversions of the same
+  // folder would otherwise pick up each other's pieces when they list them back
+  const part = path.join(dir, `.converting-${mark}-`);
+  const args = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats',
+    ...skipArgs(src), '-i', src, '-vn', '-map_metadata', '0', '-c:a', 'libmp3lame', '-q:a', '4'];
+  if (cuts.length) {
+    args.push('-f', 'segment', '-segment_times', cuts.join(','), '-reset_timestamps', '1', `${part}%03d.mp3`);
+  } else {
+    args.push(`${part}000.mp3`);
+  }
+  let seen = 0;
+  await run(toolAt('ffmpeg'), args, (text) => {
+    for (const line of text.split('\n')) {
+      // out_time, not out_time_ms: that one is microseconds in some builds and
+      // milliseconds in others, and a bar must not depend on which
+      const m = /^out_time=(\d+):(\d\d):(\d\d(?:\.\d+)?)/.exec(line.trim());
+      if (!m) continue;
+      const secs = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+      if (secs > seen) { onSeconds(secs - seen); seen = secs; }
+    }
+  }, { quiet: QUIET });
+  if (duration > seen) onSeconds(duration - seen);
+
+  const made = fs.readdirSync(dir).filter((f) => f.startsWith(path.basename(part))).sort();
+  const named = [];
+  made.forEach((file, i) => {
+    const title = chapters[i]?.title || (made.length > 1 ? `Chapter ${i + 1}` : stem);
+    const no = String(startNo + i).padStart(2, '0');
+    let dest = path.join(dir, `${no} - ${safeName(title) || stem}.mp3`);
+    if (fs.existsSync(dest)) dest = path.join(dir, `${no} - ${safeName(title) || stem} (${Date.now()}).mp3`);
+    fs.renameSync(path.join(dir, file), dest);
+    named.push({ file: dest, title });
+  });
+  return named;
+}
+
+// the picture the source carried: written beside the audio, where a scan and the
+// tag writer both read a cover from, since -vn drops it out of the MP3s
+async function coverFrom(src) {
+  const dir = path.dirname(src);
+  if (['cover.jpg', 'folder.jpg', 'front.jpg'].some((n) => fs.existsSync(path.join(dir, n)))) return;
+  const dest = path.join(dir, 'cover.jpg');
+  await run(toolAt('ffmpeg'), ['-hide_banner', '-nostdin', '-y', ...skipArgs(src), '-i', src,
+    '-an', '-vframes', '1', dest], null, { limit: PROBE_LIMIT })
+    .catch(() => { fs.rmSync(dest, { force: true }); });
+}
+
+export async function convertBook(id) {
+  // The lock is taken here, before the first await, and that is the whole point
+  // of where it sits. It used to be set after every source had been probed —
+  // several awaits in — so two requests a moment apart both read `running` as
+  // false, both went on, and both converted the same book into the same folder.
+  if (convertProgress.running) {
+    throw new Error('A book is being converted already. Wait for it to finish.');
+  }
+  // the last run's outcome goes now, not when the next one ends: a page asking
+  // the status a moment after pressing Convert must not be shown the one before
+  Object.assign(convertProgress, { error: '', files: 0, kept: '', finishedAt: '' });
+  convertProgress.running = true;
+  try {
+    const out = await convert_(id);
+    Object.assign(convertProgress, { files: out.files, kept: out.kept });
+    return out;
+  } finally {
+    convertProgress.finishedAt = new Date().toISOString();
+    convertProgress.running = false;
+  }
+}
+
+async function convert_(id) {
+  // asked before a single file is touched: a tool that will not run must not be
+  // found out halfway through a book
+  const why = toolsWhy();
+  if (why) throw new Error(why);
+  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(id));
+  if (!book) throw new Error('Book not found');
+  const sources = db.prepare(`SELECT path FROM tracks WHERE book_id = ? AND LOWER(path) NOT LIKE '%.mp3'
+                              ORDER BY idx`).all(book.id).map((t) => t.path)
+    .filter((p) => fs.existsSync(p));
+  if (!sources.length) throw new Error('Every file of that book is already an MP3.');
+
+  let seconds = 0;
+  for (const src of sources) seconds += (await probe(src)).duration;
+  // `running` is already true — convertBook took it before the first await
+  Object.assign(convertProgress, {
+    done: 0, total: Math.max(1, Math.round(seconds / 60)),
+    current: book.title, error: '', book: book.id,
+  });
+  let done = 0;
+  const onSeconds = (s) => {
+    done += s;
+    convertProgress.done = Math.min(convertProgress.total, Math.round(done / 60));
+  };
+
+  const mark = randomUUID();
+  const keep = path.join(keepRootFor(book.path), `${Date.now()}-${path.basename(book.path)}`);
+  try {
+    await coverFrom(sources[0]);
+    let no = 1;
+    let bytes = 0;
+    for (const src of sources) {
+      const made = await convertOne(src, no, onSeconds, mark);
+      no += made.length;
+      // the chapter's name is the track's name, which is what the player lists
+      for (const m of made) await writeTag(m.file, { title: m.title });
+      bytes += fs.statSync(src).size;
+      fs.mkdirSync(keep, { recursive: true });
+      fs.renameSync(src, path.join(keep, path.basename(src)));
+    }
+    db.prepare(`INSERT INTO converted (path, was_path, genre, author, series, title, files, bytes, converted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(keep, book.path, book.genre, book.author, book.series, book.title,
+        sources.length, bytes, new Date().toISOString());
+    // the book is its new files now: read the folder again
+    await addOne({ genre: book.genre, author: book.author, series: book.series, dir: book.path, force: true });
+    return { files: sources.length, kept: keep };
+  } catch (e) {
+    convertProgress.error = e.message;
+    // Whatever ffmpeg had written so far is half a book, named so it sorts with
+    // the real files. Sweep this conversion's own pieces — the mark is unique to
+    // this call — and take the folder it was going to keep the originals in with
+    // them if nothing ever arrived there.
+    for (const src of sources) {
+      const dir = path.dirname(src);
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (f.startsWith(`.converting-${mark}-`)) fs.rmSync(path.join(dir, f), { force: true });
+        }
+      } catch { /* the folder went away with it */ }
+    }
+    try {
+      if (fs.existsSync(keep) && !fs.readdirSync(keep).length) fs.rmdirSync(keep);
+    } catch { /* something is in it, so it is not ours to remove */ }
+    throw e;
+  }
+}

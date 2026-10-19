@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# My Audiobook Collection, as a Proxmox VE Helper Script.
+#
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/ct/my-audiobook-collection.sh)"
+#
+# This is the community-scripts entry point, and it behaves exactly like theirs
+# because it *is* theirs: the engine is loaded from community-scripts/core, and
+# everything you see — the banner, Default and Advanced settings, the storage
+# radiolist, the spinners, the line at the end with the address — comes from it.
+#
+# The one line that makes this work for an app outside their repository is the
+# export below. The engine resolves two roots separately: the engine's own files
+# from `COMMUNITY_SCRIPTS_CORE_URL`, and `ct/` and `install/` from
+# `COMMUNITY_SCRIPTS_URL`. Left unset, the second defaults to their script
+# repository and the install step would be fetched from there — and 404. Pointed
+# here, the engine fetches this repository's installer instead.
+export COMMUNITY_SCRIPTS_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main}"
+
+_cs_boot="${COMMUNITY_SCRIPTS_CORE_DIR:-$(dirname "${BASH_SOURCE[0]}")/../../core}/core/build.func"
+source "$_cs_boot" 2>/dev/null || source <(curl -fsSL "${COMMUNITY_SCRIPTS_CORE_URL:-https://raw.githubusercontent.com/community-scripts/core/main}/core/build.func")
+# Copyright (c) 2021-2026 community-scripts ORG
+# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
+# Source: https://github.com/Starf0x/my-audiobook-collection
+
+APP="My Audiobook Collection"
+
+# The banner at the top of the run.
+#
+# The engine keeps its headers in its *own* repository — "they are generated
+# from the script repos, so a script repo carries none of its own" — and looks
+# for `headers/ct/myaudiobookcollection` there. An app from outside their
+# repository is never in that folder, so `get_header` 404s on every run and
+# `header_info` falls back to printing the words "Community Scripts" and the
+# app's name. This is the seam it leaves for exactly that: set, it is printed
+# instead, and those words never appear.
+#
+# The heredoc is quoted and the read has an empty IFS on purpose. The drawing
+# holds backticks and backslashes, which an unquoted heredoc would eat, and its
+# first line begins with a space, which `read` would otherwise strip and shift
+# that line one column out of true.
+IFS= read -r -d '' _CS_FALLBACK_HEADER <<'ART' || true
+ __  __            _             _ _       _                 _
+|  \/  |_   _     / \  _   _  __| (_) ___ | |__   ___   ___ | | __
+| |\/| | | | |   / _ \| | | |/ _` | |/ _ \| '_ \ / _ \ / _ \| |/ /
+| |  | | |_| |  / ___ \ |_| | (_| | | (_) | |_) | (_) | (_) |   <
+|_|  |_|\__, | /_/   \_\__,_|\__,_|_|\___/|_.__/ \___/ \___/|_|\_\
+  ____  |___/ _           _   _
+ / ___|___ | | | ___  ___| |_(_) ___  _ __
+| |   / _ \| | |/ _ \/ __| __| |/ _ \| '_ \
+| |__| (_) | | |  __/ (__| |_| | (_) | | | |
+ \____\___/|_|_|\___|\___|\__|_|\___/|_| |_|
+ART
+
+var_tags="${var_tags:-media;audiobooks}"
+var_cpu="${var_cpu:-2}"
+var_ram="${var_ram:-1024}"
+var_disk="${var_disk:-8}"
+var_os="${var_os:-debian}"
+var_version="${var_version:-13}"
+var_unprivileged="${var_unprivileged:-0}"
+# Privileged, where their scripts default to unprivileged — and it is a
+# deliberate difference. This app writes to your audiobooks over a bind mount,
+# and an unprivileged container shifts every id by 100000: PUID=99 inside is
+# 100099 on the host, which owns nothing, so it is refused permission to write
+# in a collection whose permissions look perfectly right from the host. Set
+# var_unprivileged=1 if you would rather map the owning group through yourself.
+
+header_info "$APP"
+variables
+color
+catch_errors
+
+function update_script() {
+  header_info
+  check_container_storage
+  check_container_resources
+
+  if [[ ! -d /opt/my-audiobook-collection ]]; then
+    msg_error "No ${APP} Installation Found!"
+    exit
+  fi
+
+  msg_info "Updating ${APP}"
+  cd /opt/my-audiobook-collection || exit
+  # The newest released tag, not main: main is where work in progress lands and
+  # a tag is a thing that passed its checks and was published.
+  $STD git fetch --tags --force
+  newest=$(git tag --sort=-v:refname | head -n 1)
+  if [[ -z "$newest" ]]; then
+    msg_error "No released version found in the repository"
+    exit
+  fi
+  if [[ "$(git describe --tags --exact-match 2>/dev/null)" == "$newest" ]]; then
+    msg_ok "Already on ${newest}"
+    exit
+  fi
+  systemctl stop my-audiobook-collection
+  $STD git checkout "$newest"
+  $STD npm ci --omit=dev --no-audit --no-fund
+  systemctl start my-audiobook-collection
+  msg_ok "Updated to ${newest}"
+  exit
+}
+
+# The container's Notes panel in the Proxmox GUI, which is the one place this
+# app has a picture of itself on somebody's hypervisor. The engine writes its
+# own there — its logo, a donate badge, and an "Open Script Page" button
+# pointing at community-scripts.org/scripts/myaudiobookcollection, which is a
+# page that does not exist for an app they do not host. There is no seam for the
+# image the way there is for the banner, so this replaces the whole function;
+# everything else of theirs is left alone, and the MIT notice at the top of this
+# file is where their licence is honoured.
+#
+# Unquoted heredoc on purpose: ${APP} and ${IP} are meant to be substituted, and
+# there is no backtick or bare $ in the HTML below.
+#
+# The icon is the PNG rather than public/icon.svg. It is the same drawing — the
+# Unraid template has pointed at it for as long as there has been one — and a
+# PNG is what Proxmox's Notes panel is certain to draw.
+description() {
+  # The engine's version sets IP as a side effect and the closing lines below
+  # read it, so this has to set it too, or every URL printed at the end is
+  # http://:8523.
+  IP=$(pct exec "$CTID" ip a s dev eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
+
+  local icon="https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/public/icon-128.png"
+  local repo="https://github.com/Starf0x/my-audiobook-collection"
+  local notes
+  notes=$(
+    cat <<EOF
+<div align='center'>
+  <a href='${repo}' target='_blank' rel='noopener noreferrer'>
+    <img src='${icon}' alt='${APP}' width='128' height='128' style='width:128px;height:128px;'/>
+  </a>
+
+  <h2 style='font-size: 24px; margin: 20px 0;'>${APP}</h2>
+
+  <p style='margin: 16px 0;'>
+    <a href='http://${IP}:8523' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>http://${IP}:8523</a>
+  </p>
+
+  <span style='margin: 0 10px;'>
+    <a href='${repo}' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>GitHub</a>
+  </span>
+  <span style='margin: 0 10px;'>
+    <a href='${repo}/wiki' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Manual</a>
+  </span>
+  <span style='margin: 0 10px;'>
+    <a href='${repo}/issues' target='_blank' rel='noopener noreferrer' style='text-decoration: none; color: #00617f;'>Issues</a>
+  </span>
+</div>
+EOF
+  )
+  pct set "$CTID" -description "$notes"
+}
+
+start
+build_container
+description
+
+msg_ok "Completed successfully!\n"
+echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
+echo -e "${INFO}${YW}Access it using the following URL:${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:8523${CL}"
+echo -e "${INFO}${YW}The page that changes things:${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}http://${IP}:8523/admin${CL}"
+echo -e "${INFO}${YW}Settings (edit (Admin/password), then restart the service):${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}/etc/my-audiobook-collection.env${CL}"
+# The two folders, here, because this is the moment somebody needs them: the app
+# is up and has nothing to show. They are the host's to mount and the container
+# has to be rebooted to see them, which is two commands and no explaining.
+echo -e "${INFO}${YW}Your folders — on the HOST, then reboot the container:${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}pct set ${CTID} -mp0 /host/path/Audiobooks,mp=/audiobooks${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}pct set ${CTID} -mp1 /host/path/Import,mp=/import${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}pct reboot ${CTID}${CL}"
+echo -e "${INFO}${YW}Then add /audiobooks under Settings → Library folders.${CL}"

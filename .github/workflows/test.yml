@@ -1,0 +1,98 @@
+# The suites, on every push and every pull request.
+#
+# The image build has always run on a tag; nothing ran the checks. They were not
+# even in the repository — 74 of them were described in the spec and none could
+# be cloned — so this workflow and that are one change: a suite nobody can run is
+# a suite nobody runs.
+#
+# One suite is left out rather than made to work: `covers-zip` unpacks its
+# archive with PowerShell. `tests/run-all.mjs` names it in its output, so what is
+# not covered says so on every run.
+#
+# `plays-on` used to be left out too, for a hard-coded path to Edge on the owner's
+# machine — which meant the one suite that drives the real pages ran nowhere, and
+# it sat broken through two major features before anybody noticed. It finds
+# whatever Chromium-family browser it is given now, so it runs here as well, in a
+# job of its own: it is slower than the rest put together and a browser that will
+# not start should say so plainly rather than read as the app being broken.
+name: Checks
+
+# The token this workflow is handed can only read. These jobs check out the code
+# and run it; nothing here writes anything back, and a token that may write is a
+# write any action in the job could make.
+permissions:
+  contents: read
+
+# Every `uses:` names a commit, not a tag. `@v4` is a branch that somebody else
+# moves: whoever controls that repository can change what runs here, on a machine
+# holding this project's Docker Hub credentials, without anything in this file
+# changing. A 40-character sha is the one thing in a `uses:` that cannot be
+# repointed. The version each one *is* goes in the comment beside it, because a
+# sha says nothing to a person reading the file.
+#
+# The cost is that they no longer update themselves. To move one: look up the
+# commit its major tag points at now, change the sha and the comment together.
+#   gh api repos/actions/checkout/git/ref/tags/v4 --jq .object.sha
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  suites:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # the same major the image is built on, or a check can pass here and
+          # fail in the container over something in node itself
+          node-version: '26'
+      # `ogg-lengths` encodes a real Ogg Vorbis file to check that the scan reads
+      # past an ID3 tag bolted on the front of one. The image has ffmpeg from
+      # 2.3.0 and this runner does not, so without this the suite says "nothing
+      # checked" and the run goes green having checked nothing — which is how a
+      # suite comes to exist and cover nothing, the way plays-on did.
+      #
+      # Given four minutes and no more: a slow Debian mirror hung this step for
+      # over fifteen on v2.9.24, and a step with no limit of its own gets the
+      # job's six hours. Four is generous — it normally takes under one — and a
+      # run that is going to fail should say so while somebody is still looking.
+      - name: ffmpeg, for the suite that makes an Ogg
+        timeout-minutes: 4
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      # `npm ci` needs the lock to match package.json, which is also the check
+      # that nothing was installed into the tree by hand. Dev dependencies are
+      # installed here and nowhere else: the suites need jsdom, and the Dockerfile
+      # keeps `--omit=dev`, so none of it reaches the image.
+      - run: npm ci
+      # An advisory against something that ships is news on the day it is
+      # published, not whenever somebody happens to run this. proxy-addr went
+      # critical overnight and was found only because a install was being done
+      # for another reason. Only what ships is asked about, and only high and
+      # above fails: a moderate advisory in a test tool is not a reason to stop
+      # a release of something else.
+      - name: Nothing shipped has a known hole in it
+        run: npm audit --omit=dev --audit-level=high
+      - run: npm test
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '26'
+      - run: npm ci --omit=dev
+      # Say what is there before using it: when this job fails, the first
+      # question is always whether the machine had a browser at all.
+      - name: Which browsers this runner has
+        run: |
+          for b in /usr/bin/microsoft-edge /usr/bin/microsoft-edge-stable \
+                   /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+                   /usr/bin/chromium /usr/bin/chromium-browser; do
+            [ -x "$b" ] && echo "yes $b" || echo "no  $b"
+          done
+      - run: npm run test:ui

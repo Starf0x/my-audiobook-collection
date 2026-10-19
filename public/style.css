@@ -1,0 +1,1141 @@
+:root {
+  --bg: #0e1014; --panel: #16191f; --panel2: #1c2027; --line: #262b34;
+  --text: #e6e8ec; --dim: #a2a9b8; --accent: #7c5cff; --accent2: #22d3ee;
+  /* How far the page has been turned today, in degrees: day.js sets it, and
+     nought is the pair the app was drawn in. The two glows keep their distance
+     from each other, so the page stays this app whatever day it is. */
+  --day: 0;
+  /* The pair the day turns, named once. 252° and 188° are --accent and --accent2
+     themselves — #7c5cff is hsl(252 100% 68%), #22d3ee is hsl(188 86% 53%) — so
+     on day nought everything below is the colour it has always been, and on every
+     other day it has moved with the page. --glow is that pair behind the page,
+     faint; --tint is the same pair at full strength, for anything drawn on a
+     panel, where .34 opacity would be a smear. */
+  --hue1: calc(252 + var(--day));
+  --hue2: calc(188 + var(--day));
+  --glow1: hsl(var(--hue1) 100% 68% / .34);
+  --glow2: hsl(var(--hue2) 86% 53% / .30);
+  --tint1: hsl(var(--hue1) 100% 68%);
+  --tint2: hsl(var(--hue2) 86% 53%);
+}
+* { box-sizing: border-box; }
+/* This is an application, not a document: clicking a list, a card or a tile
+   should not drop a text cursor into it or start selecting words. Text you
+   might want to copy keeps its caret. */
+body { cursor: default; user-select: none; -webkit-user-select: none; }
+input, textarea, .desc, .sub, #status, .hint, #progress .say, #lookupState {
+  user-select: text; -webkit-user-select: text; cursor: auto;
+}
+input, textarea { cursor: text; }
+/* author display rules would otherwise beat the browser rule for [hidden] */
+[hidden] { display: none !important; }
+body {
+  margin: 0; height: 100vh; display: flex; flex-direction: column;
+  color: var(--text);
+  /* a soft glow in the interface colours, so the empty panels are not a flat slab */
+  background:
+    radial-gradient(1500px 1100px at 4% 0%, var(--glow1), transparent 68%),
+    radial-gradient(1400px 1050px at 96% 96%, var(--glow2), transparent 66%),
+    var(--bg);
+  background-attachment: fixed;
+  font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  background: linear-gradient(90deg, #171a21, #12141a); border-bottom: 1px solid var(--line);
+  box-shadow: 0 10px 26px -22px #000;
+}
+header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; cursor: pointer; }
+/* The app's own mark, where a headphones emoji used to be: the same drawing the
+   container is listed under, so the tab, the Unraid tile and the page all show
+   one thing. Sized in `em` so it follows the heading it sits in — the header's
+   16px and the sign-in card's 17px — and nudged down to sit on the text's
+   baseline rather than its top. The artwork brings its own rounded dark square,
+   so nothing here draws a background or a radius. */
+.mark { width: 1.6em; height: 1.6em; vertical-align: -.42em; }
+/* There is a newer version. The dot sits on the corner of the icon the way an
+   unread count does, because that corner is where the eye looks for one, and it
+   is drawn over the artwork rather than beside it so nothing in the header
+   moves when it appears and nothing is left shifted when it goes. The wrapper
+   is `inline-block` only so the dot has something to be absolute against; it
+   takes the icon's own line-height, which keeps the baseline the `.mark` rule
+   above was nudged to. A ring in the header's own colour keeps it a dot rather
+   than a smear on dark artwork. */
+.marked { position: relative; display: inline-block; line-height: 0; }
+#updateDot {
+  position: absolute; top: -2px; right: -3px; width: 10px; height: 10px;
+  border-radius: 50%; background: #e5484d; border: 2px solid #171a21; /* the header gradient where the icon sits, not --bg */
+  box-shadow: 0 0 6px rgba(229, 72, 77, .9);
+}
+#updateDot[hidden] { display: none; }
+/* and the way to act on it, in the pulldown: the one entry there that is news
+   rather than a place to go */
+.menu > ul li.stands-out { color: #ff8f93; font-weight: 600; }
+/* the search box: wide enough for a title and an author, and it may grow */
+.search { width: 300px; max-width: 34vw; margin-left: 14px; }
+.search::placeholder { color: var(--dim); }
+.search:focus { outline: none; border-color: var(--accent); }
+.spacer { flex: 1; }
+button, select, input {
+  font: inherit; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
+}
+button { cursor: pointer; background: var(--accent); border-color: transparent; font-weight: 600; }
+button:hover { filter: brightness(1.15); }
+button.ghost { background: var(--panel2); font-weight: 500; }
+
+main { flex: 1; display: grid; grid-template-columns: 230px 260px 1fr; min-height: 0; }
+main > * { overflow-y: auto; border-right: 1px solid var(--line); padding-bottom: 24px; }
+#books { border-right: none; }
+/* z-index, because a sticky head with none is painted in page order: plain text
+   scrolled under it, but everything positioned that comes after it — a card's
+   cover, the heart on it, a tile — slid over the top of it. Above the heart (2),
+   below the menus and dialogs (40 and up). */
+.col-title {
+  position: sticky; top: 0; z-index: 10; padding: 12px 16px 8px;
+  background: rgba(14, 16, 20, .82); backdrop-filter: blur(8px);
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+}
+main ul { list-style: none; margin: 0; padding: 0 8px; }
+main li {
+  display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  padding: 9px 12px; border-radius: 8px; cursor: pointer; color: var(--text);
+}
+main li:hover { background: var(--panel); }
+main li.active { background: var(--accent); color: #fff; }
+main li .count { color: var(--dim); font-size: 12px; }
+main li.active .count { color: #e8e2ff; }
+
+.list { padding: 4px 16px; display: flex; flex-direction: column; gap: 12px; }
+.series-head { color: var(--accent2); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin-top: 8px; }
+/* what the collection has of that series, under its name: red where a volume
+   number has no book on it, quiet where the run is whole or cannot be judged */
+.series-gap { color: var(--dim); font-size: 12px; margin-top: 2px; }
+.series-gap.missing { color: #ffa8a8; }
+.card {
+  display: grid; grid-template-columns: 96px 1fr auto; gap: 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 6px 18px -16px #000;
+}
+/* The book a maintenance list sent you to. An author with forty books puts the
+   right card somewhere in a wall of identical ones, so it says which it is for
+   a moment and then stops: a mark that stayed would be a mark on the wrong book
+   the next time something is looked at. `prefers-reduced-motion` gets the ring
+   without the fade — the point is which card, not the animation. */
+.card.found { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+@media (prefers-reduced-motion: no-preference) {
+  .card.found { animation: found 2.6s ease-out; }
+}
+@keyframes found {
+  0%, 60% { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  100% { border-color: var(--line); box-shadow: 0 1px 0 rgba(255,255,255,.02) inset, 0 6px 18px -16px #000; }
+}
+.card img { width: 96px; height: 144px; object-fit: cover; border-radius: 6px; background: var(--panel2); }
+.card h3 { margin: 0 0 4px; font-size: 15px; }
+.card .sub { color: var(--dim); font-size: 12.5px; }
+.card .desc {
+  margin-top: 6px; color: var(--dim); font-size: 12.5px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card .actions { display: flex; flex-direction: column; gap: 6px; }
+.badge {
+  display: inline-block; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--dim); margin-right: 6px;
+}
+.empty { color: var(--dim); padding: 16px; }
+
+footer {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+  background: var(--panel); border-top: 1px solid var(--line);
+  box-shadow: 0 -10px 26px -22px #000;
+}
+footer img { width: 36px; height: 54px; border-radius: 4px; object-fit: cover; background: var(--panel2); }
+footer .meta { min-width: 200px; display: flex; flex-direction: column; }
+footer .meta span { color: var(--dim); font-size: 12px; }
+/* The transport is ours (see the note in app.js), so the line that says how far
+   into a track you are is yellow like the one on the shelves, and the whole thing
+   sits in the app's own dark instead of the browser's light grey slab. */
+/* The engine is never seen: the transport is the app's own, because a
+   browser's controls cannot be recoloured. Not scoped to the footer — /player
+   carries the same <audio> and no footer, and there it drew itself as a grey
+   slab across the screen. */
+audio { display: none; }
+/* Glyph and word together, so the one control the bar exists for is the one
+   thing in it that does not have to be recognised.
+
+   And **one width whatever it says**. On a phone the bar wraps, so what the row
+   demands decides how many rows the bar has and therefore how tall it is —
+   and "▶ Resume" is eleven pixels wider than "⏸ Pause". Press pause on a screen
+   where the row had less than eleven pixels to spare and it wraps, the bar
+   gains a row, and it jumps up under the thumb mid-press. The owner, on a Galaxy
+   S25; measured here the row had 28px of slack and never tipped, which is what
+   a different system font is worth and why this is sized in `em` rather than
+   trusted to one machine's metrics. Nothing the button says may move anything.
+   `nowrap` for the same reason, over two lines instead of one. */
+/* glyph and word, with a gap between them */
+footer #pPlay .glyph { margin-right: 6px; }
+footer #pPlay {
+  font-size: 14px; line-height: 1; padding: 7px 12px; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 7.2em;
+}
+footer #pPlay.playing { background: var(--accent); border-color: transparent; }
+/* Wide enough for an hours clock — "13:26:10" — so a book passing the hour does
+   not widen the row. `ch` rather than pixels: the reservation then grows with
+   whatever font the device actually draws in, instead of being a number
+   measured on one machine. `tabular-nums` is the other half, or the width
+   changes with the digits. */
+footer .tick { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 5.5ch; text-align: center; }
+footer .left { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+footer #seek { flex: 1; min-width: 120px; }
+footer #vol { width: 96px; flex: 0 0 auto; }
+/* the mute and the slider as one thing, which is what they are to a reader */
+footer .vol { display: inline-flex; align-items: center; gap: 8px; }
+/* A `<select>` sizes itself to its widest option, and a flex item's automatic
+   minimum is its content — so one chapter called "23 - A Memory of Light -
+   Chapter 23 - The Last Battle Begins At Dawn" made this 498px wide, pushed the
+   bar to 1436px inside a 1265px window, and gave the whole page a sideways
+   scrollbar. Here rather than only in the phone rules: a long chapter name is
+   long on any screen, and this was wrong on both. */
+footer #trackSelect { min-width: 0; max-width: 240px; }
+footer #pVolBtn { padding: 7px 9px; font-size: 14px; line-height: 1; }
+/* putting the player away is not a thing to press by accident on the way to the
+   volume, so it sits quietly until it is looked for */
+footer #pClose { padding: 7px 9px; font-size: 14px; line-height: 1; color: var(--dim); }
+footer #pClose:hover { color: var(--text); }
+
+/* One look for every slider the app draws: yellow up to --played, the track
+   beyond it. Scoped to .rangey rather than to footer — /player has the same
+   seek line and no footer, and a rule that names the container is a rule that
+   stops working the moment the control is used somewhere else. The two pages
+   with a bar put .rangey on it; the player page puts it on its own screen. */
+.rangey input[type="range"] {
+  --played: 0%;
+  -webkit-appearance: none; appearance: none;
+  height: 18px; padding: 0; border: 0; background: transparent; cursor: pointer;
+}
+.rangey input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(90deg, #ffb628 0%, #ffe066 var(--played), #2c3342 var(--played), #2c3342 100%);
+}
+.rangey input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -4px; border-radius: 50%;
+  background: #ffd452; border: 1px solid #8a6410;
+}
+.rangey input[type="range"]:focus-visible { outline: 2px solid var(--accent2); outline-offset: 3px; }
+.rangey input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: #2c3342; }
+.rangey input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: #ffb628; }
+.rangey input[type="range"]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; background: #ffd452; border: 1px solid #8a6410;
+}
+
+dialog {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 14px; padding: 20px; width: min(620px, 92vw);
+}
+dialog::backdrop { background: #000a; }
+dialog h2 { margin: 0 0 14px; font-size: 17px; }
+dialog label { display: block; margin: 14px 0 6px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; }
+dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.row.end { justify-content: flex-end; margin-top: 18px; }
+.hint { color: var(--dim); font-size: 12px; }
+/* where the book sits on disk, which may be longer than the dialog is wide */
+.hint.path { font-family: ui-monospace, monospace; word-break: break-all; margin: 12px 0 0; }
+
+/* The cover in Edit metadata: the one thing about a book that cannot be typed.
+   The box is dashed because it is somewhere to drop something, it shows what
+   would be saved rather than describing it, and it lights up under a drag. */
+.cover-edit {
+  display: flex; gap: 12px; align-items: flex-start; background: var(--panel2);
+  border: 1px dashed var(--line); border-radius: 10px; padding: 10px;
+}
+.cover-edit.over { border-color: var(--accent); border-style: solid; }
+.cover-edit img {
+  width: 84px; height: 126px; flex: none; object-fit: cover;
+  border-radius: 6px; background: var(--panel);
+}
+.cover-say { flex: 1; min-width: 0; }
+.cover-edit .hint { margin: 0 0 8px; }
+.cover-edit kbd {
+  font: inherit; font-size: 11px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 5px;
+}
+/* a button that is a word inside a sentence, not a thing to press beside it */
+.hint button.linkish {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: var(--accent2); text-decoration: underline; cursor: pointer;
+}
+.hint button.linkish:hover { color: #fff; filter: none; }
+#libList, #browserList { list-style: none; padding: 0; margin: 0; max-height: 220px; overflow: auto; }
+#libList li, #browserList li {
+  display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px;
+  background: var(--panel2); border-radius: 8px; margin-bottom: 6px; cursor: pointer;
+}
+#libList li button { padding: 2px 8px; background: #3a2030; }
+.cand { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 10px; display: flex; gap: 10px; }
+.cand img { width: 60px; height: 90px; object-fit: cover; border-radius: 6px; }
+.cand .desc { color: var(--dim); font-size: 12px; max-height: 66px; overflow: hidden; }
+#toast {
+  position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 16px; opacity: 0; transition: opacity .25s; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+#browserList li button { padding: 2px 10px; font-size: 12px; background: var(--panel); border: 1px solid var(--line); }
+#browserList li span { flex: 1; }
+
+/* one .job per running task, side by side, so two of them never share a bar */
+#progress { padding: 8px 16px; background: var(--panel); border-top: 1px solid var(--line); display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+#progress .job { flex: 1 1 340px; display: flex; align-items: center; gap: 10px; min-width: 280px; }
+#progress .track { flex: 1; height: 8px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
+/* left to right, the two glows behind the page: the bar is lit by the same pair
+   the page stands in, and turns with it at midnight without being told */
+#progress .fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--tint1), var(--tint2)); transition: width .25s; }
+#progress .say { color: var(--dim); font-size: 12px; flex: 0 1 auto; max-width: 55%; text-align: right; }
+#progress .say.warn { color: #ffb4a8; }
+
+.note { margin-right: 7px; font-size: 17px; line-height: 1; }
+.note.new { color: var(--dim); }
+.note.part { color: #ff5f5f; }
+.note.done { color: #35d07f; }
+.card .cover { display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; }
+.listened { display: flex; align-items: center; gap: 6px; justify-content: center; color: var(--dim); font-size: 12px; cursor: pointer; margin-top: 2px; }
+.listened input { accent-color: #35d07f; padding: 0; width: 15px; height: 15px; cursor: pointer; }
+/* Unabridged sits under Listened and is a different kind of thing: Listened is
+   this listener's, Unabridged is the book's. A second colour says they are not
+   two of one list without a word of explanation. */
+.listened.unabridged input { accent-color: var(--accent2); }
+
+#status { display: flex; gap: 20px; padding: 7px 16px; background: #101318; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; }
+#status strong { color: var(--text); font-weight: 600; }
+
+#lookupProgress { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; }
+#lookupProgress .track { flex: 1; height: 8px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
+/* the same bar in a dialog, so the same day's colours */
+#lookupBar { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--tint1), var(--tint2)); transition: width .25s; }
+#lookupState { color: var(--dim); font-size: 12px; min-width: 250px; text-align: right; }
+
+.badge.tagged { color: #8ee0b4; border-color: #2b5a45; background: #16241d; }
+.badge.untagged { color: #ffa8a8; border-color: #5a2b2b; background: #241616; }
+
+/* The three things on a card that are also a way somewhere: the author's name,
+   the year, and the genre where it is not already the answer. They have to go
+   on looking like the line and the badges they replaced — a card that grew two
+   purple buttons would read as a card with two new actions on it — so the only
+   thing that changes is that they light up under the pointer.
+   `.linkish` carries no style of its own anywhere (see the note further down);
+   without these a bare one falls back to the ordinary purple button, which is
+   exactly what a badge must not become. */
+.card .by-author, .tile .by-author {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+  text-align: left; cursor: pointer;
+}
+/* on a tile it is one line among others that clip, so it clips with them */
+.tile .by-author { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* the phone's thumb-sized minimum for buttons made this one line two lines tall */
+  min-height: 0; vertical-align: top; }
+.card .by-author:hover, .tile .by-author:hover { color: var(--accent2); filter: none; text-decoration: underline; }
+/* the genre beside the author in the player, on the bar and on /player: a word,
+   not a button, and a way into the genre. The thumb-sized minimum the phone
+   gives buttons would make this one line two. */
+.genre-link {
+  background: none; border: 0; padding: 0; margin: 0 0 0 6px; min-height: 0;
+  font: inherit; color: var(--accent2); cursor: pointer; vertical-align: baseline;
+}
+.genre-link::before { content: '·'; color: var(--dim); margin-right: 6px; }
+.genre-link:hover { color: #fff; filter: none; text-decoration: underline; }
+/* the head over an author's books: the genre in it is a way there */
+.series-head.where button.linkish {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; letter-spacing: inherit;
+  text-transform: inherit; color: var(--accent2); cursor: pointer;
+}
+.series-head.where button.linkish:hover { color: #fff; filter: none; text-decoration: underline; }
+.badge.linkish {
+  font: inherit; font-size: 11px; line-height: inherit; cursor: pointer;
+  /* `.badge` is the whole look; this only has to stop a button from bringing its
+     own, and keep the pill the same height as the plain badges beside it */
+  min-height: 0; padding: 1px 8px;
+}
+.badge.linkish:hover { color: var(--text); border-color: var(--accent2); filter: none; }
+
+.fix { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.fix .actions { display: flex; gap: 6px; }
+.fix strong { font-size: 14px; }
+.fix .sub.missing { color: #ffa8a8; }
+
+/* the maintenance list has no author column, so give it that space */
+body.maintenance #authors { display: none; }
+body.maintenance main { grid-template-columns: 230px 1fr; }
+
+
+
+.asgenre { display: flex; align-items: center; gap: 5px; color: var(--dim); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.asgenre input { padding: 0; width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.asgenre { text-transform: none; letter-spacing: 0; margin: 0; }
+
+#importForm .row { flex-wrap: wrap; }
+#importForm input, #importForm select { flex: 1 1 150px; min-width: 110px; }
+#importForm .fix { margin-top: 4px; }
+
+/* landing view: shelves of covers */
+.shelf { margin-bottom: 6px; }
+.shelf-title { color: var(--accent2); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; margin: 6px 0 10px; }
+.tiles { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+.tile { flex: 0 0 auto; width: 104px; cursor: pointer; position: relative; }
+.tile img { display: block; width: 104px; height: 156px; object-fit: cover; border-radius: 8px;
+  background: var(--panel2); border: 1px solid var(--line); }
+.tile:hover img { border-color: var(--accent); }
+.tile .t { margin-top: 7px; font-size: 12.5px; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tile .a { color: var(--dim); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* How far into a book you are. It used to be the interface's purple-to-cyan on a
+   near-black track, four pixels tall, which on a dark tile you had to hunt for:
+   yellow reads at a glance, and the track is light enough to show the rest. */
+.tile .tbar { height: 5px; margin: 6px 0 3px; background: #2c3342; border-radius: 999px; overflow: hidden; }
+.tile .tbar div { height: 100%; background: linear-gradient(90deg, #ffb628, #ffe066); }
+
+.col-title button.linkish { background: none; border: 0; padding: 0 0 0 10px; color: var(--accent2);
+  font: inherit; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.col-title button.linkish:hover { color: #fff; filter: none; }
+.tiles::-webkit-scrollbar { height: 8px; }
+.tiles::-webkit-scrollbar-track { background: transparent; }
+.tiles::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+.tiles::-webkit-scrollbar-thumb:hover { background: #39404d; }
+.tiles { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+.card .actions .row2 { display: flex; gap: 6px; margin-top: 0; }
+.card .actions .row2 button { flex: 1; }
+button.danger { background: #6b2434; }
+button.ghost.danger { background: var(--panel2); color: #ffa8a8; }
+.fix .sub .missing { color: #ffa8a8; }
+.empty.missing { color: #ffa8a8; }
+.hint.missing { color: #ffa8a8; }
+#iFound { max-height: 260px; overflow: auto; margin-top: 10px; }
+
+.pager { gap: 10px; margin: 0 0 6px; flex-wrap: wrap; }
+.pager button, .pager .hint { white-space: nowrap; }
+.pager .spacer { flex: 1; }
+.pager button[disabled] { opacity: .4; cursor: default; }
+#books .fix + .pager { margin-top: 8px; }
+
+#genreList { list-style: none; padding: 0; margin: 0; max-height: 150px; overflow: auto; }
+#genreList li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 10px; background: var(--panel2); border-radius: 8px; margin-bottom: 5px; }
+#genreList .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+
+#whoList button { margin: 0; }
+
+
+/* two copies of the same book, side by side */
+table.cmp { width: 100%; border-collapse: collapse; margin: 6px 0 2px; }
+table.cmp th, table.cmp td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+table.cmp th { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+table.cmp td:first-child { color: var(--dim); }
+table.cmp td.better { color: #7ee2a8; font-weight: 600; }
+/* A volume you do not have, as one line in a list under its series.
+
+   It used to be a full card — a drawn cover, a heading, the author, badges, a
+   sentence of explanation and three buttons. With sixty-eight series short of
+   something, that is several hundred cards: a page nobody scrolls, where the one
+   question being asked — which books am I missing? — costs a card's worth of
+   reading per answer. The series keeps the heading; what is missing from it is
+   a list. */
+.missing-vols { list-style: none; margin: 4px 0 14px; padding: 0; }
+.missing-vol {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 4px 10px; border-left: 2px solid var(--line);
+  /* The columns' own `li` is a row with a count pushed to the far end, and
+     these inherit that: it put an inch of empty row between a title and the
+     button that copies it. A list of titles is read from the left. */
+  justify-content: flex-start;
+}
+.missing-vol:hover { background: var(--panel2); border-left-color: #ffa8a8; }
+/* the volume number in a column of its own, so the titles line up under each
+   other however many digits there are */
+.missing-vol .no {
+  min-width: 2.2em; text-align: right; color: #ffa8a8;
+  font-variant-numeric: tabular-nums; font-weight: 600;
+}
+.missing-vol .what em { color: var(--dim); }
+/* The two things to do with a line you cannot play: copy it, or go and read
+   about it. They sit beside the title rather than out at the right margin —
+   `flex: 1` on the title put them an inch of empty row away from the thing they
+   act on.
+
+   `.linkish` has no style of its own anywhere: it is always scoped to where it
+   is used, so a button carrying it and nothing else falls back to the ordinary
+   purple one. Said here, or these read as two buttons per line in a list that is
+   meant to read as titles. */
+.missing-vol .linkish {
+  background: none; border: 0; padding: 0; font-size: 12px;
+  color: var(--accent2); opacity: .45; text-decoration: none; cursor: pointer;
+}
+.missing-vol:hover .linkish { opacity: .8; }
+.missing-vol .linkish:hover { opacity: 1; color: #fff; filter: none; }
+.series-head .copy-search { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+/* the series' own name, and the way to it: it reads as the heading it is part
+   of, and says it can be pressed only when it is pointed at */
+.series-head .open-series {
+  background: none; border: 0; padding: 0; margin: 0; min-height: 0; font: inherit;
+  letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer;
+}
+.series-head .open-series:hover { color: #fff; filter: none; text-decoration: underline; }
+
+/* while a job runs: its own button is disabled, and so is anything that would
+   start a second one. Playing and marking listened stay available. */
+button:disabled { opacity: .45; cursor: default; }
+body.writing #books button[data-pick],
+body.writing #books button[data-restore],
+body.writing #books button[data-purge],
+body.writing #books button[data-del],
+body.writing #books .actions button:not([onclick^="playBook"]),
+body.writing #scan, body.writing #tagAll, body.writing #tidyCovers,
+body.writing #iGo, body.writing #cReplace, body.writing #cSkip,
+body.working #books button[data-pick],
+body.working #books button[data-restore],
+body.working #books button[data-purge],
+body.working #books button[data-del],
+body.working #books .actions button:not([onclick^="playBook"]),
+body.working #scan, body.working #tagAll, body.working #tidyCovers,
+body.working #iGo, body.working #cReplace, body.working #cSkip,
+body.working #needsTags, body.working #importList, body.working #trashList, body.working #replacedList {
+  opacity: .45;
+  pointer-events: none;
+}
+body.working #brokenList { opacity: .45; pointer-events: none; }
+/* A tag write does not hold up writing another book: only the jobs that would
+   move those files, or read them while they are being written, are held back. */
+body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opacity: 1; pointer-events: auto; }
+
+/* a series sits under its genre in the left column */
+#genres .who { display: flex; align-items: center; gap: 7px; min-width: 0; }
+#genres .twist {
+  width: 11px; text-align: center; font-size: 10px; color: var(--dim);
+  cursor: pointer; flex: none;
+  /* a small arrow needs a bigger target than it looks */
+  padding: 4px 5px; margin: -4px -5px;
+}
+#genres .twist:hover { color: #fff; }
+#genres li.active .twist { color: #e8e2ff; }
+#genres li.series-in-genre {
+  padding: 6px 12px 6px 30px;
+  font-size: 13px;
+  color: var(--dim);
+  position: relative;
+}
+#genres li.series-in-genre::before {
+  content: "↳";
+  position: absolute;
+  left: 15px;
+  opacity: .5;
+}
+#genres li.series-in-genre.active { color: #fff; }
+/* An author who writes in parts: the series above, then its parts indented
+   under it. The parent reads as the heavier of the two because it is the whole
+   thing — the parts are what it is divided into, not the other way round. */
+#genres li.series-in-genre.is-parent { color: var(--text); }
+#genres li.series-in-genre.in-part { padding-left: 46px; font-size: 12.5px; }
+#genres li.series-in-genre.in-part::before { left: 31px; }
+/* the series a book belongs to, on its card and on its shelf tile */
+.card .sub.series-of { color: var(--accent2); }
+
+/* And a book that belongs to none, which has to be said rather than left blank:
+   cards stack, and an empty slot where the series line goes reads as the series
+   above it still applying. Quieter than a series — it is the absence of one, not
+   a thing of its own — and in the same place, so the eye finds an answer where
+   it looked for one. */
+.card .sub.no-series { color: var(--dim); font-style: italic; }
+
+/* Where a run of books in no series begins. A series gets a heading above it,
+   which is what separates one run from the next; these get none, so without this
+   the first of them sits tight against the last volume of the series above and
+   reads as more of it. The gap is a little wider than a heading's, because it is
+   doing the heading's whole job on its own. */
+.card.apart { margin-top: 22px; }
+.tile .a.series-of { color: var(--accent2); opacity: .85; }
+
+/* Where a kept place came from, when it was not this page. Quieter than the
+   title and the author — it answers a question nobody asks until a book they do
+   not recognise is on their shelf, and then it is the only thing they want. */
+.tile .a.via, .card .sub.via { color: var(--accent2); opacity: .75; font-style: italic; }
+
+/* the step-back button in a column heading: only a phone shows one column at a
+   time, so only a phone needs it */
+.back { display: none; }
+
+/* --- a narrow screen ----------------------------------------------------
+   A phone has room for one column, not three: data-col on the body says which
+   one is on screen, and the heading of each carries a way back. Everything that
+   was a row of controls wraps, and every target is big enough for a thumb. */
+@media (max-width: 720px) {
+  /* dvh, or the browser's own chrome cuts the player off the bottom */
+  body { height: 100dvh; }
+  header { flex-wrap: wrap; padding: 8px 12px; gap: 8px 8px; }
+  header h1 {
+    font-size: 15px; flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .spacer { display: none; }
+  .search { order: 10; flex: 1 0 100%; width: auto; max-width: none; margin-left: 0; }
+  /* 16px: a smaller field makes iOS zoom the whole page on focus */
+  input, select, textarea { font-size: 16px; }
+  button, select { min-height: 40px; }
+  header button, header select { padding: 7px 10px; font-size: 14px; }
+
+  main { grid-template-columns: 1fr; }
+  body.maintenance main { grid-template-columns: 1fr; }
+  main > * { border-right: none; }
+  body[data-col="genres"] #authors, body[data-col="genres"] #books,
+  body[data-col="authors"] #genres, body[data-col="authors"] #books,
+  body[data-col="books"] #genres, body[data-col="books"] #authors { display: none; }
+  .col-title { display: flex; align-items: center; gap: 10px; padding: 10px 14px 8px; }
+  .back { display: inline-block; }
+  main ul { padding: 0 6px; }
+  main li { padding: 13px 12px; }
+  #genres li.series-in-genre { padding: 11px 12px 11px 30px; }
+
+  .list { padding: 4px 12px; gap: 10px; }
+  .card { grid-template-columns: 84px 1fr; gap: 12px; padding: 10px; }
+  .card img { width: 84px; height: 126px; }
+  .card .actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .card .actions button { flex: 1 1 45%; }
+  .card .actions .row2 { flex: 1 1 100%; }
+  .fix { grid-template-columns: 1fr; }
+  .fix .actions { flex-wrap: wrap; }
+  .fix .actions button { flex: 1 1 45%; }
+
+  .tile, .tile img { width: 96px; }
+  .tile img { height: 144px; }
+
+  /* The player on a phone: four rows, each one thing.
+
+       cover · what is playing · ✕
+       which chapter, the whole width
+       the clock, the volume, the download
+       the seek line
+
+     The markup is one order for both screens and `order` does the arranging
+     here, so nothing in the two pages has to know which screen it is on.
+     Before this it was whatever fell out of wrapping: ✕ landed mid-bar beside a
+     chapter pulldown clipped to 45% of the width, so the one line that says
+     where you are in a book was the one thing with no room. */
+  footer { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
+  footer img { order: 1; width: 44px; height: 66px; }
+  footer .meta { order: 2; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+  footer .meta strong, footer .meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* top right of the bar, where a thing that puts something away belongs —
+     `flex-start` against the cover's 66px, or it floats to the middle of the row */
+  footer #pClose { order: 3; align-self: flex-start; }
+  /* The whole width. It is the longest text in the bar — "12/35 · 07 - The
+     Chapter With The Long Name" — and it was the narrowest box. */
+  /* `min-width: 0` is the whole of it. A `<select>` sizes itself to its widest
+     option, and a flex item's automatic minimum is its content — so a chapter
+     called "23 - A Memory of Light - Chapter 23 - The Last Battle Begins At
+     Dawn" made this 575px wide inside a 375px window and the *page* scrolled
+     sideways. `flex: 1 0 100%` gives it the row; this is what stops it taking
+     more than the row has. */
+  footer #trackSelect { order: 4; flex: 1 1 100%; min-width: 0; max-width: 100%; }
+  /* The bar keeps its own play/pause, and it says what it does. It was taken
+     out once, on the grounds that the cover beside it is the same button and
+     the book's own card carries a third — but the card is only on screen while
+     you are looking at that book, and a cover that happens to be a button is
+     something you have to already know. The one control the bar exists for
+     belongs in it. It sits on the row below the chapter rather than beside it,
+     which is what it used to do and what cost the chapter its width. */
+  footer #pPlay { order: 5; }
+  /* The two that are actions, on one row, one at each end: at this width the
+     six controls below cannot share a line — measured, they want 549px of 351 —
+     and the choice is which pair gets a row of its own. These two, because they
+     are the ones with words on them and the ones you press on purpose. The
+     `auto` margin takes the rest of the line, which is also what pushes the
+     measurements below onto their own. */
+  /* The speed is on the player's own page on a phone, where there is room
+     for it and where somebody listening is actually looking. Two of them, one
+     in a bar already short of width, is the clutter this whole section is
+     about. */
+  footer #pSpeed, footer #pLeft { display: none; }
+  footer #pGet { order: 6; }
+  footer #pAt { order: 7; }
+  footer #pOf { order: 8; }
+  /* One item, so the mute and the slider wrap together or not at all, and a
+     width that stops the slider from spanning the bar — full width, under the
+     seek line, it read as a second progress bar rather than as the volume. */
+  footer .vol { order: 9; }
+  footer .vol #vol { width: 110px; }
+  /* and the seek line last, with a row to itself */
+  footer #seek { order: 11; flex: 1 0 100%; }
+
+  /* a dialog is a sheet: the whole screen, and it scrolls */
+  dialog {
+    width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    margin: 0; border: 0; border-radius: 0; padding: 16px 14px 28px; overflow-y: auto;
+  }
+  .row { flex-wrap: wrap; }
+  .row > button { flex: 1 1 auto; }
+  #libList, #browserList, #genreList, #iFound { max-height: 40vh; }
+  #lookupState { min-width: 0; text-align: left; }
+  #lookupProgress { flex-wrap: wrap; }
+  table.cmp th, table.cmp td { padding: 5px 6px; font-size: 12.5px; }
+  .cand img { width: 48px; height: 72px; }
+
+  #progress { padding: 8px 12px; gap: 8px; }
+  #progress .job { flex: 1 1 100%; min-width: 0; }
+  #progress .say { max-width: 60%; }
+  #status { gap: 8px 14px; flex-wrap: wrap; padding: 7px 12px; }
+  #toast { bottom: 96px; max-width: 92vw; text-align: center; }
+}
+
+/* between a phone and a desktop the three columns still fit, but narrower */
+@media (min-width: 721px) and (max-width: 1000px) {
+  main { grid-template-columns: 180px 190px 1fr; }
+  body.maintenance main { grid-template-columns: 180px 1fr; }
+  .search { width: 200px; }
+}
+
+/* a tap is not a hover: without this a tapped button stays lit on a phone */
+@media (hover: none) {
+  button:hover { filter: none; }
+  main li:hover { background: none; }
+  main li.active:hover { background: var(--accent); }
+  .tile:hover img { border-color: var(--line); }
+}
+
+/* the long list of tags a file carries is a paragraph on a phone: the count says
+   as much in the space there is */
+.badge .narrow { display: none; }
+
+@media (max-width: 720px) {
+  .badge .wide { display: none; }
+  .badge .narrow { display: inline; }
+  .badge { max-width: 100%; }
+
+  /* two rows, not three: the title and who is listening, then the search and
+     the scan controls */
+  header h1 { order: 1; }
+  /* Who is signed in takes the first row to itself and pushes Sign out to the
+     right edge. It had no `order` at all — so it fell to 0, ahead of everything
+     here, which is how the name and Sign out ended up above the app's own name
+     with Sign out sitting in the middle of the row. Order 0 is right for the
+     row; the missing part was something to take up the space beside it. */
+  header #whoAmI { flex: 1 1 auto; min-width: 0; }
+  header #user { order: 2; max-width: 120px; }
+  header #adminBtn, header #toAdmin { order: 3; }
+  header #openSettings { order: 4; }
+  .search { order: 5; flex: 1 1 130px; min-width: 120px; }
+  header #scanWhich { order: 6; flex: 0 1 110px; min-width: 0; }
+  header #scan { order: 7; padding: 7px 9px; }
+
+  /* a small arrow needs a big target on a touch screen */
+  #genres .twist { width: 14px; font-size: 13px; padding: 10px 12px; margin: -10px -12px; }
+}
+
+/* the book that is playing: its own button is the one that pauses it */
+button.playing {
+  box-shadow: 0 0 0 2px var(--accent2) inset;
+}
+
+/* a shelf tile you can carry on from: its own play button, under the progress */
+.tile .tplay {
+  width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12.5px;
+}
+
+/* the name of the app leads back to the shelves */
+@media (hover: hover) {
+  header h1:hover { color: var(--accent2); }
+}
+
+/* which build is answering: quiet, and always on screen */
+#status .ver { margin-left: auto; opacity: .55; font-variant-numeric: tabular-nums; }
+
+/* the folder report in Settings */
+table.cmp td.mono { font-family: ui-monospace, monospace; font-size: 11.5px; word-break: break-all; }
+table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
+#permsOut { margin-top: 10px; }
+
+/* Every field in Edit metadata has a copy button beside it, so a title or an
+   author can be pasted into a search somewhere else. The button keeps its width;
+   the field takes the rest. A textarea's button sits at its top. */
+.field { display: flex; gap: 6px; align-items: flex-start; }
+.field input, .field textarea { flex: 1; min-width: 0; }
+.field button.copy { flex: none; padding: 7px 10px; line-height: 1.2; }
+
+/* the series a lookup suggests: a tick beside it, not a field to fill in */
+.cand label.pick { display: block; margin: 10px 0 2px; font-size: 13px; color: var(--text);
+  text-transform: none; letter-spacing: 0; text-align: left; }
+/* a dialog input is a full-width field; a tick is not */
+.cand label.pick input { width: 14px; height: 14px; padding: 0; margin: 0 6px 0 0;
+  vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+
+/* The cover is a play button: it says what a click will do, and keeps saying it
+   while that book plays. On a touch screen there is no hover, so the glyph shows
+   for the book that is playing and nothing else. */
+.card .cover, footer .cover { position: relative; }
+.card .cover img[onclick], footer .cover { cursor: pointer; }
+.card .cover::after, footer .cover::after {
+  content: attr(data-glyph);
+  position: absolute; top: 52px; left: 0; right: 0; text-align: center;
+  font-size: 30px; color: #fff; text-shadow: 0 2px 10px #000;
+  opacity: 0; transition: opacity .12s; pointer-events: none;
+}
+.card .cover:hover::after, footer .cover:hover::after { opacity: .92; }
+.card .cover.playing::after, footer .cover.playing::after { opacity: .92; }
+/* the bar's cover is 36px tall on a desktop and 66 on a phone, so the glyph is
+   sized and placed to it rather than to a card's 126 */
+footer .cover::after { top: 50%; transform: translateY(-50%); font-size: 18px; }
+/* `flex`, so the wrapper is exactly the picture. A block would leave a sliver of
+   line-height under it, and a click there would miss the image — which is what
+   carries the handler, and what the cover's right-click menu looks for. */
+footer .cover { display: flex; }
+@media (hover: none) {
+  .card .cover:hover::after, footer .cover:hover::after { opacity: 0; }
+  .card .cover.playing::after, footer .cover.playing::after { opacity: .92; }
+}
+
+/* the Home Assistant configuration, when the clipboard is not allowed */
+pre.ha {
+  max-height: 260px; overflow: auto; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px 12px; font-size: 11.5px; user-select: text;
+  -webkit-user-select: text; white-space: pre; margin: 8px 0 0;
+}
+
+/* A page of its own, for settings that are too big for a dialog: the Home
+   Assistant one. Boxed sections, one column, comfortable to read. */
+body.one-col main.page {
+  display: block; max-width: 820px; margin: 0 auto; padding: 18px 20px 60px;
+  overflow-y: auto; border-right: none;
+}
+main.page h2 { margin: 6px 0 4px; font-size: 20px; }
+main.page h3 { margin: 0 0 12px; font-size: 14px; color: var(--accent2);
+  letter-spacing: .08em; text-transform: uppercase; }
+main.page .lead { font-size: 13px; margin: 0 0 18px; }
+main.page .box {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; margin-bottom: 16px;
+}
+main.page label { display: block; margin: 14px 0 6px; font-size: 12px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .08em; }
+main.page input, main.page select { width: 100%; max-width: 460px; }
+main.page .row { flex-wrap: wrap; }
+main.page table.cmp { margin-top: 12px; }
+.said { border-radius: 8px; padding: 8px 12px; margin: 12px 0 0; font-size: 13px; }
+.said.ok { background: #10281c; border: 1px solid #1f6b45; }
+strong.ok { color: #35d07f; }
+strong.warn { color: #ffb4a8; }
+#haWhere { font-size: 12px; }
+
+/* The pulldown over the two kinds of settings: it looks like the buttons beside
+   it, and being a <details> it opens and closes without any script. */
+.menu { position: relative; }
+.menu > summary {
+  list-style: none; cursor: pointer; user-select: none; -webkit-user-select: none;
+  font: inherit; font-weight: 600; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px;
+}
+.menu > summary::-webkit-details-marker, .menu > summary::marker { display: none; content: ''; }
+.menu > summary:hover { filter: brightness(1.15); }
+.menu[open] > summary { border-color: var(--accent); }
+.menu > ul {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+  min-width: 210px; margin: 0; padding: 6px; list-style: none;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 18px 40px -18px #000;
+}
+.menu > ul li {
+  padding: 9px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  display: flex; justify-content: space-between; gap: 10px;
+}
+.menu > ul li:hover { background: var(--panel2); }
+@media (max-width: 720px) {
+  /* Thumb-sized rows, and the width of the screen rather than of the button: the
+     header wraps on a phone, so a menu hung off the button's right edge can end up
+     starting left of the window. */
+  .menu > summary { min-height: 40px; display: flex; align-items: center; }
+  .menu > ul { position: fixed; left: 12px; right: 12px; min-width: 0; }
+  .menu > ul li { padding: 12px; }
+}
+
+/* Settings holds as much as the Home Assistant page does, so it is the same width
+   and the same height on screen: 820px of content, near the full window, with the
+   scrolling inside it. The other dialogs ask one question each and stay narrow. */
+#settings {
+  width: min(820px, 94vw); max-width: min(820px, 94vw);
+  height: min(92vh, 1000px); max-height: 92vh;
+  padding: 18px 20px 24px; overflow-y: auto;
+}
+/* On a phone every dialog is a sheet over the whole screen. An id beats the
+   element rule above whatever the order, so the biggest dialog has to say it
+   again, or Settings alone would sit inset with the page showing around it. */
+@media (max-width: 720px) {
+  #settings {
+    width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    padding: 16px 14px 28px;
+  }
+}
+
+/* the download of the whole book: a link, so the browser does the saving */
+/* The one control in the bar that writes a file to somebody's device, so it
+   says what it is rather than leaving an arrow to be guessed at — there is no
+   hovering on a phone to read a title from. */
+footer #pGet {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 11px; font-size: 13px; line-height: 1; white-space: nowrap;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--panel2);
+  color: var(--text); text-decoration: none; cursor: pointer;
+}
+footer #pGet span { font-size: 15px; }
+footer #pGet:hover { filter: brightness(1.15); }
+
+/* a tick in a dialog, which the uppercase label styling would otherwise shout */
+dialog label.pick {
+  display: block; margin: 14px 0 2px; font-size: 13px; color: var(--text);
+  text-transform: none; letter-spacing: 0;
+}
+dialog label.pick input {
+  width: 14px; height: 14px; padding: 0; margin: 0 6px 0 0;
+  vertical-align: middle; accent-color: var(--accent); cursor: pointer;
+}
+
+/* the cover's own menu: a right-click on desktop, a long hold on a phone */
+.cmenu {
+  position: fixed; z-index: 60; min-width: 210px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 18px 40px -18px #000;
+}
+.cmenu .cmenu-title {
+  padding: 6px 10px 8px; color: var(--dim); font-size: 12px;
+  border-bottom: 1px solid var(--line); margin-bottom: 4px;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmenu button {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  padding: 10px 10px; border-radius: 8px; font-weight: 500; color: var(--text);
+}
+.cmenu button:hover { background: var(--panel2); filter: none; }
+
+/* --- the heart on a cover ------------------------------------------------
+   It sits on the picture, top right, opposite the Listened tick. Grey until it
+   is pressed and red for good after — the one thing on a card that says
+   something about the person rather than about the book. */
+.card .cover .heart, .tile .heart {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  width: 28px; height: 28px; padding: 0; line-height: 1;
+  border: 0; border-radius: 999px; cursor: pointer;
+  background: rgba(14, 16, 20, .62); color: #ffffff8c;
+  font-size: 15px; backdrop-filter: blur(4px);
+}
+.card .cover .heart:hover, .tile .heart:hover { color: #fff; filter: none; }
+.card .cover .heart.on, .tile .heart.on { color: #ff5f5f; }
+.card .cover .heart.on:hover, .tile .heart.on:hover { color: #ff8c8c; }
+
+/* The way in, when nobody is signed in yet, is `.gate` and `.gate-card` further
+   down. There was a block of `#gate` rules here from when it was a <dialog>,
+   sizing it as the card it then was — `width: min(440px, 92vw)`. When the gate
+   became the full-screen backdrop in 2.7.32 that width stayed behind, and an id
+   beats a class, so the overlay covered 440px of the screen and the card sat in
+   the corner of it. Every rule in that block had already been restated for
+   `.gate-card`, so it is gone rather than corrected. */
+
+/* a maintenance row with something waiting on it says so without being read */
+#genres li.wants .count { background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 7px; }
+
+/* --- who is signed in, and what they have earned -------------------------
+   The name with its badge on one line and the level under it, small: it is a
+   thing to notice once and then stop noticing. */
+#whoAmI { display: flex; flex-direction: column; line-height: 1.15; margin-right: 4px; }
+#whoAmI .me { display: flex; align-items: center; gap: 5px; font-weight: 600; font-size: 13px; }
+#whoAmI .badge-icon { font-size: 15px; }
+#whoAmI .level { color: var(--dim); font-size: 10.5px; letter-spacing: .04em; }
+
+/* Downloading is earned. The server refuses it either way; this is so a button
+   that would only be refused is not offered. */
+body:not(.may-download) #pGet,
+body:not(.may-download) .cmenu [data-act="download"] { display: none; }
+
+/* --- a page of its own, not a column ------------------------------------
+   The accounts page and the Home Assistant page are read rather than browsed,
+   so they are one column with room to breathe rather than three. */
+body.one-column main.page {
+  display: block; max-width: 900px; margin: 0 auto; padding: 18px 16px 40px; overflow-y: auto;
+}
+main.page h2 { margin: 4px 0 6px; font-size: 19px; }
+main.page h3 { margin: 26px 0 8px; font-size: 13px; color: var(--accent2);
+  text-transform: uppercase; letter-spacing: .1em; }
+main.page section:first-of-type h3 { margin-top: 14px; }
+
+/* one person */
+.account {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px 18px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; margin-bottom: 10px;
+}
+.account .name { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 15px; }
+.account .sub { color: var(--dim); font-size: 12px; margin-top: 3px; }
+.account .sub.said { margin-top: 7px; font-style: italic; }
+.account .numbers { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 22px;
+  border-top: 1px solid var(--line); padding-top: 9px; }
+.account .numbers div { display: flex; flex-direction: column; }
+.account .numbers strong { font-size: 16px; line-height: 1.1; }
+.account .numbers span { color: var(--dim); font-size: 11px; }
+/* The two ticks, which are what this page is for. `main.page label` makes a
+   label a block in small capitals — right for a field's name, wrong for a tick,
+   which reads as one thing beside its box. */
+.account .allowed { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
+.account label.pick {
+  display: flex; align-items: center; gap: 7px; margin: 0; white-space: nowrap;
+  font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; cursor: pointer;
+}
+.account label.pick input {
+  width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--accent); cursor: pointer;
+}
+.account .allowed .pick .sub { margin: 0; }
+.account .took { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+
+@media (max-width: 720px) {
+  .account { grid-template-columns: 1fr; }
+  .account .allowed { flex-direction: row; flex-wrap: wrap; align-items: center; }
+}
+
+/* --- the way in ----------------------------------------------------------
+   A layer rather than a <dialog>: `showModal()` takes the browser's top layer,
+   and a password manager's inline menu is a popover in that same layer. With a
+   modal open its menu sits underneath, so it re-shows itself on every keystroke
+   and after five tries in five seconds switches off with "This page is
+   interfering with the Bitwarden experience". Nothing here needs the top layer. */
+/* In the middle of the screen, and still reachable when it is taller than the
+   screen. Those two pull against each other: centring a scrolling box with
+   `align-items`/`place-items: center` puts the top of an over-tall card *above*
+   the scroll origin, where nothing can reach it — and the ask form is tall. A
+   flex box with `margin: auto` on the card does both, because an auto margin
+   only takes the space that is going spare. */
+.gate {
+  position: fixed; inset: 0; z-index: 40;
+  display: flex; padding: 16px;
+  background: rgba(8, 9, 12, .88); backdrop-filter: blur(3px);
+  overflow: auto;
+}
+.gate > * { margin: auto; }
+.gate-card {
+  width: min(440px, 100%); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+}
+.gate-card h2 { margin: 0 0 16px; font-size: 17px; }
+.gate-card label { display: block; margin: 14px 0 6px; font-size: 12px; color: var(--dim);
+  text-transform: uppercase; letter-spacing: .08em; }
+.gate-card label.pick { display: flex; align-items: center; gap: 7px; margin: 12px 0 0;
+  font-size: 13px; color: var(--text); text-transform: none; letter-spacing: 0; cursor: pointer; }
+.gate-card label.pick input { width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--accent); }
+.gate-card input, .gate-card textarea {
+  width: 100%; font: inherit; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; resize: vertical;
+}
+.gate-card .row { margin-top: 16px; }
+.gate-card .hint.missing { min-height: 1.2em; margin: 8px 0 0; }
+.gate-card button.linkish {
+  background: none; border: 0; padding: 0; color: var(--accent2);
+  text-decoration: underline; cursor: pointer; font: inherit;
+}
+.gate-card button.linkish:hover { color: #fff; filter: none; }
+.account .sub.level { color: var(--text); }
+.account .sub.playing { color: var(--accent2); }
+.account .sub .badge { margin-right: 4px; }
+
+/* --- /player: the player and nothing else --------------------------------
+
+   One screen, one book, and nothing to scroll. The listening page shows a
+   shelf and a bar at once, which on a phone is a column to scroll past and
+   three buttons that all start and stop the same book. This is the other
+   thing: what is playing, large enough for a thumb.
+
+   `100dvh` with `overflow: hidden` on the body is the whole of "no scrolling".
+   The cover is the only part that gives: `min-height: 0` on a flex child is
+   what lets it shrink instead of pushing the transport off the bottom, which
+   is the default nobody expects. */
+body.now-playing { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+/* The library's `main > *` gives every column its own scrolling, a dividing
+   border and a tail of padding. This main is not that main: those rules put a
+   border down the right of each block, 24px under it, and — because a box with
+   `overflow-y: auto` also computes `overflow-x` as auto — a horizontal
+   scrollbar across the bottom of the seek line, which is what the grey bar
+   under the clock was. Undone here rather than narrowed there: the three
+   columns are what that rule is for, and it is right for them. */
+#now > * { overflow: visible; border-right: 0; padding-bottom: 0; }
+#now {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center;
+  gap: 18px; padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
+  max-width: 560px; margin: 0 auto; width: 100%;
+}
+.now-top { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.now-top #whoAmI { font-size: 12px; color: var(--dim); }
+
+/* The cover takes what is left and no more. `min-height: 0` lets it shrink on a
+   short screen; `object-fit: contain` keeps a tall cover tall rather than
+   cropping somebody's artwork to fit a square. */
+.now-cover { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; width: 100%; }
+.now-cover img {
+  max-height: 100%; max-width: 100%; border-radius: 12px; object-fit: contain;
+  box-shadow: 0 24px 60px -30px #000;
+}
+
+.now-what { width: 100%; text-align: center; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.now-what strong { font-size: 19px; line-height: 1.25; }
+.now-what .by { color: var(--dim); font-size: 14px; }
+/* the chapter, which is the longest line here and the one most likely to be a
+   sentence: two lines at most, and an ellipsis after that */
+.now-what .chapter {
+  color: var(--accent2); font-size: 13px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.now-seek { width: 100%; }
+.now-seek #seek { width: 100%; }
+.now-clock { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 2px; }
+.now-clock .left { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; text-align: center; }
+
+.now-transport { display: flex; align-items: center; justify-content: center; gap: 22px; width: 100%; }
+/* A thumb's worth of button, and round, because it is the one control on the
+   screen that is pressed over and over. */
+.now-transport #pPlay {
+  width: 76px; height: 76px; border-radius: 50%; font-size: 26px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.now-transport .ghost {
+  width: 52px; height: 52px; border-radius: 50%; font-size: 18px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+/* dim at the ends of the book, so the screen says where it is */
+.now-transport .ghost:disabled { opacity: .3; }
+
+.now-empty { margin: auto; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.now-empty p { color: var(--dim); }
+
+/* On the player page the button is round and in the middle of the screen:
+   there is nothing there to tell it apart from, so the glyph is the whole of
+   it. The word stays in the markup for the bar, which does need it. */
+.now-transport #pPlay .word { display: none; }
+.now-transport #pPlay .glyph { margin: 0; }
+
+/* How fast it is read, under the transport. A pulldown rather than a row of
+   eleven buttons: eleven is too many to put on a phone, and the one in use is
+   the only one worth showing. */
+.now-speed {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em;
+}
+.now-speed select { font-size: 15px; padding: 6px 10px; min-height: 40px; }
+
+/* Ten seconds back and ten on. The arc with the number inside it is the shape
+   every player uses for this, so it needs no label: the glyph is the circle
+   and the "10" sits in the middle of it. */
+.now-transport .skip { position: relative; }
+.now-transport .skip .arc { font-size: 26px; line-height: 1; }
+.now-transport .skip .secs {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; letter-spacing: 0; padding-top: 2px;
+}
+/* five controls on a 375px row: the chapter steps give up the width, being the
+   two pressed least */
+.now-transport { gap: 12px; }
+.now-transport #pPrev, .now-transport #pNext { width: 44px; height: 44px; font-size: 16px; }
+.now-transport .skip { width: 52px; height: 52px; }

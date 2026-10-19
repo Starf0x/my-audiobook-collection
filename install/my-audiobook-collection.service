@@ -1,0 +1,40 @@
+[Unit]
+Description=My Audiobook Collection
+Documentation=https://github.com/Starf0x/my-audiobook-collection
+# The collection is usually a bind mount from the host. Starting before it is
+# there means a scan that finds nothing and a library that looks emptied, so the
+# service waits for local mounts to be up.
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/my-audiobook-collection
+EnvironmentFile=/etc/my-audiobook-collection.env
+ExecStart=/usr/bin/node server/index.js
+
+# Started as root on purpose, and it does not stay root.
+#
+# `server/user.js` drops to PUID:PGID before the database module creates a single
+# folder — the same thing the Docker image does, so one set of instructions
+# covers both. Left as root it would create folders on your share that belong to
+# root and that you cannot write into yourself, which is the exact problem PUID
+# exists to prevent; the app refuses to carry on as root unless ALLOW_ROOT=1.
+#
+# Set User= here instead if you would rather systemd did it, and then leave PUID
+# and PGID empty: two mechanisms doing the same job is one too many.
+User=root
+
+Restart=on-failure
+RestartSec=5
+# A scan of a large collection can take a while and must not be read as a hang.
+TimeoutStartSec=0
+
+# /usr and /boot read-only, and a private /tmp. Deliberately not ProtectHome:
+# a collection under /home is somebody's reasonable arrangement, and this would
+# hide it from the app without saying why.
+ProtectSystem=full
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

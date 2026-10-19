@@ -1,0 +1,22 @@
+{
+  "name": "my-audiobook-collection",
+  "version": "2.14.80",
+  "description": "Web based audiobook collection manager",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node tests/run-all.mjs",
+    "test:ui": "node tests/plays-on.mjs",
+    "test:zip": "node tests/covers-zip.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "music-metadata": "^11.16.1",
+    "node-id3": "^0.2.9"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.2"
+  }
+}

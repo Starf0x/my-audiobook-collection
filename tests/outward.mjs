@@ -1,0 +1,151 @@
+// outward — what this app fetches when it is told an address, and what it writes
+// into a file somebody else's player reads.
+//
+// Nothing here goes near the internet: every check is about a request that must
+// be refused before it is made, or about text that must not become syntax.
+//
+// Run: node tests/outward.mjs
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DATA = path.join(ROOT, 'fixtures', 'outward-test', 'data');
+
+let failed = 0;
+const check = (label, got, want) => {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`);
+};
+const threw = (fn) => {
+  try {
+    fn();
+    return '';
+  } catch (e) {
+    return e.message;
+  }
+};
+
+fs.rmSync(path.dirname(DATA), { recursive: true, force: true });
+fs.mkdirSync(DATA, { recursive: true });
+process.env.DATA_DIR = DATA;
+
+const { picture } = await import('../server/outbound.js');
+const { db } = await import('../server/db.js');
+const { saveHaSettings, haSettings, bookPlaylist } = await import('../server/ha.js');
+
+// --- an address a request handed us -------------------------------------
+// This server can reach the router, the other containers and the address cloud
+// hosts keep their credentials at. A cover never lives on any of them.
+const NL = String.fromCharCode(10);
+const refusals = [];
+for (const [what, url] of [
+  ['plain http', 'http://example.com/cover.jpg'],
+  ['a file on this disk', 'file:///etc/passwd'],
+  ['something that is not an address', 'cover.jpg'],
+  ['this machine', 'https://127.0.0.1/cover.jpg'],
+  ['this machine by name', 'https://localhost/cover.jpg'],
+  ['the cloud metadata address', 'https://169.254.169.254/latest/meta-data/'],
+  ['a private range', 'https://192.168.2.200/cover.jpg'],
+  ['another private range', 'https://10.0.0.5/cover.jpg'],
+  ['the carrier range Tailscale sits in', 'https://100.100.100.100/cover.jpg'],
+]) {
+  // eslint-disable-next-line no-await-in-loop -- one at a time reads better here
+  const got = await picture(url);
+  refusals.push([what, !!got.error && !got.bytes]);
+}
+check('every address that is not a public https picture is refused', refusals,
+  refusals.map(([what]) => [what, true]));
+
+const said = await picture('https://192.168.2.200/cover.jpg');
+check('and the refusal says which network it is on', /on this network/.test(said.error), true);
+check('an http address says what it wanted instead',
+  (await picture('http://example.com/a.jpg')).error, 'Only https addresses are fetched.');
+
+// --- a title that tries to become a playlist line -----------------------
+db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
+            VALUES (1, '/x', 'Fantasy', 'An Author', ?, 10)`)
+  .run(`Gunslinger${NL}#EXTINF:1,Not a real track`);
+db.prepare(`INSERT INTO tracks (book_id, idx, path, title, duration)
+            VALUES (1, 0, '/x/1.mp3', ?, 10)`).run(`One${NL}http://elsewhere/steal.mp3`);
+
+const m3u = bookPlaylist({ headers: { host: 'h' }, protocol: 'http' }, 1, 0);
+const lines = m3u.trim().split(NL);
+check('the playlist is the four lines it should be', lines.length, 4);
+check('and they are the ones this app wrote',
+  [lines[0], lines[3]], ['#EXTM3U', 'http://h/api/stream/1']);
+check('the smuggled track line never becomes a line', lines.includes('#EXTINF:1,Not a real track'), false);
+check('nor does the smuggled address', lines.includes('http://elsewhere/steal.mp3'), false);
+check('the title is still readable, only folded',
+  /Gunslinger #EXTINF:1,Not a real track/.test(lines[1]), true);
+
+// --- the address the Home Assistant token is sent to --------------------
+saveHaSettings({ url: 'http://192.168.2.200:8123/lovelace/0', token: 'a-long-lived-token' });
+check('a dashboard path is taken off the address', haSettings().url, 'http://192.168.2.200:8123');
+check('and the token is kept', haSettings().hasToken, true);
+
+saveHaSettings({ url: 'http://192.168.2.200:8123' });
+check('saving the same address again keeps the token', haSettings().hasToken, true);
+
+saveHaSettings({ url: 'http://somewhere-else.example:8123' });
+check('but pointing it at another Home Assistant forgets the token', haSettings().hasToken, false);
+
+for (const [what, url] of [
+  ['a word', 'not an address'],
+  ['a file', 'file:///etc/passwd'],
+  ['another protocol', 'ftp://host/'],
+]) {
+  check(`${what} is refused as an address`, !!threw(() => saveHaSettings({ url })), true);
+}
+check('and the address that was there is untouched',
+  haSettings().url, 'http://somewhere-else.example:8123');
+
+// --- every outbound call says what to do with a redirect ------------------
+// A redirect is another address, and `fetch` follows one by default. The Home
+// Assistant call carries a long-lived token and the Google Books calls carry the
+// owner's API key in the query string, so a followed redirect hands a credential
+// to whatever the first host names next. Three of these said `redirect: 'error'`
+// and four did not; the hosts are fixed, so nothing could aim them anywhere, but
+// the one-line habit is cheaper than knowing that stays true.
+//
+// This reads the source rather than making a request: the thing being checked is
+// that nobody writes the next one without saying.
+const outbound = [];
+for (const file of fs.readdirSync(path.join(ROOT, 'server')).filter((f) => f.endsWith('.js'))) {
+  const lines = fs.readFileSync(path.join(ROOT, 'server', file), 'utf8').split(/\r?\n/);
+  lines.forEach((line, i) => {
+    if (!/\bfetch\s*\(/.test(line)) return;
+    // the options of a call are within a dozen lines of its first
+    const near = lines.slice(i, i + 14).join('\n');
+    if (!/redirect:\s*'(error|manual)'/.test(near)) outbound.push(`${file}:${i + 1}`);
+  });
+}
+check('every outbound call refuses to follow a redirect', outbound, []);
+
+// --- and every action the build machine runs is a commit ------------------
+// `uses: actions/checkout@v4` is a branch somebody else moves. Whoever controls
+// that repository can change what runs on the machine holding this project's
+// Docker Hub credentials, without a line of this repository changing. A
+// 40-character sha is the one part of a `uses:` that cannot be repointed.
+//
+// The cost is that they stop updating themselves, which is why the version each
+// pin is sits in a comment beside it — a sha says nothing to a person reading
+// the file, and a pin nobody can read is a pin nobody will move.
+const flows = path.join(ROOT, '.github', 'workflows');
+const onATag = [];
+const unnamed = [];
+for (const file of fs.readdirSync(flows).filter((f) => /\.ya?ml$/.test(f))) {
+  const text = fs.readFileSync(path.join(flows, file), 'utf8');
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*-?\s*uses:\s*(\S+)@(\S+)/);
+    if (!m) continue;
+    if (!/^[0-9a-f]{40}$/.test(m[2])) onATag.push(`${file}: ${m[1]}@${m[2]}`);
+    else if (!/#\s*v?\d/.test(line)) unnamed.push(`${file}: ${m[1]}`);
+  }
+}
+check('every action is pinned to a commit', onATag, []);
+check('and each pin says which version it is', unnamed, []);
+
+console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
+process.exit(failed ? 1 : 0);

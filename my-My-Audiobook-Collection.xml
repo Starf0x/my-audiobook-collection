@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>My-Audiobook-Collection</Name>
+  <Repository>starf0x/my-audiobook-collection:latest</Repository>
+  <Registry>https://hub.docker.com/r/starf0x/my-audiobook-collection</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Starf0x/my-audiobook-collection/issues</Support>
+  <Overview>Browse and play your audiobook collection, organised as Genre / Author / (Series) / Book. Reads MP3 metadata, fills gaps from the Google Books API and remembers the playback position per user.</Overview>
+  <Category>MediaApp:Books MediaServer:Other</Category>
+  <WebUI>http://[IP]:[PORT:8523]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/public/icon-128.png</Icon>
+  <Config Name="WebUI Port" Target="8523" Default="8523" Mode="tcp" Type="Port" Display="always" Required="true">8523</Config>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/my-audiobook-collection" Mode="rw" Type="Path" Display="always" Required="true">/mnt/user/appdata/my-audiobook-collection</Config>
+  <Config Name="Import folder" Target="/import" Default="" Mode="rw" Description="Where new audiobooks arrive, to file with Import" Type="Path" Display="always" Required="false"></Config>
+  <Config Name="Admin user" Target="ADMIN_USER" Default="" Mode="" Description="The name the administrator signs in with. Set this together with the password: with both set, the listening page is shut to everybody else until you approve their account. Leave both empty for an install nobody has to sign in to." Type="Variable" Display="always" Required="false"></Config>
+  <Config Name="Admin password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="The administrator&apos;s password, used with the admin user above. It guards everything that changes the collection, and with an admin user set it is also what shuts the listening page to people you have not approved. This is the only place it is set." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Google Books API key" Target="GOOGLE_API_KEY" Default="" Mode="" Description="Used to look up missing metadata. This is the only place the key is set." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Google country" Target="GOOGLE_COUNTRY" Default="US" Mode="" Description="Which country's Google Books catalogue to answer from. Series data belongs to a country's catalogue, and US has the most of it. Two letters." Type="Variable" Display="advanced" Required="false">US</Config>
+  <Config Name="Home Assistant token" Target="HA_TOKEN" Default="" Mode="" Description="Set this to make the Home Assistant addresses ask for it. Leave empty and they answer anyone on your network, like the listening page does." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Music Assistant token" Target="MA_TOKEN" Default="" Mode="" Description="Set this to let Music Assistant read the collection: in MA add an Audiobookshelf server, give it this address, your listener name as the username, and this token as the password. Leave empty and none of that is reachable at all." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Base URL" Target="BASE_URL" Default="" Mode="" Description="Only needed behind a reverse proxy: the address other machines reach this app on, such as https://books.example.com. The URLs handed to Home Assistant and to media players are built from it." Type="Variable" Display="advanced" Required="false"></Config>
+  <Config Name="User ID" Target="PUID" Default="99" Mode="" Description="The user the app writes as. 99 is nobody on Unraid, which owns your shares — leave it, or folders it creates belong to root and you cannot write in them." Type="Variable" Display="always" Required="true">99</Config>
+  <Config Name="Group ID" Target="PGID" Default="100" Mode="" Description="The group the app writes as. 100 is users on Unraid." Type="Variable" Display="always" Required="true">100</Config>
+  <Config Name="File mode mask" Target="UMASK" Default="000" Mode="" Description="000 makes the folders and files it creates writable by everyone on the share, which is what Unraid shares normally are — and it is also what makes them world-writable, so 022 is the safer answer wherever your share is not shared with everybody anyway. If the app cannot become PUID:PGID it now stops rather than creating root-owned folders; ALLOW_ROOT=1 starts it anyway." Type="Variable" Display="advanced" Required="false">000</Config>
+  <Config Name="Audiobooks" Target="/audiobooks" Default="/mnt/user/Audiobooks" Mode="rw" Type="Path" Display="always" Required="true">/mnt/user/Audiobooks</Config>
+</Container>

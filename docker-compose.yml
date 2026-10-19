@@ -1,0 +1,46 @@
+services:
+  audiobooks:
+    image: starf0x/my-audiobook-collection:latest
+    container_name: my-audiobook-collection
+    ports:
+      - "8523:8523"
+    environment:
+      # who the app writes as: without these it runs as root, and the folders it
+      # creates on your share are ones you cannot write into yourself. If it
+      # cannot become this user it now stops rather than carrying on as root —
+      # ALLOW_ROOT=1 if you would rather it started anyway.
+      PUID: "99"
+      PGID: "100"
+      # 022 makes what it creates yours to write and everybody else's to read,
+      # which is the safe answer. Unraid shares are usually shared between users
+      # and machines, and 000 is what makes that work — it is also what makes
+      # every file world-writable, so set it only if you need it.
+      UMASK: "022"
+      # the administrator: a name as well as a password now. With both set, the
+      # listening page is shut to everybody else until you approve their account;
+      # leave them empty and the app is open on your network, as it always was.
+      ADMIN_USER: ""
+      ADMIN_PASSWORD: ""
+      GOOGLE_API_KEY: ""
+      # which country's Google catalogue to answer from; series data belongs to one
+      GOOGLE_COUNTRY: "US"
+      # Home Assistant: a token to require on /api/ha*, and the address other
+      # machines reach this app on when that is not the one they asked at
+      HA_TOKEN: ""
+      # Music Assistant: the password it logs in with. Empty means the
+      # Audiobookshelf face is not there at all
+      MA_TOKEN: ""
+      BASE_URL: ""
+      # Behind a reverse proxy the app believes X-Forwarded-For, which is what
+      # the sign-in backoff counts wrong guesses against. Set it to 0 when
+      # nothing in front of it sets that header, or one person can spend
+      # somebody else's attempts.
+      # TRUST_PROXY: "1"
+      # Start even if it could not become PUID:PGID and is therefore still root.
+      # Everything it then creates on your share belongs to root.
+      # ALLOW_ROOT: "0"
+    volumes:
+      - ./data:/data
+      - /mnt/user/Audiobooks:/audiobooks
+      - /mnt/user/Audiobooks/_AutoDownload:/import
+    restart: unless-stopped

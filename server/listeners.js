@@ -1,0 +1,380 @@
+// Listeners, as accounts.
+//
+// What this replaces: a listener used to be a name in a table and nothing else,
+// and the listening page answered whoever could reach it. Names were kept apart
+// only by a cookie the browser wrote itself, which was honest about what it was
+// — "what keeps one person out of another person's place in a book is that a
+// browser is only ever offered the names it has said itself" — and is not a
+// door.
+//
+// Now: somebody asks for an account with a name, a password they choose, a
+// reason and whether they know the admin. It sits as `pending` until the admin
+// approves it. A signed-in browser holds a random token in an HttpOnly cookie
+// that is good for seven days and moves with them — every request they make
+// pushes it out again, and seven quiet days end it.
+//
+// The rules that matter, in one place so they cannot drift:
+//
+//  * A password is never stored. scrypt with a random salt per account, off the
+//    main thread (the synchronous one blocks the only thread this server has,
+//    and these routes ask for no password to reach), compared with
+//    `timingSafeEqual`.
+//  * A wrong password costs the address that gave it (`guessing.js`).
+//  * Only an `approved` account can sign in, and the check is here rather than
+//    in a route, because there are several routes.
+//  * A session token is 32 random bytes and is the only thing the cookie holds.
+//    Nothing about the person is in it, so nothing about the person can be
+//    changed by editing it.
+import crypto from 'node:crypto';
+import { db } from './db.js';
+import { readCount } from './finished.js';
+import { mustWait, wrong, right } from './guessing.js';
+import { levelOf, mayDownload } from './levels.js';
+
+export const WEEK = 7 * 24 * 60 * 60 * 1000;
+const A_NAME = 40;
+const SHORTEST = 8;
+
+// The admin is one account and it is not in this table. It comes from the
+// container where `ADMIN_PASSWORD` is set — the way it always has, so it
+// survives an emptied appdata folder — and otherwise from the one chosen at the
+// gate on first run. Either way `admin.js` is what knows which, so the name
+// comes from there; it is re-exported because everything that asks this file
+// for it was written before that was true.
+import { adminName } from './admin.js';
+
+export { adminName };
+
+const scrypt = (password, salt) => new Promise((ok, no) => {
+  crypto.scrypt(password, salt, 32, (err, key) => (err ? no(err) : ok(key)));
+});
+
+// A name is what appears in every list, on every card and in every message, so
+// it is bounded and has no control characters in it. It is also the key of the
+// table, so two people cannot have one that differs only by case or by spaces.
+export function asName(said) {
+  return String(said ?? '')
+    .replace(new RegExp('[\\u0000-\\u001f\\u007f]', 'g'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, A_NAME);
+}
+
+const q = {
+  byName: db.prepare('SELECT * FROM users WHERE name = ? COLLATE NOCASE'),
+  all: db.prepare('SELECT * FROM users ORDER BY name'),
+  add: db.prepare(`INSERT INTO users (name, state, pass, salt, reason, knows_admin, requested_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)`),
+  setPass: db.prepare('UPDATE users SET pass = ?, salt = ? WHERE name = ?'),
+  setState: db.prepare('UPDATE users SET state = ?, decided_at = ? WHERE name = ?'),
+  seen: db.prepare('UPDATE users SET last_seen = ?, first_seen = COALESCE(NULLIF(first_seen, %s), ?) WHERE name = ?'
+    .replace('%s', "''")),
+  drop: db.prepare('DELETE FROM users WHERE name = ?'),
+  session: db.prepare('SELECT * FROM listener_sessions WHERE token = ?'),
+  open: db.prepare('INSERT INTO listener_sessions (token, name, made, seen) VALUES (?, ?, ?, ?)'),
+  touch: db.prepare('UPDATE listener_sessions SET seen = ? WHERE token = ?'),
+  close: db.prepare('DELETE FROM listener_sessions WHERE token = ?'),
+  closeAllOf: db.prepare('DELETE FROM listener_sessions WHERE name = ?'),
+  stale: db.prepare('DELETE FROM listener_sessions WHERE seen < ?'),
+};
+
+export const find = (name) => q.byName.get(asName(name)) || null;
+export const everyone = () => q.all.all();
+
+// The form's own words. Two requests arrived whose reason was the sentence
+// under the box, word for word, from one browser — and nothing in this app
+// writes into that box. What put it there is still unestablished, so this does
+// not claim to know: it refuses a reason that is the page talking to itself,
+// which is not a reason whatever wrote it, and says so to the person asking so
+// they can put their own words in instead. The page empties the box as well;
+// this is the half that does not depend on the page behaving.
+const PAGE_SAYS = [
+  'ask for an account the administrator sees your request and decides once it is '
+    + 'approved you can sign in with the name and password you choose here',
+  'no email address is asked for and none is kept',
+  'a sentence is enough',
+  'why would you like access',
+  'i know the administrator',
+  'the name you want to listen under',
+];
+const asWords = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// --- asking for one ------------------------------------------------------
+export async function requestAccount({ name, password, reason, knowsAdmin }) {
+  const who = asName(name);
+  if (!who) throw new Error('Fill in the name you want to listen under.');
+  if (who.toLowerCase() === adminName().toLowerCase() && adminName()) {
+    throw new Error('That name is the administrator’s.');
+  }
+  const said = String(password ?? '');
+  if (said.length < SHORTEST) throw new Error(`A password of at least ${SHORTEST} characters, please.`);
+  const why = String(reason ?? '').replace(new RegExp('[\\u0000-\\u001f\\u007f]', 'g'), ' ').trim().slice(0, 500);
+  if (why.length < 10) throw new Error('Say in a sentence why you would like access.');
+  if (PAGE_SAYS.includes(asWords(why))) {
+    throw new Error('That is this page’s own wording, not yours. '
+      + 'Clear the box and say in your own words why you would like access.');
+  }
+  if (find(who)) throw new Error('There is already an account with that name. Ask the administrator.');
+
+  const salt = crypto.randomBytes(16).toString('hex');
+  const key = await scrypt(said, salt);
+  q.add.run(who, 'pending', key.toString('hex'), salt, why, knowsAdmin ? 1 : 0, new Date().toISOString());
+  return { name: who, reason: why, knowsAdmin: !!knowsAdmin };
+}
+
+// --- the admin deciding --------------------------------------------------
+export function decide(name, state) {
+  const row = find(name);
+  if (!row) throw new Error('No such account.');
+  if (!['approved', 'denied', 'pending'].includes(state)) throw new Error('Unknown state.');
+  q.setState.run(state, new Date().toISOString(), row.name);
+  // somebody who is no longer approved is no longer signed in anywhere
+  if (state !== 'approved') q.closeAllOf.run(row.name);
+  return find(row.name);
+}
+
+// The admin handing somebody downloading before they have earned it, or taking
+// it back. The level still earns it on its own: this is a grant beside that, not
+// a switch that can turn it off.
+export function grantDownload(name, may) {
+  const row = find(name);
+  if (!row) throw new Error('No such account.');
+  db.prepare('UPDATE users SET may_download = ? WHERE name = ?').run(may ? 1 : 0, row.name);
+  return { name: row.name, granted: !!may, mayDownload: mayDownload(finishedCount(row.name), may) };
+}
+
+// Removing an account takes everything that was only about that person with it:
+// where they were in every book, what they had finished, what they had hearted,
+// and any browser still signed in as them. The books are untouched.
+export function remove(name) {
+  const row = find(name);
+  if (!row) throw new Error('No such account.');
+  q.closeAllOf.run(row.name);
+  db.prepare('DELETE FROM progress WHERE user = ?').run(row.name);
+  db.prepare('DELETE FROM favourites WHERE user = ?').run(row.name);
+  db.prepare('DELETE FROM completions WHERE user = ?').run(row.name);
+  db.prepare('DELETE FROM downloads WHERE user = ?').run(row.name);
+  q.drop.run(row.name);
+  return { removed: row.name };
+}
+
+// --- signing in ----------------------------------------------------------
+// `claim` is the one door left open for the names that existed before accounts
+// did: they are approved and carry no password, so the first sign-in sets one.
+export async function signIn({ name, password, from = '' }) {
+  mustWait(from);
+  const row = find(name);
+  const said = String(password ?? '');
+  // One sentence for "no such name" and for "wrong password", or this route
+  // tells anybody who asks which names exist.
+  const no = () => {
+    wrong(from);
+    return new Error('That name and password do not go together.');
+  };
+  if (!row) throw no();
+  if (row.state === 'pending') throw new Error('That account is waiting for the administrator to approve it.');
+  if (row.state !== 'approved') throw new Error('That account cannot sign in.');
+
+  if (!row.pass) {
+    // a name from before accounts existed: it is claimed by choosing a password
+    if (said.length < SHORTEST) {
+      const e = new Error(`That name has no password yet. Choose one of at least ${SHORTEST} characters.`);
+      e.claim = true;
+      throw e;
+    }
+    const salt = crypto.randomBytes(16).toString('hex');
+    q.setPass.run((await scrypt(said, salt)).toString('hex'), salt, row.name);
+  } else {
+    const key = await scrypt(said, row.salt);
+    const kept = Buffer.from(row.pass, 'hex');
+    if (key.length !== kept.length || !crypto.timingSafeEqual(key, kept)) throw no();
+  }
+  right(from);
+  return { name: row.name, token: openSession(row.name), claimed: !row.pass };
+}
+
+function openSession(name) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = new Date().toISOString();
+  forgetStale();
+  q.open.run(token, name, now, now);
+  q.seen.run(now, now, name);
+  return token;
+}
+
+const forgetStale = () => q.stale.run(new Date(Date.now() - WEEK).toISOString());
+
+export const tokenIn = (req, cookie = 'listener') => {
+  const raw = req.headers.cookie || '';
+  const hit = raw.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${cookie}=`));
+  return hit ? hit.slice(cookie.length + 1) : '';
+};
+
+// Who this request is, or '' — and the session moves with them: every request
+// pushes the seven days out again, which is what "seven days of quiet" means.
+export function listenerOf(req) {
+  const token = tokenIn(req);
+  if (!token) return '';
+  const s = q.session.get(token);
+  if (!s) return '';
+  if (Date.now() - Date.parse(s.seen || s.made || 0) > WEEK) {
+    q.close.run(token);
+    return '';
+  }
+  const row = find(s.name);
+  if (!row || row.state !== 'approved') {
+    q.close.run(token);
+    return '';
+  }
+  const now = new Date().toISOString();
+  q.touch.run(now, token);
+  // last_seen is a day-level thing on the admin page, so it is not written on
+  // every request: once an hour is enough and keeps this off the write path
+  if (!row.last_seen || Date.now() - Date.parse(row.last_seen) > 3600000) q.seen.run(now, now, row.name);
+  return row.name;
+}
+
+// The administrator is here too, and was not being marked present.
+//
+// They sign in with the name and password from the container, which is not a row
+// in this table — but their *name* can be a row in it, left by the picker that
+// came before accounts, and that row carries everything they have listened to.
+// The page then showed it as an ordinary listener who had never signed in and
+// had no password, because nothing on the admin's way in ever touched it: only a
+// listener session writes `last_seen`, and only `signIn` writes `pass`.
+//
+// So the admin's visit is recorded against their row when there is one. Same
+// hourly guard as a listener's, and the same reason for it.
+export function seenAdmin(name) {
+  const row = find(name);
+  if (!row) return;
+  const now = new Date().toISOString();
+  if (!row.last_seen || Date.now() - Date.parse(row.last_seen) > 3600000) q.seen.run(now, now, row.name);
+}
+
+export function signOut(req) {
+  const token = tokenIn(req);
+  if (token) q.close.run(token);
+}
+
+// What the admin page shows: who they are, when they were last here, and how
+// much they have listened to. The numbers come from the same places the rest of
+// the app counts from, so they cannot disagree with it.
+// A book played to its end. Written once per person per book — finishing it a
+// second time is the same accomplishment — and never taken away again: that is
+// what makes it a record of what somebody has done rather than a view of what
+// they are doing. The title comes along because a book can be deleted later and
+// the reading still happened.
+export function finishedABook(user, bookId) {
+  const who = asName(user);
+  if (!who || !bookId) return false;
+  const book = db.prepare('SELECT title FROM books WHERE id = ?').get(Number(bookId));
+  const already = db.prepare('SELECT 1 FROM completions WHERE user = ? AND book_id = ?')
+    .get(who, Number(bookId));
+  if (already) return false;
+  // When they began it, carried over from the progress row: that row does not
+  // survive un-ticking the book and a completion is meant to. Empty for a book
+  // begun before the app started writing it down, and left empty — a guessed
+  // start date on a dashboard is worse than a blank one.
+  const began = db.prepare('SELECT started FROM progress WHERE user = ? AND book_id = ?')
+    .get(who, Number(bookId));
+  db.prepare('INSERT INTO completions (user, book_id, title, at, started) VALUES (?, ?, ?, ?, ?)')
+    .run(who, Number(bookId), book?.title || '', new Date().toISOString(), began?.started || '');
+  return true;
+}
+
+export const finishedCount = (user) =>
+  db.prepare('SELECT COUNT(*) AS n FROM completions WHERE user = ?').get(asName(user) || '').n;
+
+// Whole books taken away. Kept per person because the admin's statistics say
+// who took what, and because Discord is told.
+export function tookABook(user, bookId, title) {
+  const who = asName(user);
+  if (!who) return;
+  db.prepare('INSERT INTO downloads (user, book_id, title, at) VALUES (?, ?, ?, ?)')
+    .run(who, Number(bookId) || 0, String(title || ''), new Date().toISOString());
+}
+
+export const downloadsOf = (user, most = 25) => db.prepare(
+  'SELECT book_id, title, at FROM downloads WHERE user = ? ORDER BY at DESC LIMIT ?')
+  .all(asName(user) || '', most);
+
+export function withStats() {
+  return everyone().map((u) => {
+    // *finished* is the same question the listener's own Listened section asks
+    // and the same one the line of numbers under every page asks: `readCount`,
+    // in `finished.js`. It counted `done = 1` here — the stored tick — which is
+    // a different question, and on a database with rows written before this app
+    // ticked a book that played out, or re-scanned since, it gives a different
+    // number. Three places showing one thing have to ask one thing.
+    const started = db.prepare('SELECT COUNT(*) AS n FROM progress WHERE user = ?').get(u.name).n;
+    const kept = { started, finished: readCount(u.name) };
+    const seconds = db.prepare(`SELECT COALESCE(SUM(CASE WHEN p.done = 1 THEN b.duration ELSE
+        COALESCE((SELECT SUM(t.duration) FROM tracks t
+                  WHERE t.book_id = b.id AND t.idx < p.track_idx), 0) + p.position END), 0) AS s
+      FROM progress p JOIN books b ON b.id = p.book_id WHERE p.user = ?`).get(u.name).s;
+    const hearts = db.prepare('SELECT COUNT(*) AS n FROM favourites WHERE user = ?').get(u.name).n;
+    const done = finishedCount(u.name);
+    const level = levelOf(done);
+    const took = downloadsOf(u.name);
+    // What they are in the middle of: the books with a place kept that is not
+    // the end. Newest first, because "what are they listening to" means the last
+    // one they touched — and with how far in, which is the same sum the shelves
+    // and Home Assistant use, so the three cannot disagree.
+    const listening = db.prepare(`SELECT b.title, b.author, b.duration, p.position, p.track_idx, p.updated, p.via,
+        (SELECT COALESCE(SUM(t.duration), 0) FROM tracks t
+           WHERE t.book_id = b.id AND t.idx < p.track_idx) AS behind
+      FROM progress p JOIN books b ON b.id = p.book_id
+      WHERE p.user = ? AND p.done = 0 AND p.position > 0
+      ORDER BY p.updated DESC LIMIT 5`).all(u.name)
+      .map((b) => {
+        const into = (b.behind || 0) + (b.position || 0);
+        return {
+          title: b.title,
+          author: b.author || '',
+          percent: b.duration ? Math.max(0, Math.min(100, Math.round((into / b.duration) * 100))) : 0,
+          hours: Math.round((into / 3600) * 10) / 10,
+          updated: b.updated || '',
+          // which face kept this place, so a book on somebody's row that they do
+          // not recognise can be traced to the player that wrote it
+          via: b.via || '',
+        };
+      });
+    const sessions = db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE name = ?').get(u.name).n;
+    const days = u.last_seen ? Math.floor((Date.now() - Date.parse(u.last_seen)) / 86400000) : null;
+    return {
+      name: u.name,
+      state: u.state || 'approved',
+      reason: u.reason || '',
+      knowsAdmin: !!u.knows_admin,
+      requestedAt: u.requested_at || '',
+      decidedAt: u.decided_at || '',
+      lastSeen: u.last_seen || '',
+      daysAgo: days,
+      // Whether this row is the administrator's own name. Everything below it on
+      // the page — the password badge, *May listen*, *May download* — is about a
+      // listener account, and none of it governs somebody who signs in with the
+      // container's password and is let through every check as the admin. Shown
+      // as an ordinary row it reads as broken: downloading stays possible with
+      // *May download* off, and "no password yet" sits beside somebody who types
+      // one every week.
+      isAdmin: !!adminName() && u.name.toLowerCase() === adminName().toLowerCase(),
+      hasPassword: !!u.pass,
+      signedIn: sessions,
+      started: kept.started,
+      finished: kept.finished,
+      hours: Math.round((seconds / 3600) * 10) / 10,
+      favourites: hearts,
+      // What this app watched run out, which is what a level is made of. The two
+      // numbers stay two numbers: `finished` above is every book that counts as
+      // read, a book ticked by hand among them, and ticking cannot earn a level.
+      // So `completed` is the smaller one, and the page says which is which.
+      completed: done,
+      level,
+      mayDownload: mayDownload(done, u.may_download),
+      granted: !!u.may_download,
+      downloads: took,
+      listening,
+    };
+  });
+}

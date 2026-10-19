@@ -1,0 +1,219 @@
+// one-at-a-time — the guards that were only in the page, and the two routes
+// anybody on the network can post to.
+//
+// The page refuses to start a second job while one runs. That guards one page:
+// a phone beside a laptop, or a reload in the middle of an import, is a request
+// the page never knew about, and what it reaches moves folders about. The lock
+// lives on the server as well now, and answers 409.
+//
+// The listening routes stay open — a listener has no password, which is the
+// model (§7.12) — but open is not the same as taking whatever arrives.
+//
+// Run: node tests/one-at-a-time.mjs
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const HERE = path.join(ROOT, 'fixtures', 'one-at-a-time-test');
+const DATA = path.join(HERE, 'data');
+const PORT = 8537;
+const BASE = `http://127.0.0.1:${PORT}`;
+
+let failed = 0;
+const check = (label, got, want) => {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) failed++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${ok ? '' : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`);
+};
+
+fs.rmSync(HERE, { recursive: true, force: true });
+fs.mkdirSync(DATA, { recursive: true });
+process.env.DATA_DIR = DATA;
+process.env.PORT = String(PORT);
+
+const { db } = await import('../server/db.js');
+const { take, busyWith } = await import('../server/onejob.js');
+await import('../server/index.js');
+await new Promise((r) => setTimeout(r, 700));
+
+// The admin's cookie, once there is an administrator. Every request below needs
+// it: an app with one is a locked app, and a request with no session is answered
+// the same way whoever sent it.
+let asAdmin = '';
+const post = async (where, body) => {
+  const r = await fetch(`${BASE}${where}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(asAdmin ? { Cookie: asAdmin } : {}) },
+    body: JSON.stringify(body),
+  });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
+};
+const get = (where) => fetch(`${BASE}${where}`, { headers: asAdmin ? { Cookie: asAdmin } : {} });
+
+db.prepare(`INSERT INTO books (id, path, genre, author, title, duration)
+            VALUES (7, '/x', 'Fantasy', 'An Author', 'A Book', 60)`).run();
+
+// --- nothing at all, until somebody is the administrator -----------------
+// An install with no `ADMIN_PASSWORD` used to run open: whoever reached the port
+// could do anything, and the whole collection and everybody's listening was
+// there for the taking with nothing on screen to say so. It refuses now, and
+// says what to do about it.
+{
+  const shut = await post('/api/move/7', { genre: 'Fantasy', author: 'A', title: 'B' });
+  check('with no administrator, a route that moves files refuses',
+    [shut.status, shut.body.unclaimed], [401, true]);
+  const told = await get('/api/admin').then((r) => r.json());
+  check('and the page is told which card to show', told.unclaimed, true);
+}
+
+// Made the way the container makes one. (The gate's own way — a name and a
+// password typed on first run — is `accounts.mjs`.)
+//
+// A name as well as a password, because the administrator listens under their
+// own name: with `ADMIN_USER` empty their places are kept under the empty one,
+// and a route that writes a place refuses for want of somebody to write it
+// against. The body's `user` is not an answer to that any more — it was, while
+// an unconfigured app ran open, and that is what these routes used to take.
+process.env.ADMIN_USER = 'Morgan';
+process.env.ADMIN_PASSWORD = 'a password';
+const unlocked = await fetch(`${BASE}/api/admin/unlock`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ password: 'a password' }),
+});
+asAdmin = (unlocked.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+check('and with one set on the container, the administrator can unlock',
+  [unlocked.status, /^admin=/.test(asAdmin)], [200, true]);
+
+// --- the lock -----------------------------------------------------------
+check('nothing holds it to begin with', busyWith(), '');
+const done = take('The import');
+check('and then something does', busyWith(), 'The import');
+
+const second = await post('/api/move/7', { genre: 'Fantasy', author: 'A', title: 'B' });
+check('a second job that moves files is refused', second.status, 409);
+check('and the refusal names what is running',
+  /The import is still running/.test(second.body.error), true);
+
+done();
+check('letting go frees it', busyWith(), '');
+const late = take('The move');
+late();
+check('and letting go twice is harmless', busyWith(), '');
+
+// a job whose own work throws still lets go
+const { alone } = await import('../server/onejob.js');
+await alone('The delete', async () => { throw new Error('no'); }).catch(() => {});
+check('a job that fails lets go too', busyWith(), '');
+
+// --- what the open routes accept ----------------------------------------
+const NUL = String.fromCharCode(0);
+const long = 'x'.repeat(400);
+
+check('a place in a book that names no book is refused',
+  (await post('/api/progress', { user: 'Morgan', bookId: 99, trackIdx: 0, position: 1 })).status, 404);
+check('a track that is not a number is refused',
+  (await post('/api/progress', { user: 'Morgan', bookId: 7, trackIdx: 'x', position: 1 })).status, 400);
+check('a position that is not a number is refused',
+  (await post('/api/progress', { user: 'Morgan', bookId: 7, trackIdx: 0, position: 'soon' })).status, 400);
+check('a position before the beginning is refused',
+  (await post('/api/progress', { user: 'Morgan', bookId: 7, trackIdx: 0, position: -5 })).status, 400);
+check('and an ordinary place is kept',
+  (await post('/api/progress', { user: 'Morgan', bookId: 7, trackIdx: 0, position: 12 })).status, 200);
+check('which is really in the database',
+  db.prepare("SELECT position FROM progress WHERE user = 'Morgan'").get().position, 12);
+
+check('ticking a book that is not there is refused',
+  (await post('/api/listened', { user: 'Morgan', bookId: 99, done: true })).status, 404);
+
+// A name is bounded and has no control characters in it. It used to arrive at
+// `POST /api/users`, which accounts replaced in 2.7.0 — the rule moved with it
+// and is checked where it lives now.
+const { asName } = await import('../server/listeners.js');
+check('a name is cut to something a list can hold', asName(`Morgan${long}`).length, 40);
+check('and carries no control characters', asName(`Mor${NUL}gan`).includes(NUL), false);
+check('a name of nothing but space is no name', asName('   '), '');
+check('and the spaces around one are not part of it', asName('  Morgan  '), 'Morgan');
+
+// --- what the book route hands out, and to whom --------------------------
+// Where a book sits on disk is the edit dialog's and Move…'s business, and
+// neither of those is on the listening page — which is the page this route
+// answers. So the question is what a signed-in *listener* is given: somebody who
+// may play the book and may not edit it.
+//
+// What an app with no administrator hands out is checked at the top: nothing.
+// That check used to read "with no password set, everybody is the admin and gets
+// the path", and it was true — which is what changed.
+const { requestAccount, decide } = await import('../server/listeners.js');
+await requestAccount({
+  name: 'Ann', password: 'a good long one', reason: 'I would like to listen to these books',
+});
+decide('Ann', 'approved');
+const inAs = await fetch(`${BASE}/api/account/signin`, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'Ann', password: 'a good long one' }),
+});
+const hers = (inAs.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+const locked = await (await fetch(`${BASE}/api/books/7`, { headers: { Cookie: hers } })).json();
+
+check('a listener gets no path on disk', 'path' in locked, false);
+check('nor the folder series the move dialog prefills from', 'folderSeries' in locked, false);
+check('nor the name of the cover file on disk', 'cover' in locked, false);
+check('but still everything the listening page plays with',
+  [locked.title, Array.isArray(locked.tracks), typeof locked.coverV],
+  ['A Book', true, 'string']);
+// The administrator stays: an app with one is what an app looks like now.
+
+// --- Move… does not need an import folder ---------------------------------
+// The dialog asked `/api/import` for the list of genres, and that route walks
+// the import folder and throws when there is none set — or when there is one and
+// the share it names is not mounted. Moving a book has nothing to do with
+// importing, and `moveBook` is an inline handler, so the throw went nowhere
+// anybody would see: the button simply did nothing on an install that had never
+// imported. This install has no import folder, which is the case that broke.
+const asksImport = await get('/api/import');
+check('asking about imports without an import folder is refused',
+  [asksImport.status, (await asksImport.json()).error],
+  [400, 'No import folder set yet. Add one in Settings.']);
+const asksGenres = await get('/api/genrefolders');
+check('but the genres can still be had', asksGenres.status, 200);
+
+// What Move… does with those two answers is `pages`, which opens the dialog for
+// real with this exact pair — `/api/import` refusing, the folders answering —
+// and reads what is on it. This used to be a regex over `moveBook`'s source
+// looking for the route name, which had to have the comments stripped off it
+// first: the comment above that change names the route it stopped asking, and
+// reading that back as the code still asking it is how a check comes to pass for
+// the wrong reason. The two checks above stay, because they are what makes the
+// answers `pages` stubs the answers this server really gives.
+
+// --- converting is started, not awaited ----------------------------------
+// It used to be awaited inside the request: the page held one HTTP call open for
+// the whole conversion, which runs for minutes. Anything that dropped that call
+// — a proxy's idle timeout, a laptop asleep, a blip — read as the conversion
+// failing. The owner watched the bar say so and vanish, *Convert to MP3* come back,
+// and ffmpeg carry on in the container behind it.
+//
+// So the request starts the work and answers, and what it is doing is the
+// status. Book 7 has no files at all, so this one fails almost at once — which
+// is the point: the failure has to arrive through the status, because the
+// request that asked for it is long gone either way.
+{
+  const go = await post('/api/convert/7', {});
+  check('asking for a conversion is answered at once, not when it is over',
+    [go.status, go.body], [200, { started: true }]);
+
+  let said = {};
+  for (let i = 0; i < 50 && (said.running !== false || !said.error); i++) {
+    // eslint-disable-next-line no-await-in-loop -- polling is the shape of this
+    await new Promise((r) => setTimeout(r, 100));
+    said = await get('/api/convert/status').then((r) => r.json()).catch(() => ({}));
+  }
+  check('and what went wrong arrives in the status instead',
+    [said.running, /\S/.test(said.error || '')], [false, true]);
+  check('which is where the page reads it, so a reload during one loses nothing',
+    typeof said.files, 'number');
+}
+
+console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
+process.exit(failed ? 1 : 0);

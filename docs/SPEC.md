@@ -1,0 +1,4096 @@
+# My Audiobook Collection — build specification
+
+**Version described: 2.7.24.** This document describes what the app is, how every
+part of it behaves, and the decisions and traps behind those behaviours. It is
+written to be handed back to an assistant later as the sole brief for rebuilding
+the app.
+
+## 0. How to use this, and what it can promise
+
+Hand this file over and say: *"rebuild the app in this document."* What comes out
+will match this app in structure, behaviour, API surface, database schema,
+interface and deployment. What will **not** match byte for byte is the code
+itself — wording of comments, order of small helpers, exact CSS values. Nothing
+in the spec depends on those.
+
+If you want a literal reproduction, keep the repository as well: this document
+plus `https://github.com/Starf0x/my-audiobook-collection` at tag `v2.7.24` is an
+exact answer. This document alone is a faithful one, and it is the part that
+carries the *reasoning* the code cannot show — every rule in §9 is there because
+something went wrong without it.
+
+The verification suites in §11 are how you tell the rebuild is right. Rebuild,
+then make them pass; they encode the behaviour that matters.
+
+## 1. The product
+
+A small, self-hosted web app that turns folders of audiobooks into a collection
+you can browse, play and keep tidy. One Docker container, one SQLite file, no
+account system, no cloud service beyond an optional Google Books lookup.
+
+It reads a library that is already organised on disk:
+
+```
+/audiobooks
+├── Fantasy                          <- genre
+│   ├── Brandon Sanderson            <- author
+│   │   └── Mistborn                 <- series folder (optional level)
+│   │       ├── The Final Empire     <- book: the folder holding audio files
+│   │       └── The Well of Ascension
+│   └── Patrick Rothfuss
+│       └── The Name of the Wind     <- book directly under the author
+└── Thriller
+    └── Stephen King
+        └── The Shining
+```
+
+Two pages, served without file names in the address: **`/`** is the listening
+page — it browses, plays and remembers positions, and is the one to share — and
+**`/admin`** is the page that changes the collection (scan, import, tag, move,
+delete). `/listen.html` and `/index.html` still answer, with a redirect, so old
+links keep working.
+
+**Non-goals**, deliberately: it does not download audiobooks, has no catalogue of
+its own, has no user accounts (a "user" is a name in a list, for keeping positions
+apart), and never moves or renames anything unasked. It writes tags into **MP3
+only**; other formats are read, listed and played — and can be **converted** to MP3
+when asked, one book at a time, keeping the files they came from (§7.8a). That is
+the one thing it transcodes, and never on its own.
+
+## 2. Working agreement
+
+These are the standing rules the code was written under. They shape it more than
+any feature does.
+
+* **Keep the code short and plain. Make the smallest change that solves the task
+  completely. Do not add abstractions, fallbacks, safety nets, refactors or
+  features unless they are strictly necessary.** This is why there is no service
+  layer, no ORM, no state-management library, no build step and no framework.
+* **The interface is English.** Code comments are English, and they explain *why*,
+  never *what* — a comment that restates the line is deleted.
+* **Version numbers**: the third digit rises in steps of eight — 0, 8, 16, … —
+  and the second increments when it has gone far enough, the third resetting to
+  nought. Far enough has been `.72` in most lines (`1.8.72 → 1.9.0`) and `.80`
+  in four of them (`2.3.80 → 2.4.0`), which the tags are the record of; `.80` is
+  the furthest it has ever gone. Every shipped change gets a bump, a commit, a
+  tag `vX.Y.Z`, and a push.
+* **Push to `main` first, wait for Checks to be green, and only then tag.** A tag
+  publishes the image, so a tag is the last step and not the first. Some faults
+  exist only on the build machine and cannot be found here: a browser slower to
+  start than the wait allowed, a suite that checked nothing for want of ffmpeg,
+  an apt mirror that hung for fifteen minutes. Each of those was found *after* a
+  tag had gone out and reported as finished, which turns one piece of work into
+  two and makes "done" mean nothing. Nothing is called done until the run that
+  proves it has finished.
+* **The real collection is read-only during development.** Test against generated
+  fixtures. Never import, move, delete or write tags against the owner's share.
+* **Secrets are never typed by the assistant.** API keys, tokens and passwords are
+  entered by the owner, in their own tools. A token pasted into a chat is
+  compromised and must be revoked.
+* **Screenshots must not show a real username or local path.** Take them against
+  a demo library mounted so paths read `/audiobooks`.
+
+## 3. Stack and file inventory
+
+Node 26, Express 5, ESM (`"type": "module"`), `node:sqlite` (`DatabaseSync` —
+synchronous, single connection), no build step, no client framework.
+
+```json
+"dependencies": {
+  "express": "^5.1.0",
+  "music-metadata": "^11.2.1",
+  "node-id3": "^0.2.9"
+}
+```
+
+`music-metadata` reads tags (async). `node-id3` writes them (synchronous, and it
+*merges* into a file rather than replacing its tags). Everything else is Node
+built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
+
+| File | Lines | What it is |
+| --- | --- | --- |
+| `server/index.js` | 1861 | Express app: every route, and nothing else |
+| `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
+| `server/db.js` | 256 | schema, migrations, settings, library list |
+| `server/admin.js` | 191 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
+| `server/scan.js` | 650 | walking the library, reading tags, filing books |
+| `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
+| `server/pool.js` | 42 | the lane cap and the item pool for disk work |
+| `server/google.js` | 731 | Google Books lookup, and writing tags into files |
+| `server/tagpool.js` | 51 | worker-thread pool for tag writes |
+| `server/tag-worker.js` | 13 | the worker: one `NodeID3.update` per message |
+| `server/tagall.js` | 141 | the resumable whole-collection tag run |
+| `server/import.js` | 459 | import candidates, quality comparison, filing |
+| `server/trash.js` | 180 | move, delete to trash, restore, purge |
+| `server/validate.js` | 119 | checking every book against the disk |
+| `server/covers.js` | 88 | tidying unused cover files, zipping them |
+| `server/backup.js` | 80 | a copy of the database beside it, once a day, the oldest dropped |
+| `server/placeholder.js` | 115 | the cover drawn for a book that has none |
+| `server/zip.js` | 240 | a zip of a whole book, streamed and stored |
+| `server/onejob.js` | 50 | one job at a time on the server, for everything that moves files |
+| `server/outbound.js` | 93 | fetching an address that arrived in a request: https only, nothing on this network, bounded |
+| `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
+| `server/updates.js` | 114 | whether a newer version is out, and asking for it without being able to install it |
+| `server/finished.js` | 67 | what "finished" means: the three senses of the word, and the one every count asks |
+| `server/listeners.js` | 380 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
+| `server/notify.js` | 152 | telling Discord: the things worth saying, and cleaning what a person wrote |
+| `server/requests.js` | 179 | books somebody has asked for: the matching, the answering, and who is told |
+| `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
+| `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
+| `server/convert.js` | 355 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
+| `server/ha.js` | 539 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
+| `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
+| `public/account.js` | 240 | signing in and the hearts, on both pages, one copy |
+| `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
+| `public/accounts.js` | 267 | its behaviour — the statistics, the two ticks, and the administrator's own row |
+| `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
+| `public/player.js` | 571 | the player, and carrying the book from one page to the next |
+| `public/ha.html` | 109 | the Home Assistant page |
+| `public/ha.js` | 185 | its behaviour |
+| `public/browse.js` | 522 | browsing the collection: what both pages do the same way, in one copy |
+| `public/index.html` | 473 | the admin page: columns, dialogs |
+| `public/app.js` | 1853 | the admin page's spine: the columns, browsing, import, the scan, settings |
+| `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
+| `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
+| `public/listen.html` | 183 | the listening page |
+| `public/player.html` | 81 | /player: the player and nothing else |
+| `public/playerpage.js` | 59 | what that page needs before player.js is loaded over it |
+| `public/shelf.js` | 335 | the listening page’s behaviour |
+| `public/style.css` | 1110 | the whole look, every page, phone included |
+
+Static files are served from `public/` by `express.static`, with
+`{ index: false }` so the routes below decide what `/` is:
+`GET /` sends `listen.html`, `GET /admin` sends `index.html`, `GET /ha` sends
+`ha.html` — the Home Assistant page, which is too much for a dialog section — and
+`/listen.html` and `/index.html` redirect to those — the file names are gone from
+the address, and old links still work. `app.use(express.json({ limit: '1mb' }))`.
+
+All three pages end with their own script and then `player.js`, in that order:
+the player leans on the `$`, `api`, `post`, `toast`, `esc` and `state` each page
+declares, so it has to be parsed after them.
+
+**The admin page's own script is three files, in a fixed order.** `browse.js`
+first, because `app.js` uses `$`, `api` and `esc` in its own top-level code; then
+`app.js`, which declares `state` and the helpers the other two call; then
+`maint.js` and `edit.js`, which only hang handlers on elements the page already
+has. They share one lexical scope — they are classic scripts, not modules — so
+a name declared in two of them is a SyntaxError that stops the whole page, and
+`pages` catches that by loading them (§11). `app.js` was 2402 lines until 2.10.24
+and the split is along what each part touches: what crosses the seam does so when
+a button is pressed, never at load. Each page carries the same
+`<footer id="player">` markup — the Home Assistant page included, because a book
+being listened to goes on playing while its owner is in there setting it up.
+
+## 4. Data model
+
+`DATA_DIR` (default `/data`) holds `library.db` and a `covers/` folder, both
+created at import time of `db.js`. `PRAGMA journal_mode = WAL`.
+
+**And `backups/`, because that file was the only copy of everything.** The
+audiobooks are on a share and survive almost anything; where each person is in
+each book, the accounts and their passwords, the completions a level is counted
+from, the hearts and the downloads are in `library.db` and nowhere else, and the
+files on disk cannot rebuild any of it. `backup.js` writes
+`backups/library-YYYY-MM-DD.db` when the app starts and once a day after,
+keeping the last **7** and dropping the rest.
+
+It is `VACUUM INTO`, not a file copy: a copy taken while the app is running can
+catch a half-written page and produce a file that opens and is *wrong*, which is
+worse than no backup at all. `VACUUM INTO` is a transaction, so what it writes is
+the database as it stood at one moment — and compact, which is why a backup is
+smaller than the original. It writes to `…db.writing` and renames, so a copy
+interrupted half way does not replace the good one, and it never throws: a backup
+that cannot be written must not stop the app serving books, so the reason goes to
+the log.
+
+They sit beside the database on the same volume, which is the loss this is for —
+a file going wrong, not a disk going away. Settings says when the last one was
+taken and how many are kept, because a backup nobody can see is one that fails
+quietly and is believed for months; *Back up now* is there for the moment before
+doing something drastic. Restoring is stopping the container, putting the copy
+back as `library.db`, and starting it.
+
+```sql
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+
+CREATE TABLE books (
+  id INTEGER PRIMARY KEY,
+  path TEXT UNIQUE,                      -- the book folder on disk; the identity
+  genre TEXT, author TEXT, series TEXT, title TEXT,
+  narrator TEXT, year TEXT, description TEXT, cover TEXT,
+  duration REAL DEFAULT 0,
+  tagged TEXT DEFAULT '',                -- which tags the FILES carry, comma list
+  tag_series TEXT DEFAULT '',            -- series the files claim (never moves files)
+  series_no INTEGER DEFAULT 0,
+  -- the whole book rather than a shortened reading; stated by the admin, since
+  -- no file says it. 0 is "nobody has said", not "abridged"
+  unabridged INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE tracks (
+  id INTEGER PRIMARY KEY,
+  book_id INTEGER, idx INTEGER, path TEXT, title TEXT, duration REAL
+);
+CREATE INDEX tracks_book ON tracks (book_id);
+
+CREATE TABLE progress (
+  user TEXT, book_id INTEGER, track_idx INTEGER, position REAL, updated TEXT,
+  done INTEGER DEFAULT 0,
+  -- which face kept this place: page, music-assistant, home-assistant, or
+  -- empty for a row from before 2.10.72
+  via TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (user, book_id)
+);
+
+CREATE TABLE users (name TEXT PRIMARY KEY);
+
+-- the whole-collection tag write, and what is left of it
+CREATE TABLE tagrun (
+  id INTEGER PRIMARY KEY,
+  total INTEGER, done INTEGER, written INTEGER, failed INTEGER,
+  state TEXT, current TEXT, started_at TEXT, finished_at TEXT
+);
+CREATE TABLE tagqueue (book_id INTEGER PRIMARY KEY);
+
+CREATE TABLE broken (
+  book_id INTEGER PRIMARY KEY, reason TEXT, detail TEXT, checked_at TEXT
+);
+
+CREATE TABLE replaced (
+  id INTEGER PRIMARY KEY,
+  path TEXT UNIQUE, was_path TEXT,
+  genre TEXT, author TEXT, series TEXT, title TEXT,
+  files INTEGER, bytes INTEGER, quality TEXT, replaced_at TEXT
+);
+
+-- what a conversion came from, kept until the owner says otherwise (§7.8a)
+CREATE TABLE converted (
+  id INTEGER PRIMARY KEY,
+  path TEXT UNIQUE, was_path TEXT,
+  genre TEXT, author TEXT, series TEXT, title TEXT,
+  files INTEGER, bytes INTEGER, converted_at TEXT
+);
+
+CREATE TABLE trash (
+  id INTEGER PRIMARY KEY,
+  was_path TEXT, trash_path TEXT,
+  genre TEXT, author TEXT, series TEXT, title TEXT,
+  files INTEGER, deleted_at TEXT
+);
+
+-- books somebody has asked for and the collection has not got (§7.14).
+-- The author and the title are kept as they were typed, because that is what
+-- the administrator reads when deciding whether to go and find it; the
+-- normalised pair a new book is matched against is worked out when needed and
+-- never stored, so changing how matching reads a name rewrites no rows.
+-- book_id is allowed to go stale rather than cascade: a request that was once
+-- filled stays filled even if the book is later deleted, because it happened.
+CREATE TABLE requests (
+  id INTEGER PRIMARY KEY,
+  who TEXT, author TEXT, title TEXT, note TEXT DEFAULT '',
+  state TEXT DEFAULT 'open',          -- open | filled | declined
+  said TEXT DEFAULT '',               -- why, when it was declined
+  book_id INTEGER,
+  asked_at TEXT, decided_at TEXT DEFAULT '',
+  told INTEGER DEFAULT 0              -- has the person who asked been shown it
+);
+
+-- SQLite hands out row ids again: without this a new book inherits a deleted
+-- book's "broken" verdict.
+CREATE TRIGGER broken_follows_books AFTER DELETE ON books
+BEGIN DELETE FROM broken WHERE book_id = OLD.id; END;
+-- and for the same reason its place and its tick: a scan that drops a book whose
+-- folder has gone used to leave these behind, and the next book added was handed
+-- the freed id along with a stranger's place in it (§9.35)
+CREATE TRIGGER progress_follows_books AFTER DELETE ON books
+BEGIN DELETE FROM progress WHERE book_id = OLD.id; END;
+```
+
+Both triggers are `CREATE TRIGGER IF NOT EXISTS`, and a database written before
+`progress_follows_books` existed is swept once at startup:
+`DELETE FROM progress WHERE book_id NOT IN (SELECT id FROM books)`.
+
+Everything is `CREATE TABLE IF NOT EXISTS`. Four columns added after the first
+release are also applied as guarded `ALTER TABLE` in `try/catch`, so an old
+database catches up: `progress.done`, `books.tagged`, `books.tag_series`,
+`books.series_no`.
+
+Four one-off repairs run at startup, in `db.js`: descriptions that are iTunes
+normalisation hex (`/^[0-9a-f]{6,8}( +[0-9a-f]{6,8})+$/i`) are emptied; places
+left behind by books that no longer exist are deleted (the sweep above, for
+databases older than the trigger); narrators that are really the author are
+cleared, but only where the files name none (§7.3); and the old
+`adminHash`/`adminSalt` settings rows are deleted (the password comes from the
+container now).
+
+**Settings rows in use**: `libraries` (JSON array of `{path, asGenre}`) and
+`importPath` (string). A library entry stored as a plain string is read as
+`{path, asGenre: false}`. `getLibraries()` never throws — bad JSON yields `[]`
+rather than failing every request.
+
+The `series` a book is *filed* under (a folder) and the `tag_series` its files
+*claim* are kept apart, and the interface merges them with one SQL fragment
+reused by every list:
+
+```js
+const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')), '')";
+```
+
+## 5. Configuration and deployment
+
+### Environment
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DATA_DIR` | `/data` | database and covers |
+| `PUID` / `PGID` | unset | the user and group to write as. `server/user.js`, imported before anything else, chowns `DATA_DIR` and then drops to them — without this the container writes as root and the folders it creates on a share cannot be written to by their owner |
+| `UMASK` | unset | mode mask for what it creates (`000` on an Unraid share) |
+
+With neither `PUID` nor `PGID` set, and running as root, `user.js` takes the owner
+of `DATA_DIR` (or of the folder above it) and becomes that — on Unraid, appdata
+belongs to nobody:users, so a container that was never told anything still writes
+as the user that owns the shares. `GET /api/permissions` (admin) reports
+`writingAs()` and, for the data folder, every library, the import folder and one
+book folder: whether it is there, its owner and mode, and whether a file can
+actually be written in it and removed again — measured, not inferred from the mode.
+Settings shows it as a table.
+| `PORT` | `8523` | HTTP port |
+| `ADMIN_USER` | empty | the administrator's name. Set with the password, it is what shuts the listening page: everybody else needs an account you have approved |
+| `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked and the library needs an account; empty → private install, everyone may do anything |
+| `GOOGLE_API_KEY` | empty | Google Books lookups |
+| `HA_TOKEN` | empty | when set, every `/api/ha…` address needs it as `?token=` or `Authorization: Bearer`. The audio itself stays open, or a speaker could not play it |
+| `MA_TOKEN` | empty | the password Music Assistant logs in with (§7.9d). **Empty means the whole Audiobookshelf face is not there**: every one of its addresses answers 404, so a default install grows no new surface |
+| `BASE_URL` | empty | the address other machines reach the app on, when that is not the one they asked at (a reverse proxy). Every URL inside the Home Assistant answers is built from it |
+| `GOOGLE_COUNTRY` | `US` | which country's Google catalogue answers. Series data belongs to a country's Play catalogue, and left to the server's own address Google can answer with a record that has none |
+
+Both secrets live **only** on the container. There is deliberately no field for
+either in Settings: one place cannot drift out of step with another, and both
+survive an emptied appdata folder.
+
+### Dockerfile
+
+`node:26-alpine`, `npm ci --omit=dev`, copy `server` and `public` only, `ENV
+DATA_DIR=/data PORT=8523`, `VOLUME /data`, `EXPOSE 8523`, `CMD ["node",
+"server/index.js"]`. Unraid labels on the image so the WebUI link, icon and Force
+update work even for a container not made from the template:
+`net.unraid.docker.managed=dockerman`,
+`net.unraid.docker.webui=http://[IP]:[PORT:8523]/`, `net.unraid.docker.icon=` a
+publicly reachable PNG URL, plus the three `org.opencontainers.image.*` labels.
+The icon URL must stay reachable — Unraid retries a failing icon on every page
+refresh and it blinks.
+
+`.dockerignore`: `node_modules`, `.git`, `data`, `*.md`, `docs`.
+
+### Unraid template
+
+`my-My-Audiobook-Collection.xml`, `<Container version="2">`, `<Name>My-Audiobook-Collection</Name>`.
+Config entries: WebUI Port `8523`, Appdata → `/data`, Audiobooks → `/audiobooks`
+(rw, because tags are written), Import folder → `/import` (optional),
+`ADMIN_PASSWORD` and `GOOGLE_API_KEY` as `Type="Variable"` with `Mask="true"`.
+
+**Warn about this in the docs, prominently**: Unraid stores a container's saved
+configuration in `/boot/config/plugins/dockerMan/templates-user/my-<container
+name>.xml` — the *same* place a shipped template is copied to. Telling someone to
+`wget` the repo template over that file wipes their paths, password and API key.
+The template is copied there once, before the container exists; after that it is
+their config. `<Name>` inside the file must match the container name or the
+Docker tab stops treating it as managed. Force update lives in the Docker tab's
+*Advanced View* only.
+
+### In an LXC container, where there is no image
+
+Proxmox, Unraid's own LXC support, or any Debian or Ubuntu machine with systemd.
+The image is doing four things that then have to be done by hand — install a
+node and ffmpeg, put the app somewhere, write a settings file, and arrange for it
+to start at boot — so `install/myaudiobookcollection-install.sh`, the inside half
+of the helper script, does them.
+
+It installs **the newest released tag**, not `main`: `main` is where work in
+progress lands and a tag is a thing that passed its checks. It writes
+`/etc/my-audiobook-collection.env` at `0600` and **never overwrites one that is
+already there**, because that file holds the admin password and the tokens; it
+puts the database in `/var/lib/my-audiobook-collection`, off the share, since
+that is the one thing the audio files cannot rebuild. It ends by looking again a
+few seconds after `systemctl restart` and printing the journal if the service did
+not stay up — `systemctl start` succeeding says only that systemd forked
+something.
+
+The unit starts as **root on purpose** and does not stay root: `server/user.js`
+drops to `PUID:PGID` before `db.js` creates a folder, which is exactly what the
+image does, so one set of instructions covers both ways of running it. Left as
+root it would make folders on the share that their owner cannot write into — the
+problem `PUID` exists to prevent — and the app refuses to carry on as root unless
+`ALLOW_ROOT=1`. It waits on `local-fs.target`: a scan that runs before the bind
+mount is there finds nothing, and an emptied library is a frightening thing to
+find.
+
+**One way in, and it took three to learn that.** There was a hand-rolled
+container creator with whiptail menus of its own, written before the engine
+turned out to be usable from outside their repository. There was
+`lxc-install.sh`, which installed the app onto whatever machine it was run on —
+all it ever claimed to do, and not what somebody reading a one-liner assumes:
+the obvious place to paste one is the host's shell prompt, and there it put
+node, ffmpeg, a NodeSource apt repository and a systemd service on the
+hypervisor. The owner did exactly that and there was nothing to undo it with.
+
+Teaching it to refuse on a host was treating the symptom. What had him run the
+wrong one twice was that there were two to run — he pasted the command he
+already had. **There is a standard for this and a second way of doing the same
+job is not a kindness**, so both are gone and there is one command:
+`ct/my-audiobook-collection.sh` on the host, which makes the container and
+installs into it. `uninstall.sh` takes it off a machine again, including a host
+one of the old one-liners reached. `packaging` checks neither comes back and
+that nothing still hands anybody a command that runs one — the README and the
+scripts, not this file, whose version log says they existed and why they went.
+
+What went with `lxc-install.sh` and had to be kept is the **unprivileged
+container** warning: every id is shifted by 100000, so `PUID=99` inside is
+100099 on the host, which owns nothing, and the app is refused permission to
+write in a collection whose permissions look perfectly right from the host. It
+reads `/proc/self/uid_map`, says what the ids become and what the two ways out
+are, and carries on — it is about writing to the collection, not about starting.
+That now lives in the install half, where `packaging` still holds it.
+
+The uninstaller keeps the database
+and the settings file unless asked for `--purge`, because those are the two
+things that cannot be got back, and it is safe on a machine where only half of it
+installed — a half-installed machine is exactly when somebody reaches for it.
+`packaging` holds its `APP_DIR`, `ENV_FILE` and `UNIT` to the paths the unit and
+the installer really use: an uninstaller that removes a path the installer never
+wrote does nothing, and one that removes a path it was not meant to is worse
+than having none. The uninstaller keeps them in variables because a person reads
+it before running it; the installer writes them out, which is the engine's house
+style — so the check is each path, not each variable.
+
+**The one command on a host is `ct/my-audiobook-collection.sh`, and it is one of theirs.**
+Asked for a second time, outright, and this is the honest way to give it: not an
+imitation of the look but their engine, loaded from `community-scripts/core`, so
+the banner, *Default* and *Advanced settings*, the storage radiolist and the
+closing line with the address are the real ones.
+
+An app outside their repository can use it because the engine resolves **two
+roots**: its own files from `COMMUNITY_SCRIPTS_CORE_URL`, and `ct/` and
+`install/` from `COMMUNITY_SCRIPTS_URL`. The ct script exports the second to this
+repository, and the engine then fetches this app's installer rather than looking
+for it in theirs. That was not obvious — the legacy `misc/build.func` has the
+install URL hardcoded, and reading that one first produced a confident and wrong
+conclusion that this could not be done at all. The engine the ct scripts actually
+load goes through `_cs_fetch_text` → `_cs_remote_url`, which honours the
+override; running those two functions with this repository as the scripts root is
+what settled it.
+
+**The banner is the one thing the engine cannot fetch for us.** Headers live in
+the *engine's* repository, one folder per app — "they are generated from the
+script repos, so a script repo carries none of its own" — and `get_header` looks
+for `headers/ct/myaudiobookcollection` there. An app from outside is never in
+that folder, so the lookup 404s on every run and `header_info` falls back to
+printing the words **Community Scripts** and the app's name. `_CS_FALLBACK_HEADER`
+is the seam left for exactly that, and the ct script sets it to the app's own
+drawing, so those words never appear on a run of this script.
+
+Two things would mangle the drawing silently, and `packaging` checks both
+because the only other way to find out is to install. The heredoc is **quoted**,
+`<<'ART'`, since the art holds a backtick and backslashes and bash would eat
+both — the backtick would start a command substitution inside the banner. And
+the read is `IFS= read -r -d ''`: without the empty `IFS` the leading space is
+stripped off the first line and that line is drawn one column out of true.
+
+**The container's Notes panel** is the other thing of ours on somebody's
+hypervisor, and it gets the same treatment for the same reason. The engine
+writes its own logo there, a donate badge and an *Open Script Page* button
+pointing at `community-scripts.org/scripts/myaudiobookcollection` — a page that
+does not exist for an app they do not host. There is no seam for the image the
+way there is for the banner, so `description()` is replaced outright: the app's
+own icon, its name, the address, and GitHub, Manual and Issues against this
+repository. Nothing else of theirs is touched, and the MIT notice at the top of
+the ct script is where their licence is honoured. The icon is `icon-128.png`
+rather than `icon.svg` — the same drawing, and a PNG is what the Notes panel is
+certain to draw. `packaging` checks the icon, the absent dead link, and that the
+replacement still works out `IP`, which the engine's version set as a side effect
+and the closing lines all read.
+
+The installer's **filename is not a choice**: the engine computes it as
+`${APP,,}` with the spaces removed plus `-install`, so *My Audiobook Collection*
+becomes `install/myaudiobookcollection-install.sh`. `packaging` recomputes it
+from `APP` and checks the file exists, because renaming either end means the
+engine fetches something that is not there — and the container is built before
+that is discovered.
+
+The ct script sets `var_unprivileged=0` where theirs default to 1, for the
+id-shifting reason below.
+
+**Taking a new version, and why the app does not take it itself.** The line of
+numbers says which version is answering, which tells you whether this is the new
+one only if you already knew what the new one was. *Settings → Version* is the
+other half: `updates.js` asks GitHub for the repository's tags, keeps the answer
+for an hour — sixty unauthenticated calls an hour, and the answer changes weekly
+— and sulks for ten minutes after a failure rather than retrying on every page
+load.
+
+Which of two versions is newer is **compared by number, part by part**. This
+project counts in eights and rolls over, so it reaches 2.11.64 while 2.9.80
+still exists, and as text `2.9.80` sorts above `2.11.64` because `9` is after
+`1`. A string compare would offer an update backwards, or stay silent on a real
+one for ever; `packaging` checks that exact pair.
+
+The app **asks** for an update and does not perform one. It runs as `PUID` —
+`user.js` drops before anything is created — so it can neither write in `/opt`
+nor restart a unit, and that is the point rather than an obstacle to work
+around: a page that can run a root script runs it for whoever reaches it, and
+with no `ADMIN_PASSWORD` set the admin page is open to the network by design.
+So `POST /api/update` writes a file in `DATA_DIR`, a root-owned **path unit**
+watching for it starts a oneshot, and `install/update.sh` does the work. The
+oneshot takes **no argument**, so the file carries the fact that somebody asked
+and nothing else; the whole of the root side's behaviour is fixed. `packaging`
+checks the app never gains a `child_process`, and that the `ExecStart` stays a
+bare path.
+
+The updater **clears the request first** — left behind, the path unit fires again
+the moment the oneshot exits and the container updates in a loop — **stops the
+app before `npm ci`** replaces what it is running from, and **looks again a few
+seconds after starting it**, since a unit that dies in its first second leaves
+`systemctl start` perfectly happy. It leaves its outcome in `update-said.json`,
+because it restarted whoever asked and there is no reply to send; Settings reads
+that, which is how a failed update is heard about at all.
+
+`howInstalled()` decides what is offered: a git checkout with the unit beside it
+takes the button, a checkout without it gets the two commands, and an image is
+told to pull a new one — which is the host's job and not something this could do
+if it wanted to.
+
+**The news comes to the page.** All of the above lived behind *Settings →
+Version*, three clicks away, and nobody opens Settings to find out whether there
+is news. So a **red dot sits on the icon** in the top-left corner the moment the
+cached answer says there is a newer version, titled with the version it is
+about, and the **pulldown grows an "Install the update" entry** where this
+install can take one. The entry is removed again as soon as there is nothing to
+install — the next answer says so and takes it away — because a menu entry that
+does nothing is worse than no entry. Both are drawn by one function from one
+answer, so the dot and the entry can never disagree. The dot is drawn over the
+artwork rather than beside it: nothing in the header moves when it appears, and
+nothing is left shifted when it goes.
+
+**Knowing when it is over.** the owner: *"wanneer de update is uitgevoerd, blijft de
+tekst Updating… gewoon staan. Het is niet duidelijk dat het klaar is."* The page
+waited for the app to *answer* and reloaded on that — but nothing has stopped
+when the button is pressed. The app writes a file; the path unit has to notice
+it, stop the service, fetch and run `npm ci`. So it answered happily for the
+next half minute, and the page either reloaded itself straight back into the old
+version or, when the app did not come back inside four minutes, ran out of polls
+in silence and left *Updating…* on screen with nothing to say whether it had
+worked.
+
+The **version** is the one honest signal: it changes exactly when the new code
+is running. The page reads it before asking, then polls `/api/stats` until it
+differs — never reloading on an app that is merely answering — says *Updated to
+vX* out loud, and **leaves the news in `sessionStorage` for the page it is about
+to throw away**, which says it again as a toast. That toast is the only thing
+that ever tells anybody the update worked, so it is said first in `begin()`,
+before a single column loads: last in the list was where it was, and a column
+that failed to load took those words down with it. After five minutes it stops
+pretending to watch and says what to look at instead.
+
+**An unprivileged container is the thing that catches people**, and Proxmox makes
+one by default. Every id is shifted by 100000: `PUID=99` inside is 100099 on the
+host, which owns nothing, so the app is refused permission to write in a
+collection whose permissions look perfectly right when you look at them from the
+host. It is an afternoon to work out from that end and one line to be told, so
+the installer reads `/proc/self/uid_map` — `0 0 4294967295` is privileged,
+anything else is a shift — and says what the ids become, and what the two ways
+out are. It carries on afterwards: this is about writing to the collection, not
+about whether the app starts.
+
+**`packaging` holds the two ways to install apart from each other.** They
+describe one app twice — a node major in three places, a port in three, every
+setting name in two more — and nothing would have noticed them drifting, because
+an install path is exercised once by somebody who then has a working machine and
+never looks again. The suite reads the Dockerfile, the installer, the unit, the
+settings file, the compose file and the workflow, and holds the facts written
+twice to each other. It found two real gaps the first time it ran: `TRUST_PROXY`
+and `ALLOW_ROOT` could be set on an LXC and not in compose.
+
+### Publishing
+
+`.github/workflows/docker.yml`, on `v*` tags and on manual dispatch:
+checkout → `docker/setup-buildx-action@v3` → `docker/login-action@v3` →
+`docker/metadata-action@v5` (tags: `type=ref,event=tag` and
+`type=raw,value=latest,enable=<this tag is the newest>`) →
+`docker/build-push-action@v6` for `linux/amd64,linux/arm64` →
+`peter-evans/dockerhub-description@v4` (on the tag, the only run there is).
+The checkout takes the whole history, because the step that decides whether this
+is the newest release reads the repository's tag list.
+
+`.github/workflows/test.yml` is the other one: **Checks**, on every push to
+`main`, every `v*` tag and every pull request. `npm ci --omit=dev` then
+`npm test`, on the same node major the image is built with — a check that passes
+on another version and fails in the container has told nobody anything. It does
+not gate the image build; the two run beside each other, and a red Checks run on
+a tag is a reason to look before pulling.
+
+Secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`. Both workflows declare
+`permissions: contents: read`: neither writes anything back to the repository —
+the image goes to Docker Hub on credentials of its own — and a token that may
+write is a write that any action in the job could make.
+
+**Every `uses:` names a commit.** `actions/checkout@v4` is a branch somebody else
+moves: whoever controls that repository can change what runs on the machine
+holding this project's Docker Hub token, without a line here changing. A
+40-character sha is the one part of a `uses:` that cannot be repointed. The
+version each pin *is* goes in the comment beside it, because a sha says nothing
+to a person reading the file — and a pin nobody can read is a pin nobody will
+move. `outward.mjs` fails on a `uses:` that is not a sha, and on a sha with no
+version named beside it. The cost is that they no longer update themselves:
+moving one means looking up what its major tag points at now
+(`gh api repos/<repo>/git/ref/tags/v4 --jq .object.sha`) and changing the sha and
+the comment together.
+
+**Tags only, and that is the fix for a race.** It used to run on `main` as well,
+and since `metadata-action` counts a tag as the default branch, a tagged release
+fired twice and **both runs pushed `:latest`**. The two images came from one
+commit but were not byte-for-byte equal — v2.5.64 made `29a69492…` on the branch
+run and `e896a8ed…` on the tag run — so `:latest` went to whichever finished
+last, three seconds apart. Nothing would have been wrong in the image, but
+`:latest` could stop being the digest its `vX.Y.Z` names, and every pull would
+fetch layers it already had. Every shipped change is tagged here anyway, so one
+run per release settles it. `workflow_dispatch` on `main` still moves `:latest`
+by itself; that one is a person deciding, not two runs racing.
+
+**And one run per release is not one run at a time.** On 2026-09-29 two releases
+went up in one `git push` — v2.7.32 and v2.7.40 — and both built. The older one
+finished sixteen seconds later and took `:latest` with it, so anybody pulling
+`:latest` would have got 2.7.32 while 2.7.40 was the release. Two guards now,
+because serialising alone still leaves the order to chance: a `concurrency`
+group named `publish-docker` with `cancel-in-progress: false`, so the runs queue
+rather than overlap; and `:latest` applied only by the run whose tag is the
+highest version in the repository, which is true whatever order they finish in.
+The comparison sorts with `-v:refname` and not alphabetically, or `v2.7.8` would
+outrank `v2.7.32`. An older tag rebuilt on purpose therefore updates its own
+`vX.Y.Z` and leaves `:latest` where it belongs.
+
+**There is one README.** The Docker Hub page is generated from `README.md` by that
+last step, so "update both READMEs" is one edit. Images in it must use absolute
+`raw.githubusercontent.com` URLs — Docker Hub does not resolve repo-relative
+paths.
+
+The manual lives in the GitHub **wiki** (a separate git repository,
+`<repo>.wiki.git`, default branch `master`): `Home`, `Installing on Unraid`,
+`Setting up your library`, `How your folders are read`, `Browsing and listening`,
+`Metadata and tags`, `Importing audiobooks`, `Moving and deleting`, `Sharing with
+others`, `Settings reference`, `Troubleshooting`, plus `_Sidebar.md` and an
+`images/` folder. It documents use, never the development process.
+
+## 6. HTTP API
+
+`wrap(fn)` turns a thrown error into `400 {error: message}`. `requireAdmin`
+answers `403 {error: 'Only the admin can change things here. Unlock first.'}`.
+Everything is JSON except `/api/cover/:id` and `/api/stream/:trackId`.
+
+**And an error handler behind all of it.** `wrap` is on 44 of about 130 routes.
+For the rest a throw used to fall through to Express's own handler, which
+answers with the **stack trace as an HTML page** — the server's absolute paths
+and line numbers, to whoever asked. `GET /api/books` with no genre threw a
+SQLite bind error, and any approved listener could read
+`file:///…/My Audiobook Collection/server/index.js:742` out of the reply. A
+four-argument `app.use` after every route now catches whatever nothing else did.
+A refusal thrown on purpose keeps its own words and status — that is what `wrap`
+sends and what the pages show — while an error carrying neither is a bug in this
+app: the reason goes to the log, where the owner can read it, and the asker is
+told only *"Something went wrong in the app. The server log says what."* A
+question a route cannot take is a **400 saying what was missing**, not a 500:
+`/api/books` wants a genre and an author or series, `/api/authors` wants a genre,
+and an empty genre is a fair question with an empty answer.
+
+| Method, path | Guard | Purpose |
+| --- | --- | --- |
+| `GET /api/admin` | — | `{required, admin}` |
+| `POST /api/admin/unlock` | — | password → sets `admin` cookie (HttpOnly, SameSite=Lax, 30d) |
+| `POST /api/admin/lock` | — | drops the session and the cookie |
+| `GET /api/users` | — | names |
+| `POST /api/users` | — | add a name |
+| `GET/POST /api/settings` | admin | `{libraries, importPath}` |
+| `GET /api/browse?path=` | admin | folder picker: `{path, parent, entries}` |
+| `GET /api/genrefolders` | admin | `{folders, suggestedParent}` |
+| `POST /api/genres` | admin | make a genre folder, register it if needed |
+| `GET /api/files/status` | — | file-operation progress |
+| `GET /api/import/state` | admin | cache state of the candidate list |
+| `GET /api/import?refresh=` | admin | `{path, genres, candidates, cachedAt, fromCache}` |
+| `GET /api/import/compare` | admin | `{exists, dest, incoming, existing}` |
+| `POST /api/import/skip` | admin | rename the source `Not Imported - …` |
+| `POST /api/import` | admin | file the book; `{replace}` to displace what is there |
+| `GET /api/tagall/status` | — | the run |
+| `POST /api/tagall` | admin | start or resume |
+| `POST /api/tagall/stop` | admin | pause, keeping the queue |
+| `GET /api/validate/status` | — | disk-check progress |
+| `POST /api/validate` | admin | start the disk check |
+| `GET /api/broken` | admin | list, each with `onDisk` |
+| `POST /api/broken/:id/recheck` | admin | re-read one book |
+| `POST /api/broken/:id/delete` | admin | trash it, or forget it when the files are gone |
+| `POST /api/covers/tidy` | admin | move unused covers to `covers/duplicates` |
+| `POST /api/covers/duplicates/delete` | admin | delete the loose ones |
+| `POST /api/covers/duplicates/zip` | admin | zip them, remove the loose ones |
+| `GET /api/convertible` | admin | `{tools, why, books}`: the .m4b and .ogg books, and whether ffmpeg is there to do it |
+| `POST /api/convert/:id` | admin | convert one book to MP3, one at a time |
+| `GET /api/convert/status` | — | the conversion's progress |
+| `GET /api/converted` | admin | what each conversion came from, still on disk |
+| `POST /api/converted/all`, `POST /api/converted/:id` | admin | delete those originals. `all` is declared **before** `:id`, or Express reads "all" as an id |
+| `GET /api/replaced` | admin | copies an import displaced |
+| `POST /api/replaced/all`, `POST /api/replaced/:id` | admin | delete them |
+| `POST /api/move/:id` | admin | move a book to genre/author/series/title |
+| `GET /api/trash` | admin | what is in the trash, with days left |
+| `POST /api/trash/:id` | admin | delete a book to the trash |
+| `POST /api/trash/:id/restore`, `/purge`, `POST /api/trash/empty` | admin | the rest of the trash |
+| `POST /api/scan` | admin | `{path}`: one library folder, or all when empty |
+| `GET /api/scan/status` | — | `{running, done, total, current, books, error, warning, skipped}` |
+| `GET /api/skipped` | admin | what the last scan walked past, and why |
+| `GET /api/permissions` | admin | who the app writes as, and what each folder allows |
+| `GET /api/stats` | — | `{books, files, done, todo}` |
+| `GET /api/untagged` | admin | the Needs-tags list, split `fixable` / `needsLookup` |
+| `GET /api/home` | — | `{continue, recent}` |
+| `GET /api/genres` | — | `[{name, books, series: [{name, books}]}]` |
+| `GET /api/authors?genre=` | — | `[{name, books}]` |
+| `GET /api/books?genre=&author=|series=` | — | `{books, series}` — the cards, and for each series among them `{name, books, highest, missing, unnumbered, says}` |
+| `GET /api/series-gaps` | admin | `{looked, gaps, unnumbered}` — every series in the collection with a volume missing, biggest hole first |
+| `POST /api/series-online` | admin | starts the Wikidata check over every series (§7.10b) |
+| `GET /api/series-online/status` | admin | how far it is, and what each series came back with |
+| `GET /api/search?q=` | — | cards, across everything |
+| `GET /api/year?year=` | — | every book of one year, across every genre. Four digits or an empty list |
+| `POST /api/requests` | — | ask for a book the collection has not got: `{author, title, note}`. Asking twice for the same one answers `again: true` and makes no second row |
+| `GET /api/requests/mine` | — | `{mine, news}` — what this person has asked for, and what they have not been told yet |
+| `POST /api/requests/seen` | — | `{ids}`, filtered to their own: news is said once |
+| `GET /api/requests` | admin | every request, open ones first, with the book that answered each |
+| `POST /api/requests/:id/decline` | admin | `{said}` — turned down, with a reason the person who asked is shown |
+| `POST /api/requests/:id/link` | admin | `{bookId}` — tie it to a book by hand, for what the normalised match will not catch |
+| `POST /api/requests/:id/forget` | admin | drop it altogether, their statistics included |
+| `GET /api/listened` | — | every book that listener has finished, the Listened section's own list |
+| `POST /api/listened` | — | `done: true` marks a book listened; `done: false` deletes the progress row, place and all |
+| `GET /api/books/:id` | — | one book, with `tracks`, `progress`, `folderSeries`, `coverV` |
+| `POST /api/books/:id/unabridged` | admin | `{on}`: the whole book, or a shortened reading. A fact about the book, so the admin states it and everybody sees it |
+| `GET /api/cover/:id?v=` | — | the picture, or a drawn one |
+| `POST /api/cover` | admin | raw image bytes in, `{cover, bytes, what}` out — a pasted cover, written to `covers/` and adopted by the next Save |
+| `GET/POST /api/ha/config` | admin | the address, whether a token is saved, how often to send, which listener; the token itself is write-only |
+| `POST /api/ha/test` | admin | ask Home Assistant who it is, with the saved token |
+| `GET /api/ha/players` | admin | every `media_player.*` HA knows, by friendly name |
+| `GET /api/ha/entities` | admin | what a push would write, without writing it |
+| `POST /api/ha/push` | admin | write every sensor into HA now: the six about the collection, and one per listener |
+| `POST /api/ha/play` | admin **or** `HA_TOKEN` | play a book on one of HA's players; no `bookId` means the one being listened to |
+| `GET /api/ha?user=` | token | the whole state: totals, hours, continue queue, new books |
+| `GET /api/ha/book/:id.m3u?from=` | token | a book as an `#EXTM3U` playlist, from a track on |
+| `GET /api/ha/continue.m3u?user=` | token | the book being listened to, from where it stopped, plus `X-Audiobook-Id` and `X-Audiobook-Seek` |
+| `GET /api/ha/example.yaml` | token | the HA configuration with this server's address in it |
+| **The Audiobookshelf face** (§7.9d) — all of it 404 unless `MA_TOKEN` is set | | |
+| `GET/POST /socket.io/` | — | the Engine.IO handshake the provider opens at setup and will not start without; polling only, `upgrades: []` |
+| `POST /login` | — | `{username, password}`: the password is `MA_TOKEN`, the username is which listener this is. Answers a `LoginResponse` whose token carries the name |
+| `POST /api/authorize`, `POST /logout` | MA token | the same answer for a client configured with a token; and a logout that keeps nothing |
+| `GET /api/libraries`, `/api/libraries/:id[?include=filterdata]` | MA token | the one library, and its filter data |
+| `GET /api/libraries/:id/items?limit=&page=&filter=` | MA token | a page of books in the minified shape; `filter=narrators.<id>` is how browsing a narrator is done |
+| `GET /api/libraries/:id/series\|authors\|narrators` | MA token | the groupings this app keeps; series become MA's collapsible collections |
+| `GET /api/libraries/:id/collections\|playlists\|personalized` | MA token | empty answers of the right shape — this app has none of those |
+| `GET /api/authors/:id?include=items,series` | MA token | one author with their books and their series — what browsing *into* an author asks for |
+| `GET /api/series/:id?include=progress` | MA token | one series, its books in reading order, and which of them this listener has finished |
+| `GET /api/items/:id`, `POST /api/items/batch/get` | MA token | one book expanded, with its tracks and chapters; or several |
+| `GET /api/items/:id/cover`, `GET /api/items/:id/file/:trackId` | MA token in the query | the picture and the audio, fetched by the player itself |
+| `POST /api/items/:id/play` | MA token | opens a playback session and remembers it |
+| `GET /api/session/:id` | MA token | that session again — **what every audio part goes through** for a listener signed in with a password |
+| `POST /api/session/:id/sync`, `/close` | MA token | the position while it plays, and the last word when it stops |
+| `POST /api/session/local`, `/local-all` | MA token | sessions a player kept while it was offline |
+| `GET /api/me`, `GET/PATCH /api/me/progress/:id` | MA token | the listener and their places; a PATCH is seconds into the whole book |
+| `GET /api/download/:id` | — | the whole book as one zip, streamed, with the exact length promised up front |
+| `GET /api/stream/:trackId` | — | audio, with byte-range support |
+| `POST /api/progress` | — | position, per user |
+| `GET /api/lookup/status` | — | retry state of a lookup |
+| `GET /api/lookup`, `GET /api/lookup/:id` | admin | Google Books results |
+| `GET /api/lookup/series-report?limit=` | admin | per book: what Google answered about its series, which of the three places it came from, and what it cost |
+| `GET /api/apply/status` | — | tag-write progress |
+| `POST /api/apply/:id` | admin | apply a chosen result, optionally writing tags |
+
+Cover URLs carry a marker so a browser may cache for a week:
+
+```js
+const coverV = (b) => crypto.createHash('md5')
+  .update(b.cover || `title:${b.title || ''}:day${dayIndex()}`).digest('hex').slice(0, 12);
+```
+
+Falling back to the **title** when there is no picture is what makes a renamed
+book ask for a new drawn cover instead of showing the old name for a week. The
+**day** is in there for the same reason: a drawn cover is redrawn in new colours
+every night (§7.9), and without the day in the marker a browser allowed to keep
+the picture for a week would show last week's colours on a page whose every other
+colour had moved on.
+
+## 7. Server behaviour
+
+### 7.1 Scanning (`scan.js`)
+
+Constants:
+
+```js
+const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
+const COVER = /^(cover|folder|front)\.(jpg|jpeg|png)$/i;
+export const DISC = /^(disc|disk|cd|part|tape)[\s._-]*\d+$/i;
+export const NOT_IMPORTED = 'Not Imported - ';
+export const REPLACED = 'Replaced - ';
+```
+
+`dirs()` skips folders starting with `.` (the trash) and folders set aside by an
+import (either prefix). `audioFiles()` sorts with `localeCompare(…, {numeric:
+true})` so `2` sorts before `10`.
+
+How a third-level folder is read:
+
+| It contains | Read as |
+| --- | --- |
+| audio files | a **book** |
+| several sub-folders | a **series**, each sub-folder a book |
+| sub-folders all matching `DISC` (two or more) | **one book**, discs concatenated in order |
+| exactly one sub-folder | **one book** — a series of one has nothing to group |
+
+**An author who writes in parts.** Some series are published in parts, which on
+disk is `Auteur / Serie / Onderdeel / Boek` — one level deeper than the four this
+walked, so those books used to be passed over entirely with "a folder deeper than
+the layout reads" and never appeared.
+
+The part is read as the **series**, because that is what it is: the books that
+belong together and are numbered against each other. The series above it is kept
+beside it as `parent_series`, which only groups. That way round is why nothing
+else had to change — numbering, completeness (§7.10a), Music Assistant and Home
+Assistant all go on reading `series` exactly as they did.
+
+**The siblings decide what a part is**, because one folder holding one book reads
+equally well as a book nested a level too deep. So a folder of books is read as a
+part only where something beside it holds **two or more** books — and then the
+single-book folder next to it is a part too, which is how `seriesFromSiblings`
+already reasons one level up. Every folder inside a part has to be a book: one
+that is not means this is something else, and the reader is better served by the
+"deeper" note than by a series with a hole in it. One level and no more — a sixth
+is still deeper than the layout reads, and still says so.
+
+**`folderSeries` is the folder the book is in**, which is the last one above it
+and not the second from the top. Those are the same thing at
+`author / series / book`, and they are not once a part is in between. It was the
+second from the top, so for a book in a part the edit dialog's Series field named
+the series *above* the part — and `applyMetadata` only writes a book number while
+that field still names the series the book is in, a guard that stops a number
+from one series reordering a book in another. The two disagreed for every book in
+a part, and a number typed in and saved was dropped without a word.
+
+In the genre column a parent is a row with its parts indented under it, inside
+the genre's own fold; a part does not get a fold of its own, because a third one
+in a column that narrow costs more than it explains. Pressing a part shows that
+part; pressing the parent shows the whole series, and `drawBooks` is given no
+heading there so its own per-series heads separate the parts — each reading
+*Series · The Great Cycle · First Movement*.
+
+A library entry is either a folder of genre folders (`asGenre: false`) or a single
+genre folder (`asGenre: true`). `looksTooDeep()` samples three children and three
+grandchildren, and if audio sits two levels down the scan reports a **warning**:
+the entry is a genre folder and every author would otherwise be filed as a genre.
+
+**Series, from three places** — all shown identically, and only the first moves
+files:
+
+1. a **series folder**: `genre/author/series/book`
+2. **sibling folder names** (`seriesFromSiblings`): folders under one author
+   differing only by a volume number. Two or more make a series. A bare folder
+   named exactly like the prefix becomes book 1. `DISC` names never count.
+3. the **files** (`seriesFromTags`): the movement name `MVNM`, the grouping frame
+   `TIT1`, or a `TXXX` frame described `series`/`album series` — whichever is set
+   and differs from album and title. `movementIndex` gives the number.
+   music-metadata names that frame `TXXX:series` and hands over the string; it
+   was looked for as a bare `TXXX` until 2.14.80, and never read.
+
+**Digits alone are not a series** (`seriesName`, 2.14.80): not from the files,
+not from a lookup's last-resort fallback, and not kept from before by a scan.
+The owner's card read *Series · 123* with no number and no explanation.
+
+**Taking a series off** is its own word. An empty `series` in a pick means
+"nothing to say" — a lookup with its series unticked sends one — so the edit
+dialog sends `clearSeries` when the series it showed is emptied. The dialog shows
+the series the card shows, the tags' included; a series from the tags alone
+moves nothing when left as it is. Cleared and saved with the tags written, the
+grouping frame is removed and the SERIES text emptied, so the next scan does not
+read it back. Saved without writing the tags, the files still say it, and a scan
+will.
+
+Volume splitting, applied to folder names *and* tag-derived names (a tag often
+names the volume, so `The Dark Tower V` must become book 5 of *The Dark Tower*
+rather than a series of its own):
+
+```js
+const VOLUME = /^(.*?)[\s,._-]*(?:(?:book|vol|volume|part|deel|boek)[\s.]*)?(\d{1,3}|[ivxlcdm]{1,7})$/i;
+// roman numerals i–xx map to 1–20
+// the prefix must be at least 3 characters and the number non-zero, else no split
+```
+
+**A file it cannot read.** `parseFile` does not throw on a file it makes nothing
+of — it answers with an empty result — so "did it throw" was never the test. A
+**container** is what says audio was read, which is the test the disk check uses
+too. Either way (no container, or a throw and its words) the file goes on
+`meta.unreadable`, and `noteUnreadable` writes a `broken` row with `reason =
+'unreadable'`: *"1 of 8 file(s) could not be read. 02.ogg: nothing in it that a
+reader recognises as audio"*. `progress.unreadable` counts them and the scan's
+warning line names the total once the books have been read — not before, which is
+where that line first went wrong.
+
+Two rules keep it honest against the disk check, which opens every file and knows
+more: the scan only clears a row **it** wrote (`reason = 'unreadable'`), and its
+`ON CONFLICT` update carries `WHERE broken.reason = 'unreadable'`, so a `damaged`
+or `gone` verdict is never talked over. And the shortcut for an unchanged book
+reads one file, so it may *add* what that file shows — *"The first of 8 file(s)
+could not be read"* — and clear nothing.
+
+Per book, `readMeta` reads every file with `parseFile` — **without** `{duration:
+true}`, which would scan every frame of every MP3 (about four seconds each); the
+header duration is enough for a badge. It collects title, narrator (`composer` **only**: the artist of an
+audiobook is its author, and falling back to it gave every file without a composer
+frame the author's name as its narrator, which then went into the files on the next
+tag write — a startup sweep clears the ones that can be known to have come from
+there, being those where the narrator equals the author and the files carry no
+narrator tag), year, description, per-track titles and durations, and the
+embedded cover. `descriptionOf` drops iTunes normalisation hex. `taggedFields`
+records which of album, title, artist, album artist, narrator, genre, year,
+description, cover, track no the **files** carry.
+
+Cover art is written to `DATA_DIR/covers/<md5 of the bytes>.jpg`, so identical art
+is one file and new art gets a new name. A local `cover.jpg`/`folder.png`/`front.*`
+beside the book is used as `file:<absolute path>` when the tags carry none.
+
+**The unchanged fast path.** A book whose file paths are unchanged is not re-read
+in full; one parse of its first file (`firstFileTells` → `firstFileMeta`) refreshes
+genre, author, series, `tagged`, `tag_series`, `series_no` **and the values the
+same parse carries** — narrator, year, description and the cover art. That is where
+a full read gets them from too: only the running time and the track list need every
+file, so `readMeta` and the fast path share `firstFileMeta` and differ in nothing
+else.
+
+Two rules make that safe. Where the file says nothing, what the app has is kept
+(`told.year || existing.year`), so a description typed into *Edit metadata* is not
+blanked by a scan. Where the file says something, the file wins — the same rule a
+full read follows. The **title** is never touched here, because the folder name
+wins over the album tag and the folder has not changed.
+
+Three things depend on it:
+
+* it must still write `tag_series`/`series_no`, or a series inferred from tags
+  never appears for a library that was scanned by an older version;
+* `addBook(..., force)` bypasses it. A replacing import lands on the very same
+  file names, and without `force` the old copy's duration, cover and description
+  would be kept;
+* it must adopt the **values**, not only the list of field names, or tags written
+  by another program leave the app knowing that a year exists and not what it is.
+
+Progress is a module-level object; `running` is set **before** walking the tree,
+because the walk of a large share takes tens of seconds and the interface would
+otherwise read the scan as finished. `scan()` catches everything: the caller does
+not await it, so an unhandled rejection would take the process down.
+
+Books whose folders are gone are dropped at the end of a scan — but only within
+the scope that was scanned.
+
+**What it walked past.** One `listing()` per folder — one `readdir` giving the
+sub-folders, the ones set aside by an import, the audio, and the other file
+extensions — replaces the `dirs()` + `audioFiles()` pair the walk used to make of
+every folder, so the walk is cheaper *and* can say why a folder yielded no book.
+Every such folder goes into `skippedLast` with a reason: `deeper` (audio below the
+layout, naming the folder it is in), `unsupported` (listing the extensions),
+`empty`, `loose` (audio in a genre or author folder), `aside`, `unreadable`.
+`progress.skipped` counts them, `GET /api/skipped` hands the list over, and the
+page shows it as **Not counted** — a row hidden when there is nothing in it. It is
+the last scan's report, in memory: empty until a scan runs, and after a restart.
+
+### 7.2 Doing the waiting in parallel (`pool.js`)
+
+Nearly all of a scan is waiting for the disk. `LANES = clamp(availableParallelism
+- 1, 2, 8)` bounds how many reads are in flight **globally**, whatever asks for
+them; `lane(fn)` takes a lane, `pool(items, fn, lanes)` keeps that many items
+moving. Only the reads themselves take a lane, so a pool of books whose files
+each take a lane cannot deadlock.
+
+Used by: the scan's book loop and its tag reads, the disk check (books and files),
+`qualityOf`, the import candidate build, and `copyTree` — which also switched from
+blocking `fs.copyFileSync` to `fs.promises.copyFile`.
+
+All SQLite work stays on the main thread (`DatabaseSync` is one synchronous
+connection), and track ordering stays with the caller.
+
+### 7.3 Lookup and tag writing (`google.js`, `tagpool.js`, `tag-worker.js`)
+
+`findMeta(id)` only opens the dialog: it puts the search it would make in the box,
+says so in the body, focuses and selects it, and wires Search and Enter to
+`lookMeta(id, query)`, which is the request. Nothing is asked of Google until then —
+a folder name is usually close and rarely exact, so searching on the click spent a
+request, and the owner's attention, on the wrong book.
+
+**Whose refusal it is.** *Service temporarily unavailable* is what Google says
+both when it is busy and when it will not serve a key, and the two are put right
+in completely different places. `whoseFault(status, url)` asks the same question
+once more **with the key stripped out of the URL**: refused again means Google;
+answered — a 429 from the anonymous quota counts — means the refusal follows the
+key, and the message says so and names what to check in the Cloud Console. Nothing
+is claimed when that second question cannot be asked, or for any status but 503.
+
+This was found the long way round. Three changes were made on hypotheses that
+sounded right — the burst of requests, the country, the message — and none of them
+helped, because the container had been answering a straight `curl` with 503 all
+along. The one measurement that settled it took six requests.
+
+**How much it asks for, which is what finally mattered.** Measured on a key
+Google refuses at random — one request in four or five comes through, whatever the
+spacing, which twelve requests 400 ms apart and five 20 s apart both showed — the
+count is the whole story: eight requests at a quarter each is no answer at all. So
+a lookup is **one request**. The series is read from what the search answer
+carries; where it carries none, the reason line says so and a button, *Look harder
+for the series*, runs what used to run by itself: a `volumes/<id>` per result, the
+ebook catalogue, the widening to forty records. `lookup(book, search, trace, deep)`
+and `GET /api/lookup/:id?deep=1` are that switch.
+
+And a refusal is worth trying again at once rather than waiting it out: the ladder
+is 0.7, 1, 1.5, 2, 3, 4, 6 and 8 seconds — eight goes in under half a minute, which
+on a one-in-four key answers nine times out of ten, where three waits of 10, 20 and
+30 seconds answered less than half the time and felt broken while doing it.
+
+**How it asks, which is why it used to be told Google was busy.** One lookup can
+make a dozen requests — the search, a `volumes/<id>` probe per result, a
+`series/get`, the ebook catalogue, the widening to forty records — and they went
+out in a burst, five probes at once, with only the search ever trying again. A
+burst is what earns a 503. Now:
+
+* **one request at a time**, 150 ms apart (`paced`), search and probes alike;
+* `waitBefore(status, headers, attempt, ladder)` decides what a 503 **or a 429**
+  is worth waiting for. Google's own `Retry-After` beats the ladder; a figure
+  over a minute is read as a refusal rather than a wait, so the dialog says so
+  instead of sitting there. The probes have their own short ladder (1 s, 3 s) and
+  now try again at all, where they used to swallow a 503 as "no series";
+* **answers are kept for five minutes** by URL, so looking the same book up twice
+  costs one search and nothing else, and every book of a series shares the one
+  `series/get`. Only answers are kept, never refusals.
+
+Query: `intitle:<title> inauthor:<author>` unless the user typed their own, five
+results, `https://www.googleapis.com/books/v1/volumes`. A 503 is retried after 10,
+20 and 30 seconds, with `lookupProgress` exposing the attempt and the wait so the
+dialog can show it. Every other status gets a plain-English explanation naming the
+likely cause (bad key, Books API not enabled, quota).
+
+A result has two buttons. **Use metadata** saves nothing: it closes the lookup and opens
+*Edit metadata* on that result — `useMeta` builds the pick the pickers describe and hands it
+to `editMeta(id, over, genre)`, which fills the fields from it and keeps what the dialog has
+no field for (the cover, the series number) in `over` so the save carries them. The genre
+picked in the lookup travels with it and is applied by the same save. Because that dialog's
+Series field is a folder level, a series taken from Google moves the book on save; a result
+with no series, or one whose series was unticked, opens with the series the book is filed
+under, so saving leaves it where it is. **Use + write into MP3s** applies the result and
+writes the tags straight away, without the dialog.
+
+Applying a result updates title, narrator, year, description and cover in the
+database. **Author and genre are navigation keys derived from folders**, so they
+are never changed by a lookup — only written into the tags. Picking one of two
+credited authors changes the artist tags, not the folder.
+
+**The series, and how Google keeps it.** Three facts shape all of this:
+
+* a volume carries `volumeInfo.seriesInfo`, and it holds **no series name** — only
+  `volumeSeries[].seriesId`, `orderNumber` (the real sequence),
+  `bookDisplayNumber` (for display; it can read `2.5`) and
+  `shortSeriesBookTitle`, documented as *the book's* title in the context of the
+  series, and so as often the book's own name as the series';
+* the name lives behind `GET series/get?series_id=`, which answers
+  `{ series: [{ seriesId, title, seriesType, isComplete, … }] }`;
+* `seriesInfo` belongs to the volume, not to a search result, so a
+  `volumes?q=` answer usually leaves it out entirely.
+
+A fourth: Google keeps series data **per record, not per book**. One search answers
+with several editions of a novel, and one of them can be in a series while the rest
+are in nothing. Which is why `books(tail, key)` builds every URL with
+`country=<GOOGLE_COUNTRY>` on it — the catalogue that answers decides what a
+record contains.
+
+So `seriesFor(item, key, trace)` asks in this order and stops at the first answer:
+the **text** of the result (`seriesOf`, free); `GET volumes/<id>` for the
+`seriesInfo`; `GET series/get` for the name, cached by `seriesId` in a
+module-level `Map` for the life of the process — a shelf of one series pays for
+its name once. Where the text already named a series, nothing is asked at all,
+though a `seriesInfo` that came *with* the search fills in a number the words left
+out. Where Google will not name a series, `shortSeriesBookTitle` is the last
+resort, with its trailing volume number split off. A name equal to the book's own
+title is refused.
+
+`ask()` wraps both extra requests: an 8-second `AbortSignal.timeout`, and it
+returns the **status** alongside the body, because "Google refused this" and
+"Google answered, and had nothing" are different answers and the difference is the
+whole diagnosis. A series that cannot be read is a tick the dialog does not offer —
+never a lookup that fails.
+
+**And it says why.** Every result carries a `why` when it offers no series, from
+`whyNone(trace)`: the volume request failed or timed out; it answered 403 (with
+"the key may not read it"); Google's series line is the book's own title, quoted;
+Google files it in series `<id>` but would not name that series; Google keeps no
+series data for this edition, *and another result in the list may be an edition
+that has it*; or nothing anywhere names one. The dialog prints it as
+`No series: <why>` where the tick would be, and the report prints it under the
+empty cell. Without this the dialog is silent about a book it found nothing for,
+and diagnosing that from outside is impossible: the answers come from a key on the
+owner's server.
+
+For the text, a chunk becomes a series only if it matches one of four shapes —
+`Name, #N` / `Name, Book N` / `Name N` / `Name V` (the announcing word is optional,
+the number is not), `Book N of Name`, `A Name Novel`, `The Name Series` — and only
+if what is left is not a bare number and does not itself start with
+`book`/`vol`/`part`/`no`, which is what keeps `(Unabridged)`, `(Penguin Classics)`,
+`(1949)` and `(Book 1 of 3)` from becoming series. Numbers may be digits, words
+(`one`–`ten`) or roman numerals; a number from Google is taken only when whole,
+since `series_no` is an integer and a novella printed as `2.5` filed as 2 would sit
+on top of book 2. Only `Series` is stripped as a describing word:
+`Saga` and `Cycle` are parts of names (*The Twilight Saga*). Google's line is
+**already a name**, so only a trailing volume number is split off it and none of
+the other shapes are tried — they would read *A Long Saga* as a saga called
+*A Long*. A series whose name equals the book's own title is not a series.
+A series taken from the brackets comes **off the title**, so the album tag does not
+carry it.
+
+**Between the results, and then the ebooks.** After every result is resolved,
+`search_` lends a series between them: a result with none takes the series of
+another result that **is the same book** (`sameBook`, comparing titles reduced to
+letters and digits, so a different book that merely matched the words lends
+nothing), and carries `fromEdition` so the dialog can say where it came from.
+Where the *first* result still has none, `ebookSeries(q, expect, key)` asks the
+catalogue where series data actually lives: one `volumes?q=…&filter=ebooks`
+search, whose results usually carry `seriesInfo` in the answer itself, with the
+volume of a matching result asked only if none does. Title-matched the same way.
+Failing *that*, `moreRecords(q, expect, key)` widens the same query from five
+records to **forty** (`maxResults=40&projection=full`): Google holds dozens of
+records per book, and one entered as *A Kiss of Shadows (Merry Gentry Book 1)*
+names the series in its title where the matched record does not. Only records that
+are the same book count — a sibling in the series must not lend its own volume
+number, and another book by the author must not lend anything — and only the text
+and any `seriesInfo` that arrived with the answer are read, so it stays one
+request. Each lending sets `fromEdition` to `edition`, `ebook` or `record`,
+which the page turns into a sentence. Failing everything, each reason line gains
+*"Neither have its ebook editions, nor any of the other records Google keeps of it
+— type the series into Edit metadata and it stays."*
+
+**The limit, stated.** The series panel on books.google.com comes from Google's
+internal Play catalogue. The Books API is a different surface: no parameter makes
+an answer contain a field Google did not put in it, and for many records
+`seriesInfo` is simply absent. Everything above widens the search for a record
+that *does* carry it; where none does, the honest answer is the reason line and
+*Edit metadata*. **Do not add a second service to fill the gap** — that was tried
+and rejected: for a book's metadata, this app talks to Google Books and to
+nothing else.
+
+That rule is about *metadata*, and it still stands. It is not about every
+question: §7.10b asks Wikidata **which volumes a series has**, which is a
+different question, which Google cannot answer at all — its Books API has
+`isComplete` on a series but no endpoint that lists the volumes of one — and
+which nothing on the owner's disk can answer either. One service per question,
+and the question has to be one that service can actually answer.
+
+**Seeing what Google actually answered.** The key is on the owner's container, so
+the only place this question can be asked is their server. `lookup(book, search,
+trace)` takes an optional object which `seriesFor` fills in for the first result:
+`googleTitle`, `subtitle`, `inSearch`, `seriesId`, `orderNumber`,
+`bookDisplayNumber`, `shortSeriesBookTitle`, `bookType`, `asked` (which of the two
+extra requests were made), `from` (`title` | `subtitle` | `series name` |
+`short title` | `the book itself` | `nothing` | `no result`) and the `series` /
+`seriesNo` decided on. `probeSeries(books)` runs that over a list, one book at a
+time, and `GET /api/lookup/series-report?limit=<1..40>` hands the table to
+Settings, taking the books with no series first. It is a diagnostic that spends
+quota, so it is a button with a count on it and never something a page does by
+itself.
+
+It is offered as a tick (`#cs<i>`, on by default) and, when accepted, is stored as
+the **tag** kind of series: `tag_series` and `series_no`. It never moves the book —
+that is *Edit metadata*, which is folders. Two rules follow:
+
+* the tag write puts it in `TIT1` as `<series> <no>` (`Mistborn 2`), one of the
+  places `seriesFromTags`/`splitVolume` read a series from, so the next scan
+  agrees rather than dropping it. `node-id3` has no `MVNM`/`MVIN`, hence `TIT1`.
+* the number is also *Edit metadata*'s to set: `#eSeriesNo` sends `seriesNo` with the
+  series field beside it, which is the only way to correct a number Google had wrong,
+  and the only way to give one to a series that came from the folders. Coming from a
+  lookup it falls back the same way the series field does — `(over && over.seriesNo) ||
+  b.series_no` — because Google names a volume number for very few books, and an empty
+  field would take the book's own number off on the next save.
+* `series_no` is one column shared by both kinds, so it is only written when the
+  series being applied is the one the book is shown under (no folder series, or a
+  folder series of the same name). Otherwise a number from another series would
+  reorder the book inside its own folder's series.
+
+An unticked series sends `series: ''`, and the server then keeps whatever the book
+had rather than blanking it.
+
+What a tag write puts in every MP3 of a book:
+
+| Frame | From |
+| --- | --- |
+| `TALB` album, `TIT2` title | the book title — every file carries the book title, not "018 of 132" |
+| `TPE1` artist, `TPE2` album artist | the author |
+| `TCON` genre | the genre folder |
+| `TYER` year, `COMM` description, `APIC` cover | the book's metadata — the cover being either the file this app keeps or the picture beside the audio, since the Needs-tags list counts what the files carry |
+| `TCOM` composer | the narrator |
+| `TRCK` track number | renumbered in playing order, zero padded to at least two digits: `01/12`, `001/120` |
+
+Empty values are **deleted from the tag object** before writing, because an empty
+frame reads back as "present".
+
+`NodeID3.update` is synchronous and rewrites the whole file. It runs on a small
+worker pool (`tagpool.js`, `min(4, availableParallelism - 1)` threads, lazily
+created, `unref`'d, a dead worker is replaced and its file reported as not
+written). `apply_` hands every file of the book to that pool at once and counts
+as each finishes.
+
+**One writer per book**, in the page as well as on the server. In the page,
+`writingBooks` — a `Set` of book ids — guards `writeWithProgress`, which every
+way in goes through: the card, the Needs tags row, the batch over that list, the
+edit dialog and the lookup dialog. A second attempt on a book already being written
+is answered with a toast and no second bar. The server holds the same rule for
+requests that never went through the page: `writers`, a `Map` of book id to
+that write's progress. Two books — two series — can be written at the same time,
+since each write only ever touches its own book's files. The same book twice is
+refused with *"That book is already being written. Wait for it to finish."*, and
+`GET /api/apply/status?book=<id>` hands back that book's own count, because two
+writers sharing one counter is what produced a bar reading `193 / 157`.
+
+`POST /api/tagall` refuses to start while `anyWriting()`: the run would reach
+the book being written and count it as failed. The reverse guard already existed —
+a single write is refused while the run is going.
+
+### 7.4 The whole-collection run (`tagall.js`)
+
+State in two tables: `tagrun` holds one row (`total, done, written, failed, state,
+current, started_at, finished_at`), `tagqueue` holds what is left. That is what
+makes it resumable: closing the page does not stop it, and `Stop` leaves the queue
+alone so the button becomes *Carry on writing tags*.
+
+States: `idle → running → paused | done`. `startTagAll` resumes when a queue is
+left and the run is not `done`, else clears and refills the queue from every book.
+The loop writes one book at a time (each book's files in parallel on the worker
+pool), drops it from the queue, and yields with `setImmediate` between books. One
+unreadable book counts as `failed` and does not stop the run.
+
+`settleTagAll()` runs at startup: a run left `running` by a container restart
+becomes `paused`, with its place kept. Writing to files is not something to begin
+again on its own.
+
+### 7.5 Import (`import.js`)
+
+The list is kept — a large import folder is not worth walking on every page load
+— but a folder that has **gone** is dropped from it as soon as the list is asked
+for again (one `existsSync` per book, not a walk), because the page would
+otherwise offer a book that cannot be imported: emptying the import folder left
+every one of them on screen. `GET /api/import/state`, which the open panel polls,
+also asks for a look at the folder, rate-limited to one walk every five seconds, so
+an emptied or refilled folder is noticed while the panel is open. The page compares
+the `cachedAt` of the list it is showing with the server's, rather than counting
+changes: the count had already gone up before the watch took its first look, which
+is precisely how an emptied folder stayed on screen.
+
+`importPath` is scanned for book folders however deep they sit: a folder holding
+audio is a book, and so is one whose sub-folders are all discs. Each candidate
+gets a guessed genre (a leading folder that names a known genre), author, series
+and title from the folders around it and from one tag read. The list is cached
+with a signature of the folders, handed back at once next time, and refreshed by a
+background pass.
+
+`clean()` strips characters a path cannot hold. `destinationFor()` builds
+`<genre>/<author>/[series]/<title>`.
+
+**Quality comparison.** `qualityOf(dir)` measures files, bytes, duration, sample
+rate, channels, codec, lossless, and computes bit rate as `bytes * 8 / duration /
+1000` — measured, not read from a header, so a mislabelled file cannot flatter
+itself. `compareWithExisting` returns both sides when something already sits at
+the destination, and the page asks the user which to keep, bit rate first.
+
+Two outcomes, and both leave a folder that names itself:
+
+* **Replace**: the copy that is there is renamed `Replaced - <name>` (with ` (2)`
+  and so on if that exists), a `replaced` row records it, and the incoming folder
+  takes the destination path — so the book keeps its row, and with it every
+  listener's position and every listened mark. The old copy is listed under
+  **Replaced** until deleted.
+* **Keep the one I have**: the incoming folder is renamed `Not Imported - <name>`
+  and left where it is.
+
+Both prefixes hide a folder from the scanner and neither is offered again.
+
+**Rollback.** If the move fails after the old copy was stepped aside, it is
+renamed back and the `replaced` row deleted — otherwise the library points at a
+folder that is not there.
+
+The folder is **moved**, not copied — and `moveFolder` is where the sharp edges
+are. It refuses to move onto a destination that holds anything (an empty one is
+removed first, since a rename onto one is refused on some platforms). A rename that
+fails with `EXDEV`, `ENOTEMPTY` or `EEXIST` falls back to `copyTree` (in lanes,
+async, reporting through `fileProgress`): those are what two Docker mounts, or a
+user share spread over several disks, answer. `EPERM` and `EBUSY` deliberately do
+**not** — they mean something holds the folder or the rights are wrong, and copying
+then would leave the book in two places instead of saying so. After a copy, every
+file of the source must exist at the destination **with the same size** before the
+source is removed; otherwise nothing is removed and it says how far it got. If the
+removal itself fails, the move stands with a line saying the original is still in
+the import folder: undoing a good move over that would be worse.
+`explainFileError` turns `EACCES`/`EPERM`, `ENOSPC`, `EROFS` and `ENOTEMPTY` into
+sentences that say what to do, naming the user the app writes as.
+`pruneEmptyParents` drops the folders the source left empty. The book is filed
+into the library immediately with `addOne` (with `force` when it replaced
+something), and the row is handed back so the page can open the genre and author
+it landed under.
+
+### 7.6 Moving, deleting, restoring (`trash.js`)
+
+`KEEP_DAYS = 30`. A delete moves the book folder into a `.trash` folder **inside
+the same library folder** — same filesystem, and hidden from the scanner by the
+leading dot — and records it. The trash list offers *Put back*, *Delete now* and
+*Empty trash*, and anything older than 30 days is dropped at startup and once a
+day after.
+
+A move shifts the folder and keeps the row, so listened state and position travel
+with it. `dropEmptyParents` removes an author or series folder the last book just
+left, so no empty author is listed; the genre folder itself always stays. A
+restore recreates whatever folders it needs.
+
+### 7.7 Checking against the disk (`validate.js`)
+
+A scan trusts the folders it walks; this does not. It stats and parses **every
+file of every book** (in lanes), and is never automatic — the page warns that it
+takes minutes on a large collection.
+
+| `reason` | What it means |
+| --- | --- |
+| `gone` | the folder is not there any more |
+| `unreadable` | the folder cannot be read |
+| `empty` | no audio files left in it |
+| `damaged` | *n* of *m* files cannot be read (zero bytes, or a header that will not parse) |
+| `changed` | the files the library listed are gone, others are there — a scan will pick those up |
+
+Verdicts live in `broken`, so the list survives a restart, and the trigger in §4
+keeps a deleted book's verdict from being inherited. Each entry offers *Check
+again*, and either *Delete…* (to the trash, files still there) or *Forget it*
+(row, tracks, positions and verdict deleted; there are no files to move).
+
+### 7.8 Cover files no longer needed (`covers.js`)
+
+Covers are named after the image, so new artwork leaves the old file behind.
+**Tidy up unused covers** moves every file in `covers/` no book refers to into
+`covers/duplicates`, overwriting a same-named file there. Past `ZIP_AT = 1000`
+files it says so and asks: decline the delete and they are zipped (a
+hand-written, dependency-free store-only ZIP with a CRC-32 table, reading one
+file at a time) and the loose files removed.
+
+### 7.8b Pasting a cover (`POST /api/cover`)
+
+A cover is the one thing about a book that cannot be typed, and the way somebody
+already has one in hand is the clipboard: right-click an image anywhere, *Copy
+image*, `Ctrl`+`V`. *Edit metadata* has a **Cover** box that takes a paste, a
+dropped file or a chosen one, all through `takeCover(file)`.
+
+**The bytes decide what it is, not the header.** The route parses with
+`express.raw({ type: () => true })`, because a clipboard image arrives as
+`image/png` and a dropped file sometimes with no type at all, and then sniffs the
+magic bytes. JPEG and PNG are written to `covers/<md5><ext>`; **WebP and GIF are
+refused by name** — `covers.js` only keeps `.jpg` and `.png`, so a WebP would be
+invisible to the tidy-up, and it is not a picture an MP3 tag carries. The refusal
+says which of the two it wanted and why, because "that does not look like a
+picture" about a picture is a lie.
+
+**And the thumbnail a lookup offers is held to the same rule.** It was not: it
+read the answer's Content-Type and called everything that was not `image/png` a
+`.jpg`. `outbound.js` accepts any `image/*`, so a WebP thumbnail — which is what
+these are increasingly served as — was written into `covers/` under a name that
+lied about it twice: `GET /api/cover/:id` ends in `res.sendFile`, which types the
+answer from the extension, and the tidy-up that keeps `.jpg` and `.png` would
+have passed over it as neither. `pictureKind` lives in `covers.js` for that
+reason — both ways a cover can arrive ask it now — and a thumbnail that is
+neither JPEG nor PNG is simply not kept, which is the case the next line already
+covered: the metadata is worth saving without the picture.
+
+**The paste is taken wherever it lands in the dialog.** The listener is on
+`#edit`, so the field with focus does not matter — a clipboard carrying a picture
+means the picture. A paste with no image item returns at once and does nothing,
+which is what leaves text pasted into Description alone.
+
+**Nothing is written to the book until Save.** The upload answers with a name and
+the dialog holds it in `pastedCover`, which `save()` puts into the pick as
+`cover`; `apply_` takes `pick.cover` over `pick.thumbnail`, so art pasted onto a
+looked-up result wins. Cancel, Escape and Save all reach the dialog's `close`
+event, which lets the name go and revokes the preview's object URL. That leaves
+an unadopted file in `covers/`, which is exactly what §7.8's tidy-up is for —
+measured: three staged, one adopted, `{ moved: 3, kept: 1 }`.
+
+**And the dialog asks for the current cover afresh, `?t=<now>`.** A book with no
+art gets one drawn, and that answer is cached until midnight (§7.9), so the plain
+address went on showing yesterday's drawing after art had been pasted — in the
+one dialog whose whole job is changing the picture. Seen happening: cover saved,
+file on disk, `/api/cover/1` still answering `image/svg+xml`.
+
+Proved end to end against the demo: a 1588-byte JPEG pasted into the dialog,
+*Save + write into MP3s*, and the `APIC` frame in the file is those same bytes —
+`md5 4cb02297…` in the tag, `4cb02297….jpg` in `covers/`.
+
+### 7.8c Where a path may point (`safepath.js`)
+
+Three routes take a path from outside and hand it to the disk, and each of them
+used to take it as given.
+
+**A cover column.** `GET /api/cover/:id` asks for no password — the listening
+page is open, and covers are part of it — while `books.cover` is written by
+`POST /api/apply/:id`, which is admin-only. A `pick.cover` of `../../etc/passwd`
+therefore turned one admin's save into a file anyone on the network could fetch,
+and the same string was handed to `NodeID3` as the picture to embed. Now
+`storedCover()` guards the write (only a name `POST /api/cover` handed out) and
+`coverFile()` resolves the read: the stored kind must be a bare name under
+`covers/`, the `file:` kind must be a real file inside a library folder, and
+symlinks are followed before the comparison so a link out of the collection is
+caught rather than measured as a string.
+
+**An import source, and a filing source.** `POST /api/import`,
+`/api/import/skip` and `/api/skipped/file` move or rename the folder they are
+given. Neither asked where it came from, so any folder on the host could be
+moved into the collection. An import source must now sit inside `importPath`, a
+filing source inside a library folder, and neither may *be* the root itself.
+`clean()` refuses `.` and `..` for the same family of reasons: an author of `..`
+built a destination one level above its genre folder.
+
+All of it is one module because the rule is one rule, and a rule with two
+readers drifts (§7.10a says the same about the series sentence).
+
+### 7.8a Converting to MP3 (`convert.js`)
+
+Books whose files are not MP3 play but cannot be tagged, so they never leave
+*Needs tags*. `convertible()` is every book with a track that is not `.mp3`, with
+how many and of what kind; `convertBook(id)` turns them.
+
+**It is started, not awaited** — the same shape as `/api/scan`, since 2.10.88.
+`POST /api/convert/:id` used to answer only when the conversion was over, so the
+page held one HTTP request open for the length of an m4b: minutes. Anything that
+dropped that request — a reverse proxy's idle timeout, a laptop going to sleep, a
+blip — reached the page as the conversion *failing*. The bar said so and left,
+*Convert to MP3* came back enabled, and ffmpeg carried on in the container with
+nobody watching. Both halves of that are what the owner reported, and they were one
+cause.
+
+The route answers `{started: true}`, or **409** when one is already running,
+because that refusal belongs to the press. Everything else is
+`GET /api/convert/status`, which is a short request however long the work is, and
+which carries the outcome — `files` and `kept` on success, `error` on failure —
+precisely so it outlives the request that asked. The page follows it with
+`trackProgress` and no `until`, and `window.begin` rejoins a conversion already
+running, the way it already rejoined a scan: a page reloaded during one is in the
+same position as the page that started it.
+
+The lock stays inside `convertBook`, taken before the first await (§ below). The
+route's own check is a second reading of it on purpose — it exists to answer the
+press — and a lost race between the two is caught: `convertBook` throws, and the
+route records that only when nothing is running, so a complaint about a press
+can never overwrite a live conversion's state.
+
+**The tools ship with the image.** `apk add --no-cache ffmpeg` in the Dockerfile,
+which brings ffprobe with it and is by definition the build that image is for, so
+they are found on the `PATH` and there is nothing to install, upload or explain.
+`toolStatus()` still runs each with `-version`, because "it is in the container"
+is a claim the code can check — once: a good answer is remembered, because the
+first start of a program after a container boots can fail on its own, and that
+answer used to switch converting off for as long as the page stayed open. `toolsWhy()` is what `/api/convertible` and
+`convertBook` refuse with, and it should only ever answer for a container built
+before 2.3.0.
+
+They were uploaded in Settings in 2.2.72 — the owner's own static builds, kept in
+`DATA_DIR/bin`. The first thing that happened was `spawn ENOEXEC`, so that whole
+path is gone: see `fixes.md`.
+
+**A tag in front of the audio.** A tagger meant for MP3 will write an ID3 block
+onto an `.ogg` — the owner's were 100 kB of it, cover included — and the Ogg demuxer
+does not look past it: `ffprobe` calls the whole file *Invalid data found when
+processing input*, and `music-metadata` fails the same way, which is why such a
+book also shows no length. `id3Skip(file)` reads the length out of the ID3 header
+(four seven-bit bytes plus ten) and every ffprobe and ffmpeg call gets
+`-skip_initial_bytes` **before `-i`**. An `.mp3` is never skipped: there the tag
+belongs where it is.
+
+**And the scan steps over it too, which for two years it did not.** The sentence
+above — "which is why such a book also shows no length" — stood in a comment from
+2.3.40 describing a fault nobody then went and fixed: converting learned to skip
+the tag and reading never did, so those books kept a length of 0 *and* were
+written into `broken` as having nothing in them a reader recognises as audio.
+`scan.js` now gives one file one second chance: when `parseFile` comes back with
+no container and `id3Skip` says there is a tag, it reads the same file again from
+past it with `parseStream`, telling the reader what the stream is since it can no
+longer see the name. A file that reads normally is never opened twice, and if the
+second attempt fails as well the first answer stands, because its words are the
+honest ones. `id3.js` holds that one function for both: `convert.js` imports
+`scan.js`, so `scan.js` cannot import back.
+
+And `ffprobe` runs with `-v error`, never `-v quiet`: quiet throws away the one
+line that says what is wrong, leaving "ffprobe exited 1", which sends nobody
+anywhere. The file's own name is put in front of it, since a book can be forty of
+them.
+
+**A chapter becomes a track**, which is what this app calls a chapter.
+`ffprobe -show_chapters` gives the boundaries; one `ffmpeg` pass with
+`-f segment -segment_times` writes the pieces, which are then named
+`NN - <chapter>.mp3` and given that chapter as their title tag. No chapters means
+one MP3, named after the file it was. The cover the source carried is written
+beside the audio as `cover.jpg` if there is none, since `-vn` drops it out of the
+MP3s and both the scan and the tag writer read a cover from there.
+
+Progress is **minutes of audio**, not files: `-progress pipe:1` is parsed for
+`out_time=` (not `out_time_ms`, which is microseconds in some builds and
+milliseconds in others), so a single twenty-hour file still has a bar that moves.
+
+The originals are moved to `.converted/<stamp>-<book folder>` **inside the same
+library folder** — a move, not a copy across volumes, and a dot folder, which
+every walk skips — and recorded in `converted`. The book is then re-read with
+`addOne(force)`, so its tracks are the new files.
+
+### 7.9 A cover for books that have none (`placeholder.js`)
+
+`GET /api/cover/:id` answers with a drawn SVG when the book has no art **or when
+the art it names is no longer on disk** (a deleted cover file used to render as a
+broken image). Only a book that does not exist is still a 404. This is what
+removed the last `onerror` fallbacks from the pages.
+
+The drawing, on a 400×600 canvas (2:3, the shape of real art):
+
+* hue = first two bytes of the md5 of the title, mod 360, **plus 37° per day**
+  (`dayIndex()`, days since the epoch in the server's own timezone); a second hue
+  at +42°. So a book holds its cover all day, the shelf turns over every night, and
+  the cycle is 360 days because 37 and 360 are coprime. `placeholderCover` takes
+  `day` as an argument, which is the only way a test can look at another day.
+* background: diagonal gradient `hsl(h, 34%, 19%)` → `hsl(h2, 42%, 8%)`, with two
+  soft radial glows (top-left in the first hue, bottom-right in the second) —
+  the same treatment as the app's own background
+* a spine: 22px of black at 0.28, and a 1.4px white line at 0.12 beside it
+* headphones, centred at (200, 250): an arc `M126 250 A 78 78 0 0 1 282 250`
+  stroked 15px round, and two 32×78 rounded earcups, all white at 0.15
+* `AUDIOBOOK` at (42, 62), 14px, letter-spacing 4.5, white at 0.42
+* a 46×4 accent rule in `hsl(h2, 90%, 68%)` above the title
+* the title bottom-anchored, bold, at 40px (max 4 lines), else 33px (5), else
+  27px (6) with an ellipsis; wrapped greedily on an estimate of `0.53em` per
+  character within 318px
+* the author above the bottom edge at 20px, uppercase, letter-spacing 1.6, white
+  at 0.66; omitted when unknown
+* a hairline inner border, white at 0.09
+
+Sent as `image/svg+xml` with `Cache-Control: public, max-age=<seconds to local
+midnight>` (`untilTomorrow()`, never under 60): the colours change then, and a
+week — right for a real picture — would hold yesterday's on screen. `coverV` puts
+the day into the marker for a book with no art, so the URL changes too. Nothing is
+written to disk. A book with a drawn cover still counts as needing tags.
+
+The gradient ids carry the hue and the day (`g${h}x${day}`). SVG ids are global to
+the document the picture lands in, so two drawn covers inlined in one page would
+both be painted with the first one's gradient — which is exactly what happened to
+the page that made the screenshot above.
+
+### 7.9a Home Assistant (`ha.js`)
+
+No custom component, and nothing pushed: HA polls, which is the only shape that
+works for a container with no broker and no cloud account.
+
+`haState(req, version)` answers with the totals (`books`, `files`,
+`listened_books`), `hours: {total, listened, left}`, the `continue` queue and the
+`new` books. The hours are rounded to a tenth. **Listened hours** count a book
+marked done in full, and a book in progress as the tracks whose `idx` is below the
+listener's plus `position`:
+
+```sql
+SUM(CASE WHEN p.done = 1 THEN b.duration ELSE
+  COALESCE((SELECT SUM(t.duration) FROM tracks t
+            WHERE t.book_id = b.id AND t.idx < p.track_idx), 0) + p.position END)
+```
+
+`?user=` picks whose progress is reported **for the machine holding the token**;
+with exactly one listener in the app it is that one, and with none named the sums
+cover everybody. A browser that has signed in gets its own listening whatever the
+address says — `forHA` lets a request through when no `HA_TOKEN` is set, so until
+2.10.48 this was a way for one listener to read another's (§ *whose read is it*).
+
+**Carrying a book on to a media player** is the part that needed design. A player
+cannot be told "play book 412 from 2h24m", but it takes a URL, and most players
+accept an `#EXTM3U` and play it through. So `bookPlaylist(req, id, from)` writes
+the book as a playlist, `from` dropping the tracks already heard, and the JSON
+carries `position` — the seconds into the track it starts at — for
+`media_player.media_seek`. `/api/ha/continue.m3u` is that in one fixed address:
+the first unfinished book of the queue, from its track, with `X-Audiobook-Id` and
+`X-Audiobook-Seek` headers so an automation need not read the JSON too.
+
+`baseUrl(req)` decides what goes into those URLs: `BASE_URL` when set, else
+`x-forwarded-proto`/`x-forwarded-host` or the request's own — a media player has to
+fetch the audio itself, so a URL that only works from the browser is no use.
+`haYaml(req)` writes the HA configuration with that address already in it, which is
+the one thing a copied example always gets wrong; when `HA_TOKEN` is set it prints
+`YOUR_HA_TOKEN` as a placeholder and never the token itself.
+
+`tokenOk(req)` gates every `/api/ha…` route when `HA_TOKEN` is set. `/api/stream`
+is deliberately **not** gated: a speaker fetching the audio sends no token, and the
+listening page has always been open on the same network.
+
+Positions are not read back from a player. The app knows what the listening page
+told it, so playing on a speaker and later carrying on in the browser starts where
+the browser last was — said plainly in the README rather than half-solved.
+
+#### Driving Home Assistant, from a page of its own
+
+The direction that needs nothing on the HA side. `/ha` is a full page rather than a
+dialog section because it holds an address, a secret, a schedule and a list of
+somebody else's devices.
+
+**The token.** A long-lived access token is made in Home Assistant (profile →
+Security) and pasted into the page. It lives in the `settings` table under
+`haToken` and is **write-only from the page's point of view**: `GET /api/ha/config`
+answers with `hasToken` and never the token, an empty `token` in a POST leaves the
+saved one alone, and `"-"` forgets it. That shape is what lets the page save the
+schedule without having to hold the secret.
+
+**`call(path, opts)`** is the one way out: `Authorization: Bearer <token>`, a
+10-second timeout, and `explainHA(status)` turning 401/403/404 into what to do
+about it — a refused token, or an address with a dashboard path on the end, which
+are the two mistakes everyone makes. Anything else says which HTTP status came
+back.
+
+* `haPing()` → `GET /` and `GET /config`: which Home Assistant, which version.
+* `haPlayers()` → `GET /states`, filtered to `media_player.` and sorted by the
+  friendly name someone gave the device.
+* `haEntities(req, version)` builds the six collection sensors from `haState` —
+  the ones listed in the README — **plus one per listener**, with
+  `friendly_name`, `icon`, `unit_of_measurement` and `attribution` so they look
+  native in HA.
+
+**A sensor each, because a household is not one account.** The six above are
+about the collection and about one chosen listener; `sensor.audiobook_<name>`
+is about a person. Its **state is the book they are in the middle of** — the
+title, so a dashboard card can show it without digging into attributes — with
+the chapter, how far through, hours in and left, when they began it, and the
+playlist to carry on from. Somebody with nothing on the go says `nothing`
+rather than borrowing the newest book in the house.
+
+**And the whole shelf, not one book** (2.14.24). A person reading two books at
+once showed one of them. The attribute `listening` is their *Continue
+listening* shelf — every book not yet read, newest first, up to the twelve
+`/api/home` shows — each with chapter of chapters, per cent by time, hours in
+and left, started, last heard and its playlist. `haState` gives it as
+`listening` beside `continue`, which keeps its old meaning (the twelve newest
+places, read ones included and marked) for whatever already reads it.
+
+Two things changed underneath, both the shelf's rule reaching Home Assistant:
+
+* **read is `countsAsRead`**, the tick *or* a place at the end of the last
+  track. It was the tick alone, so a book played out and never ticked stayed
+  "the one they are in the middle of" on the sensor while the shelf had already
+  put it away. `listened_books` is `readCount` for the same reason.
+* **the twelve are counted after the filter.** The query took the newest twelve
+  places and then dropped the read ones, so somebody with eight finished books
+  among their last twelve had four on the sensor and more on the shelf.
+  `sensor.audiobook_next_up`'s queue, `/api/ha/continue.m3u` and the queue on
+  the app's own HA page read `listening` too.
+
+**A finished book stays in the list**, marked read, with **how long that person
+took over it**. That is from the day they first opened it to the day they
+finished: not hours of audio, which is a fact about the book, and not time since
+they last touched it, which is a fact about nothing. The app knew neither —
+`progress.updated` has always been the *last* touch — so `progress.started` is
+written on the first place kept in a book and never touched again, and carried
+into `completions` when the book is finished, because a progress row does not
+survive un-ticking a book and a completion is meant to. A book begun before any
+of that was written down **says nothing** rather than guessing: a made-up start
+date on a dashboard is worse than a blank one.
+
+An entity id has to be a slug and a listener's name is whatever they typed, so
+two names that slug the same would write over each other's sensor. The second
+gets its position appended — ugly, and better than one of them silently not
+existing.
+* `haPush()` writes them with `POST /states/<entity>`, one request each, and keeps
+  `lastPush` (when, how many, the error) for the page to show.
+* `haPlay(req, {player, bookId, from, seek})` calls
+  `POST /services/media_player/play_media` with the book's playlist URL, waits
+  three seconds, then `media_seek` with the seconds into that track; a player that
+  cannot seek is caught and the book still plays. With no `bookId` it takes the
+  first unfinished book of the queue, which is what an automation wants.
+* `scheduleHaPush(version)` re-arms an `unref`'d interval on every config save and
+  at startup. It has no request of its own, so `rememberRequest(req)` keeps the
+  last real one: URLs a media player cannot reach are worse than a late push, and
+  inventing a hostname would produce exactly those.
+
+**Two facts about HA's REST API** that shape this. States written with
+`POST /states/...` are not restored when HA restarts, which is why the push repeats
+on a timer rather than firing once. And nothing there is a device or an entity
+registry entry, so the sensors carry no `unique_id` and cannot be renamed in HA's
+UI — the trade for needing no component.
+
+**No YAML.** The generator that used to write a `configuration.yaml` fragment was
+removed at the owner's word: *"it must be used with the integration, no YAML code
+copying."* Do not bring it back.
+
+#### 7.9c Filing a folder a scan walked past (`skipped.js`)
+
+*Not counted* named every folder a scan could not read as a book and left the
+fixing to a file manager. This module does the fixing, from the same list.
+
+`filesOf(source, reason)` is what the folder would give up: for `loose` only the
+audio lying directly in it — the path in the list is a genre or author folder, and
+moving *that* would move the whole genre — and otherwise every audio file below it,
+each with the sub-folder it came from, deepest last.
+
+`guessFor(source, reason)` fills the dialog before anybody types. The layout says
+most of it: `<library>/<genre>/<author>/…`, so the folders give the genre, the
+author and — for a book one level too deep — the series and the title. The first
+file's tags fill only what the folders did not: a folder name is what the owner
+sees in the list, while an album tag is as often the wrong book, copied in with a
+file. The genres on offer are the library's own
+genre folders, never a free-text field: a typo there would make a genre.
+
+`fileSkipped({source, reason, genre, author, series, title})` moves the audio into
+`destinationFor(...)`, adds the book with `addOne(..., force: true)` and hands back
+the row it landed on. Three details are not optional:
+
+* **The disc name goes in front of a file only when there is more than one disc.**
+  Otherwise every single-disc book would carry `Disc 01 - ` on every file.
+* **A book that is only too deep is flattened where it is.** Its destination *is*
+  its source; refusing that as "already there" would refuse the commonest case.
+  The refusal is kept for a source that has nothing in sub-folders to flatten.
+* **The folders it emptied go, the genre folder never does.** `pruneEmptyUnder`
+  takes the disc folders, `pruneUpTo` the ones above them, stopping at the genre
+  folder — which is the library itself.
+
+`GET /api/skipped/guess` and `POST /api/skipped/file` are both admin-only; the POST
+also writes the tags through `applyMetadata` when asked, and calls
+`forgetSkipped(source)` so the row leaves the list without a rescan.
+
+#### 7.9b Downloading a whole book (`zip.js`)
+
+The browser's own controls offered a download of the single track that happened to
+be playing. A book is not one track, so `GET /api/download/:id` answers with every
+audio file of it in one archive.
+
+**Stored, not deflated.** An MP3 is already compressed, so deflating costs CPU for
+nothing — and storing has a second effect that matters more: with each size known
+from the disk beforehand, `zipLength(entries)` works out the archive's exact byte
+count before a byte is sent, so `Content-Length` is real and the browser shows a
+progress bar with an end rather than a spinner.
+
+**Streamed.** `writeZipTo(out, entries)` writes a local header, pipes the file
+through with `fs.createReadStream`, and follows it with a data descriptor — the
+CRC is only known once the bytes have gone past, which is what descriptors are for
+(flag bit 3). Nothing is ever held in memory, and every `write` is awaited: a book
+is larger than any socket buffer, and ignoring backpressure is how a small
+container dies sending one.
+
+**ZIP64 where it is needed and nowhere else.** Per entry when a file passes 4 GB,
+per directory entry when its offset does, and the ZIP64 end record when the
+archive or the count does. Some readers still baulk at ZIP64 fields on small
+files, so they are not written by default.
+
+Two details that come from real collections: `uniqueNames()` renames a collision
+rather than letting it overwrite, because two disc folders both hold an `01.mp3`;
+and a file that grew or shrank between the `stat` and the read is padded or cut to
+the size that was promised, since `Content-Length` has already gone out and a
+short archive is worse than a padded one.
+
+The name is `<Author> - <Title>.zip`, sent twice — plain for old clients and
+`filename*=UTF-8''…` for accents. The route is not behind the admin password:
+the audio it contains is already open to anyone who can reach the listening page.
+
+#### 7.9d Music Assistant, through an Audiobookshelf face (`abs.js`)
+
+**Why an imitation.** Music Assistant has no supported way to load a provider
+written by anyone else. Its maintainers were asked for an extension point — a
+folder or an entry point — and declined: *"No, we don't consider that. Just
+follow the development workflow and we're open for PR's"*
+(music-assistant/discussions/4167). The one community route,
+`music-assistant-plugin-manager`, is a pre-release package that monkey-patches
+MA's provider loader at runtime and needs MA started through a wrapper; that is
+not a thing to put under somebody's house. What MA *does* ship is an
+**Audiobookshelf** provider, and ABS is the same shape of thing this app is: a
+self-hosted server with books, series, chapters and a listening position. So
+this app answers as one, and MA needs no changes at all.
+
+**What the contract actually is.** Not Audiobookshelf's documentation — what
+`aioaudiobookshelf`, MA's own client, will parse. Its models are mashumaro
+dataclasses: a field with no default is required and a missing one is a hard
+parse error, which reaches the owner as "Music Assistant cannot connect" with
+nothing saying why. Two properties of that client make the imitation survivable:
+`forbid_extra_keys = False`, so extra fields are ignored and only the required
+ones matter; and it still accepts the **pre-2.26 token**, so this app hands out
+one token and never enters the refresh-and-logout dance.
+
+**Logging in is how a listener is chosen.** MA asks for a username and a
+password. The password is `MA_TOKEN`; the username is the listener's name in
+this app, and a name it has not seen is added the way the listening page's own
+dialog would add it. The token handed back is `base64url(name) + "." +
+MA_TOKEN` — exactly as strong as `MA_TOKEN`, since it contains it — so every
+later call knows whose place to read and write. A bare `MA_TOKEN` is accepted
+too and means the nameless listener.
+
+**The shapes.** One library holding everything (genres are a field on a book
+here, not a shelf). A book is a `LibraryItem` with a `Book` inside it, minified
+for a list and expanded for one book; every file of the book is one audio file
+and one track, laid end to end by `startOffset`, and one chapter each, because
+this app knows no finer division. Series become MA's collapsible collections.
+Collections, playlists and shelves answer **empty in the right shape** rather
+than 404: the provider reads them, finds nothing and moves on, where a 404 reads
+as a broken server.
+
+**The session has to be remembered, and which way a listener signed in decides
+whether anything plays at all.** The provider streams two different ways. A
+listener configured with an **API key** gets `{base}{contentUrl}?token=…` and
+fetches the files straight from here. A listener configured with a **username
+and password** — which is how this app tells one person from the next, so it is
+the normal way here — never does: Music Assistant serves every part of the book
+through an address of its own, and that address calls `GET /api/session/<id>`
+first and redirects to the file. A 404 there becomes `SessionNotFoundError`,
+which it turns into a 404 of its own, and **nothing plays** — not one book,
+whether it was half finished or never started. So sessions are kept in memory,
+answered again under the id MA is holding, and `sync` and `close` write the
+position through the same walk-back over the tracks a progress `PATCH` uses.
+
+**And the id carries the book, so a restart costs nothing.** Memory is emptied
+by every update to this container, while Music Assistant goes on asking for the
+id it holds — and its part-fetching route does *not* recover from a session it
+cannot find the way opening one does: it answers its own 404 and ffmpeg stops
+with *Server returned 404 Not Found*. Reading the book back out of `pl-<id>-…`
+means a session this process never opened still answers, with the tracks a part
+request needs, and a closed one keeps working for whatever is still in flight.
+The map is then only a memory of **which listener** opened it; a session
+rebuilt from its id belongs to whoever is asking, which is the same person,
+since the token says so.
+
+**A playback session is described, not opened.** Pressing play calls
+`POST /api/items/<id>/play`, and this app streams the files straight out, so
+there is nothing to open and nothing to keep: the answer says what *would* have
+been opened, and what matters in it is `audioTracks`, where Music Assistant
+reads the addresses it will fetch. It opens at the place the listener already
+has rather than at nought.
+
+It is also the one answer here that was **invented rather than transcribed**,
+and it went out missing seven required fields. The page said so exactly — *Field
+"device_info" of type DeviceInfo is missing in PlaybackSessionExpanded
+instance* — which is the kindest failure in this whole integration and the only
+one that named itself. `coverPath` is worth singling out: it is a plain `str`
+there, so a book with no picture sends an empty string, never a null.
+
+**Every paged listing must answer an empty page past the end.** The client's
+pager is a bare `while True` — page 0, 1, 2 … — and the caller stops only when a
+page comes back with no results in it. A listing that ignores `page` and answers
+with the whole list each time is therefore not a wrong answer but an **infinite
+loop inside Music Assistant**: the folder never opens, and nothing anywhere logs
+a reason. That is what the series listing did. All four listings — items,
+series, collections, playlists — go through one `paged()` helper now, and a
+request with no `limit` at all is one page of everything followed by nothing.
+
+**Browsing *into* a thing asks for it by id, and a 404 there is not gentle.**
+The Authors and Series folders list what this app hands out, and opening one
+calls `GET /api/authors/<id>?include=items,series` or `GET
+/api/series/<id>?include=progress`. The client raises `NotFoundError` **bare**,
+so its `str()` is empty: Music Assistant logs `Error handling message:
+music/browse:` with nothing after the colon and shows the reader a toast saying
+only *NotFoundError*. That is what a missing address looks like from the outside
+— which is why both answer, and why an author or series nobody has is a 404 on
+purpose rather than an empty shape. A narrator is different again: it is not
+asked for, it filters the item list as `filter=narrators.<the id we handed
+out>`, and ignoring that would answer with the whole collection under one
+narrator's name.
+
+**Two traps that would each have been invisible.** The client joins its base
+address to an endpoint that already begins with a slash, so every call arrives
+as `//api/…`; Express does not read that as `/api/…`, so a middleware strips the
+extra one before anything else sees it. And MA builds the audio address itself
+as `${base}${contentUrl}?token=…`, so `contentUrl` has to be a path from the
+root and the route behind it has to take the token from the **query** — a player
+fetches the audio itself and sends none of our headers.
+
+**Progress both ways.** `GET /api/me` carries every place this listener has, and
+a `PATCH /api/me/progress/:id` from MA is seconds into the *whole* book, which is
+walked back over the tracks into the track and position this app keeps. The tick
+is set when MA says the book is finished, and `MAX(progress.done, …)` on the
+upsert means a book already ticked here is not un-ticked by a stale report.
+
+**Three smaller rules this face holds to.** No size is read off the disk for a
+book: `expandedItem` runs for every part Music Assistant fetches while playing,
+so a book of forty files was forty `statSync` calls per part over a share — and
+the client needs no size, while the minified shape was already answering 0. The
+**tick is only moved by something that says so**: `writeProgressFromWhole` takes
+`true`, `false` or `undefined`, because the client sends `isFinished` and the
+position in *separate* calls and a session sync says nothing about either — so a
+position with no word about finishing leaves the tick exactly as it was, and
+`isFinished: false` genuinely takes it off. And the **handshake has a ceiling**:
+it is the one address here that cannot ask for the token, so eight sessions is
+all it will hold and the ninth is refused rather than allocated.
+
+**The socket is not optional, which is worth knowing before anyone trims it.**
+The provider's `handle_async_init` calls `init_client()` — `socketio.AsyncClient
+.connect(url)` — and the only exception caught around it is a login error. With
+nothing listening at `/socket.io/`, setup raises `ConnectionError` and the
+provider never connects at all; every carefully shaped answer above is then
+unreachable. There is no setting to switch it off.
+
+So `abs.js` answers **Engine.IO v4 over long polling**, and nothing else. The
+open packet declares `upgrades: []`, so the client does not try a WebSocket it
+would be refused: writing framing, masking and ping by hand to carry events
+nothing sends yet would be the larger change and the less honest one. A poll is
+*held* for the ping interval rather than answered empty, or the client would
+return at once and the two would spin; it lets go on `close` and on `finish`, so
+a reader who has gone leaves no timer and no response behind. The packets used:
+`0` open, `2` ping, `3` pong, `40` connect, `42` an event, joined by `\x1e`.
+
+**What is not there**: events pushed *from* this app, so a book added or renamed
+here reaches MA on its next sync rather than the moment it happens — the channel
+is open, nothing is sent down it. And podcasts, which this app does not have.
+
+### 7.10 Search
+
+One box, one query. Every word must appear somewhere in the same book, matched
+against a haystack of seven columns:
+
+```js
+const HAYSTACK = ['b.title', 'b.author', 'b.genre', 'b.series', 'b.tag_series',
+                  'b.narrator', 'b.description'].map((c) => `COALESCE(${c}, '')`).join(" || ' ' || ");
+// WHERE <haystack> LIKE ? AND <haystack> LIKE ? ...   (one per word)
+// ORDER BY CASE WHEN b.title LIKE ? THEN 0 WHEN b.author LIKE ? THEN 1 ELSE 2 END,
+//          b.author, b.series_no, b.title
+// LIMIT 200
+```
+
+At most 6 words; fewer than two characters in total returns nothing. `COALESCE`
+on every column matters — concatenating a NULL in SQLite yields NULL and the book
+would never match. Results carry the same fields as an ordinary book list, so
+both pages render them with the code they already have.
+
+### 7.10a The three things on a card that are also a way somewhere
+
+A card names the **author**, the **year** and — where it is not already the
+answer — the **genre**, and each of those is the start of the next question:
+*what else has this one written*, *what else is from 2015*, *what else is in
+Fantasy*. The way to ask was to read the word off the card, find it in a column
+and click that. A search made it worse: a result can come from any shelf at all,
+and the only way back to where it lives was to go hunting for the author's name.
+
+So each is a button. `byLine`, `yearBadge` and `genreBadge` live in `browse.js`,
+which both pages load, and `wireCardLinks()` hangs the handlers on after each
+draw the way the cover handlers already are — so a card drawn by either page's
+`drawBooks` behaves the same. They carry **`data-` attributes rather than an
+inline `onclick`**: these hold names, and an author called *O'Brian* ends an
+inline handler's string argument in the middle, leaving whatever the rest of the
+name spells to run as code.
+
+The author and the genre go where they already went — `openInLibrary(genre,
+author)` and `selectGenre` — and the year is the one new route, `/api/year`:
+every book of that year across the whole collection, since a year is not a shelf
+and what is wanted is the run of them across all of the shelves.
+
+**Whether to say the genre is asked of the answer, not of the column.** It
+asked `state.genre` first — what the *column* has selected — and a search run
+after browsing an author showed no genres at all, the column still holding the
+one from before. Found by looking, in a browser, after every check passed; it is
+a check now.
+
+**And since 2.14.48 every answer carries it, so every card says it.** It was
+left off a view of one genre on purpose, `/api/books` sending none back, as a
+word repeated on every card. On a phone that left an author's books saying
+nothing about where they were: one column is on screen at a time, and the two
+that say *Fantasy* and *Stephen King* on a wide screen were off to the side.
+The owner asked for both. So `/api/books` sends the genre like every other route,
+and an author's books open under a head of their own — `Fantasy · Stephen King
+· 5 books`, the genre a way into it, the same family as a year's head
+(`authorHead` in `browse.js`, called by both pages' `selectAuthor`). The author
+on a home tile is a link too, to the same place; it stops its click, because
+the tile's own click starts the book.
+
+**The player says the genre too** (2.14.56), beside the author on one line — in
+the bar and on `/player` — and it is a way there. On a page with the columns
+(`/`, `/admin`) it calls `selectGenre` at once. `/player` and `/ha` have none,
+so `goToGenre` writes it to `sessionStorage.openGenre` and goes to `/`, where
+`openGenreAsked` opens it once the shelves have loaded and forgets it, so a
+reload does not open it again. The book crosses with the carry like any other
+move between pages, and goes on playing. A book with no genre shows nothing —
+no dot and an empty link.
+
+`/api/year` takes four digits or answers with an empty list. An **empty** year
+is the part of that guard which does something: the column is text and an
+undated book holds `''`, so without it `?year=` hands back every undated book in
+the collection. The rest of the guard — `201`, `MMXV`, a quote and an `OR` —
+rejects input that the parameterised query would match no row for anyway.
+Checks for those four were written, passed, and were **taken out again**: each
+would have passed with the whole guard deleted, which makes it a check that
+cannot fail. The guard stays, because bounding what reaches a query is worth
+doing either way; the suite simply does not pretend to cover it.
+
+### 7.10b Which volumes a series actually has (`wikidata.js`)
+
+§7.10a counts the numbers the collection carries, so it can say a volume is
+missing *between* them and never that a later one exists. Nothing on the disk
+knows that, and Google cannot say either. **Wikidata** can, and structurally
+rather than in prose: a work is `part of the series` (P179) with a `series
+ordinal` (P1545). Two requests, no key, no quota.
+
+**A name is not an identifier**, which is the whole difficulty. Searching *The
+Dark Tower* answers with a novel series, an album, a film and a video game — all
+four, measured. So the candidates are narrowed to the ones describing themselves
+as a series (and not a film, game or album), their volumes are fetched in **one**
+query with `VALUES ?series { … }`, and the right candidate is then chosen by the
+shelf: whichever one's volumes look most like the titles already here. Where none
+of them matches anything on the shelf, the answer is *"probably a different
+series"* with the one it found named — never that series' volumes reported as
+yours.
+
+**A volume is yours if you have its number or its title.** The number alone was
+not enough and the first real run said so: a series whose books carry no volume
+numbers had every volume reported missing, when they were on the shelf
+unnumbered. Where the shelf has no numbers at all the comparison is by title
+only, and the page says so rather than letting the reader assume otherwise.
+
+**What is cached is what Wikidata said, never the conclusion.** Which entry is
+right depends on the books asked about, and two series can share a name inside
+one collection; caching the verdict handed the second one the first one's. A
+refusal or a timeout is not cached at all, or pressing the button again would
+report the same failure without asking.
+
+**Their pace, not ours.** Measured against the live service: at 350 ms between
+calls, two of seven series came back **429**; at that rate a collection of fifty
+would mostly fail. Searching keeps 350 ms, the query service gets 1200 ms and a
+30-second timeout — a dozen seconds lost three series in one run — and a 429 or a
+timeout is waited out once, for as long as `Retry-After` asks, before it is
+reported. The User-Agent names the app and its repository, because a tool that
+hides behind a browser string is one Wikimedia may rightly block.
+
+**Browsed the way the library is.** *Series to complete* sits in the left column
+under Maintenance, and the pane behind it is not a report: the **authors column**
+fills with whoever is short of something, with a count, and under each series
+head comes the **list of what is missing** — one line per volume, its number,
+its title where one is known, and nothing else. The question the pane answers is
+*which series are not complete, and which books am I short of*, and a list
+answers it in the space a list takes. It used to draw each missing volume as the
+**card it would be**, cover and all, from `/api/drawn-cover`: a series with
+eleven holes was eleven covers tall, and a reader scrolled past pictures of books
+that do not exist to find out that three were missing. The drawn cover for a book
+that is not in the library had no other caller, so that route is gone with it.
+
+**The series' name is the way to it** (2.14.72), on both kinds of head — a hole
+in your own numbering and what Wikidata found. Pressing it opens the genre,
+selects the series under it, marks its author in the authors column, and draws
+its books, with the line saying what is missing above them. It was a separate
+*open in library* on the first kind only, which went to the series and left the
+author unsaid; the name itself is where the owner pressed.
+
+Each line carries a **copy button** and, where the title is known, **↗** to
+Wikipedia in a new tab. They are `<a>` elements styled as links, not buttons that
+navigate, so a middle click opens a tab and the address can be copied. The
+Wikipedia address is that site's **own search**, `index.php?search=<name>`,
+rather than a guessed article path: measured, it answers 302 straight to the
+article when the name is a page — *The Dark Tower III: The Waste Lands* and
+*Dragonriders of Pern* both land on theirs — and where there is no article it
+shows the search instead of a red link. A line from the collection's own
+numbering has no title to look up, so it has no ↗ at all; the series head has
+the Wikidata link, which is the page that lists the volumes anyway, and one
+series needs it once, not once per hole.
+
+Every card and every series head carries a **copy button** that puts
+`author - title` (or `author - series`) on the clipboard, through the same two
+paths as the copy buttons in Edit metadata — with one change: the fallback
+textarea goes inside whichever dialog is open and into the body when none is,
+since a closed dialog is not rendered and nothing inside it can be selected.
+
+The two kinds of answer stay apart in that pane, and the order says which is
+which: what is missing **between your own books** is counted here and exact;
+what **Wikidata knows and you do not have** was asked of the world. A series it
+could not place is listed with its reason, never folded into either.
+
+**Both halves are drawn the same way**: a series head carrying the sentence and
+its buttons, then **one line per missing volume, one under the other**. The
+local half has no title to put on a line — nothing in the collection knows what
+book 3 of *Wide Gap* is called — so it says *title unknown* beside the number,
+and that line's copy button searches `author - series N` instead of
+`author - title`. The caveat about books with no volume number sits on the series
+head, where it qualifies the whole group: *your own books in this series run up
+to book 4, with nothing on 3.* The sentence belongs to the series, so it is said
+once there rather than repeated under every hole.
+
+It is a job with a progress object, like a scan: network work over every series
+is minutes, the page can be closed while it runs, and it is never started by a
+page loading. `POST /api/series-online` begins it, `GET /api/series-online/status`
+follows it, and the answer per series says which Wikidata entry was taken, with a
+link, so the reader can check the machine's guess.
+
+**The answer is kept, not only the date it was asked.** `checkSeriesOnline`
+writes both `seriesOnlineRows` and `seriesOnlineAt` when a run finishes, and
+loads the rows back into `onlineProgress` when the module starts. It used to
+write the timestamp from the route and the rows nowhere, so a container restart
+left the pane saying *"Wikidata last asked 16:13"* with nothing under it and an
+authors column that had quietly lost everybody Wikidata had found — minutes of
+somebody else's free service thrown away, and the one thing kept was the part
+that made it look as though nothing was wrong. The module that learns it is the
+module that remembers it, which is also what makes it checkable: run, import the
+module a second time, and the answer is still there.
+
+**The column beside the pane is part of the pane.** Both halves are drawn from
+one pair of answers by `drawSeriesBoth`, because drawing only the body was a bug
+you could watch happen: Wikidata would find four volumes missing under an author
+the column had never heard of, and the row's own count said five series while the
+column could lead you to three. The author being looked at is held outside the
+drawing, since a redraw every second would otherwise throw the reader back to
+*Every author* mid-read, and an author whose last gap has just been answered away
+stops being a choice rather than becoming an empty pane.
+
+**And it does not set `maintenance`.** That class hides `#authors` and takes the
+grid down to two columns, which is right for the lists it was written for and
+wrong for this one: it browses by author, so — exactly like *Books you've
+listened to*, which had already met this — it clears the class and lets the three
+columns stand. With the class on, the column was built, filled and never once
+visible on a screen wider than a phone, so the feature shipped in 2.5.48 could
+only be seen by reading the DOM. Measuring the DOM is what hid it: `innerText`
+answers for an element that is `display: none`.
+
+### 7.10a Whether a series is all there
+
+`seriesState(genre, name)` answers it from the volume numbers alone, and
+`/api/books` sends one for every series on the page beside the cards. The books of
+the series that carry a number are laid out from **1** to the highest, and the
+numbers with no book on them are `missing`. Four facts come back — `books`,
+`highest`, `missing`, `unnumbered` — and the sentence built from them:
+
+| what is there | what it says |
+| --- | --- |
+| 1, 2, 4, 5 | `Missing: book 3.` |
+| 1, 2, 3 | `Book 1 to 3 are all here.` |
+| 1, 3, and one book with no number | `Missing: book 2. 1 book(s) here carry no volume number, so what is missing may be among them.` |
+| no numbers at all | `No volume numbers here, so nothing can be said about what is missing.` |
+| a single book | nothing: one book is a folder, not a series to judge |
+
+Three things this deliberately does **not** do:
+
+* **It never claims a series is complete.** Nothing in the library can know that a
+  book after the highest was ever published — the Books API has no endpoint that
+  lists a series' volumes, only `isComplete` on the series itself — so the
+  sentence says which run is here and stops. Asking Google was considered and
+  refused: it would cost a request per series to answer worse than the numbers do.
+* **It counts over the whole series, never over the books on screen.** Browsing by
+  author shows one author's share of a series; a shared world whose book 2 is
+  filed under another author would otherwise read as a gap. The state is queried
+  by `(genre, series)` for exactly that reason.
+* **It says when it cannot say.** A series nobody has numbered gets the sentence
+  saying so rather than a blank, and where some books carry no number the caveat
+  rides along with the gap — the missing volume may be one of them.
+
+The sentence is built on the server because the library page and the listening
+page both draw series heads, and a rule with two readers drifts.
+
+**And the same count over the whole collection.** `GET /api/series-gaps` calls
+`seriesState` once per `(genre, series)` pair and answers `{looked, gaps,
+unnumbered}`: the series with a hole, sorted by **how many volumes are missing**
+and then by genre and name, so six missing of eight sorts above one of nine; a
+count of everything looked at; and, listed apart, the series whose books carry no
+volume numbers at all. That third group is the reason this is not a filter over
+the second: dropping the unjudgeable ones would let *"nothing missing"* stand for
+*"nothing to judge"*, and only one of those is good news.
+
+It is a query per series rather than one clever statement, because the rule then
+lives in exactly one place and the two views can never disagree. It reads the
+database and asks Google nothing, so unlike the series report below it spends no
+quota and needs no key — it is a button only because a large collection is a
+query per series.
+
+### 7.11 The one password (`admin.js`)
+
+`ADMIN_PASSWORD` on the container. A salt is made at startup and the password is
+never stored: `scryptSync(password, bootSalt, 32)` on both sides, compared with
+`timingSafeEqual`. An unlocked browser holds a random 24-byte token in an
+`HttpOnly` cookie; sessions live in memory and are forgotten on restart. There
+is always an administrator — §7.12 — so there is no state in which nothing is
+locked.
+
+**The server refuses, the interface merely hides.** Every route that changes
+anything carries `requireAdmin`; hiding buttons is not what protects it.
+
+### 7.12 Who is listening (`listeners.js`, `guessing.js`)
+
+**There is always an administrator, and until there is, nothing opens.** An
+install with no `ADMIN_PASSWORD` used to run open — `adminRequired()` was false,
+`isAdmin()` answered **true for everybody**, and the collection, every listening
+position and all the accounts were there for anything that could reach the port,
+with nothing on screen to say so. That was offered as a private install and it
+was a defensible thing to make possible; it was not a defensible thing to leave
+somebody on by default, which is what it was.
+
+So `adminRequired()` **is gone**, and the state that matters is `adminState()`
+in `admin.js`:
+
+| | |
+| --- | --- |
+| `env` | `ADMIN_PASSWORD` is set on the container. It wins, as it always has |
+| `stored` | a name and a password chosen at the gate, kept in `settings` as a scrypt hash with a salt of its own |
+| `unclaimed` | neither. **Three routes answer and nothing else does**: `/api/admin` so the page knows which card to show, `/api/admin/claim` to make one, and `/api/account/me` because every page asks it before drawing anything |
+
+The gate shows a third card on first run — a name and a password, at least eight
+characters, the same floor a listener's account has — and `claim()` **refuses
+once there is one**, so a page left sitting open at the gate is not a way to
+replace a password somebody has since set. Claiming signs the claimer in: having
+just chosen the password, being asked for it is a question with no purpose.
+
+`ADMIN_PASSWORD` on the container still wins over a stored one, and that is the
+way back in after a forgotten one — set it, restart, and the stored pair is
+ignored rather than deleted. `db.js` kept `adminHash` and `adminSalt` deleted at
+startup for as long as the password came only from the container; it keeps them
+now.
+
+**This locks an install that was open yesterday.** Anybody running without
+`ADMIN_PASSWORD` is asked to make an administrator the first time they open the
+app after upgrading. Nothing of theirs is lost — the listeners, the positions and
+the collection are untouched — but the app does not answer until they do.
+
+**And the old hinge came off the frame.** Making `adminRequired()` return `true`
+closed the open install; it did not remove the branches that asked. Three of
+them were the controls this whole section exists for — `whoWrites` falling back
+to a name in the request body, `whoReads` to `?user=`, and one line in
+`mayTakeABook` handing every book to everybody — each still written out, each
+one `return false` away from live, behind a function whose name invites somebody
+to make it conditional again. A closed door whose old hinge is still bolted on
+is one edit from open, and the edit looks harmless. The branches are gone, the
+call sites say `true` where a client reads the answer on the wire, and the
+function itself is gone so there is nothing left to flip. No behaviour changed,
+which is what every suite passing unaltered says; that the doors are still shut
+is `accounts`, which fails four checks the moment `whoReads` takes `?user=`
+again.
+
+Until 2.7.0 a listener was a name in a table and the listening page answered
+whoever could reach it. What kept one person out of another's place in a book was
+that *a browser is only ever offered the names it has said itself* — honest about
+what it was, and not a door. It is an account now.
+
+**Asking.** A stranger gets the gate and nothing else: a name to listen under, a
+password of their own choosing (at least eight characters), a sentence saying why
+they would like access, and a tick for whether they know the administrator. No
+email address is asked for and none is kept — it would be one more thing to look
+after for a thing the admin can settle by recognising the name. The row goes in
+`pending`.
+
+**The reason is the asker's own words, and the app insists on it.** Two requests
+arrived whose reason was the sentence printed under the box — *"No email address
+is asked for and none is kept."* The cause was the plainest one available: the
+person did not know what to write and copied the line in front of them. So the
+server refuses a reason that is one of the form's own strings, compared on
+letters and digits alone so punctuation and capitals cannot slip it past, and
+tells the asker it is the page's wording and not theirs. That is the nudge the
+real cause needs, and the placeholder gives an example for the same reason —
+somebody stuck for words is the likeliest person to be filling this box.
+
+**Deciding.** *Accounts* is a page of its own at `/accounts`, reached from the
+Settings pulldown or from the row in the admin's column — which is a pointer
+rather than a second list, and keeps the count because the number waiting is the
+one thing worth seeing without going to look. A page rather than a pane for the
+same reason the Home Assistant page is one: a row per person with numbers on it
+is read rather than browsed, and wants width and stillness that the column beside
+a library has not got.
+
+**Two of the numbers count finished books, and they are not the same count.**
+*Played to the end* is `completions` — what the app watched happen, which is what
+a level is built on (§7.12b). *Ticked* is `progress.done`, which is that plus
+every book somebody marked by hand. A listener's own **Books you've listened to**
+lists the ticked ones, so that list and the first number differ by however many
+were ticked rather than heard — four against one, in the case that was reported
+as a fault. The data was right and the page said nothing, so each number now
+carries a sentence saying which question it answers. `levels.mjs` holds the two
+apart at the moment they are furthest apart, and pins the list to *ticked*.
+
+**What a row says**, in the order somebody reads it: the name with the level's
+icon beside it, then the level in words and how many books to the next one, then
+when they were last here, then what they are playing *at this moment* if
+anything, then the books they are in the middle of with how far in. The level
+line is there even below ten books, where it reads "No level yet · 10 book(s) to
+Rookie Level" — the listener's own page shows nothing there, because a level
+everybody starts at is no accomplishment, but this is the page where a person is
+looked up and an empty space would read as a gap rather than as an answer. What
+is playing now comes from the server's own map of who is streaming, so it is
+right to the second; what they are in the middle of comes from `progress`, is
+capped at five books and is ordered by when each was last touched.
+
+Two **ticks** per person, and ticks rather than buttons on purpose: *May listen*
+and *May download* are states somebody is in, and a checkbox says "this is how it
+stands" where a button says "press me and something happens". Taking *May listen*
+off refuses the account and signs out every browser that was them; nothing they
+have is lost, and ticking it again puts them back where they were. *May download*
+is the admin's grant, beside the level rather than instead of it.
+
+**Delete** is the third thing on a row, and it takes everything that was only
+about that person: their place in every book, what they had finished, the books
+they had played to the end, what they had downloaded, their hearts, and every
+browser still signed in as them. The books themselves are untouched. The suite
+names those five tables one by one rather than counting them, because a table
+added later and forgotten there would leave somebody's traces behind after they
+had been deleted and nothing would say so.
+
+**Signing in.** scrypt with a random salt per account, off the main thread
+(`scryptSync` blocks the only thread this server has and the route asks for no
+password to reach), compared with `timingSafeEqual`. "No such name" and "wrong
+password" are one sentence, or the route tells anybody who asks which names
+exist. A wrong password costs the address that gave it: five tries free, then a
+wait doubling to thirty seconds (`guessing.js`, shared with the admin's own
+password so the two cannot drift).
+
+**Staying signed in.** A random 32-byte token in an HttpOnly, SameSite=Lax cookie
+— `Secure` only where the request really was https, because on a LAN over plain
+http a Secure cookie is one the browser throws away. It is good for seven days
+and it *moves*: every request pushes the seven days out again, so seven days of
+quiet is what ends it. The sessions live in the database rather than in memory,
+because a container restart is not a reason to ask everybody in the house to sign
+in again.
+
+**The gate is one middleware.** `app.use('/api', …)` rather than a guard on
+fifteen routes, because fifteen is fourteen chances to forget one. Four kinds of
+caller get past: a signed-in listener, the admin, Home Assistant with its token,
+and Music Assistant with its own — the last two because a media player fetches
+the audio itself and has no cookie of ours. Four routes answer without an
+account, and they are the four somebody without one needs: `/api/account/me`,
+`/request`, `/signin`, `/signout`.
+
+**Where the card sits.** In the middle of the screen, over a dimmed backdrop that
+covers all of it — and still reachable when the card is taller than the window,
+which the ask form is on a short screen. Those two pull against each other:
+centring a *scrolling* box with `place-items: center` puts the top of an
+over-tall card above the scroll origin, where nothing can reach it. `.gate` is a
+flex box and the card takes `margin: auto`, which centres it when there is room
+and gives the space up when there is not. Nothing may size the gate by its id;
+the backdrop is `.gate` and the card is `.gate-card`, and `accounts.mjs` fails if
+a `#gate` rule appears, because one left over from the dialog did exactly this.
+
+**The Admin button is the administrator's.** The listening page carries a way
+through to the admin page, hidden until `whoAmI()` says who is asking. It has its
+own id rather than the admin page's `adminBtn`, which is that page's Lock button
+and is managed by `app.js` — one id for two different buttons is how one of them
+ends up obeying the other's rule. This is tidiness and not a lock: what keeps a
+listener out is the admin page asking the server and sending back anybody who is
+merely a listener (`app.js`), and every admin route refusing them.
+
+**The gate is not a `<dialog>`.** It looks like one — a card over a dimmed page —
+but it is a plain `<div id="gate" class="gate" hidden>`, shown and hidden with
+that attribute. A modal dialog takes the browser's *top layer* and holds it for
+as long as it is open, and a password manager's own menu lives in that same
+layer: Bitwarden re-shows its inline menu each time something covers it, counts
+five re-shows in five seconds and then warns the reader that the page is trying
+to hijack it. The owner got that warning on every sign-in. The card needs none of
+what `showModal()` gives — there is nothing behind it to reach — so it gives the
+layer up. `accounts.mjs` checks both pages for it, and checks that `account.js`
+holds no `showModal(` outside its comments.
+
+**Whose write is it.** Once anything is locked, a place in a book belongs to the
+session and the name in the request body is ignored — otherwise one account could
+write into another's, which is the whole thing accounts were added for. With no
+`ADMIN_PASSWORD` set there are no sessions and no lock: that is the private
+install the app has always supported, and there the name in the request is all
+there is.
+
+**Failing to read a job's progress is not the job failing.** `trackProgress`
+polls a status route every 300ms while something long runs, and gave up on the
+**first** poll that went unanswered — one hiccup from a reverse proxy, a moment
+of wifi, a request arriving while the server was busy. Worse, the caller then put
+that complaint ahead of the answer from the request that had actually done the
+work: `r.error || p.error`. The owner got *"Writing tags failed: lost contact with
+the server"* on a write that had almost certainly finished, which invites running
+it again over files already written.
+
+Twenty unanswered polls in a row — six seconds — before it gives up, and it stops
+at once if the request doing the work has already come back, since there is then
+nothing left to follow. The request is the authority on whether the work
+succeeded; `p.error` only ever complains about *watching* it, and is read only
+when the request itself said nothing at all. The work is on the server and goes
+on whatever this page can reach.
+
+**The maintenance column shows only what is waiting.** A row there is a job to be
+done, and nine of them reading 0 say nothing except that the column is long: the
+one number that mattered — *Series to complete, 68* — sat among eight noughts.
+`counts(rowId, n)` in `app.js` sets the number and the row's visibility together,
+and every loader goes through it, so the rule is one thing in one place rather
+than ten `hidden` assignments that can drift.
+
+Two rows do not follow it. **Import** is not a count of work — it reads `–` until
+a folder is set, and it is the way to set one. And **the row that is the view on
+screen** stays, whatever its count: emptying the trash from inside the trash must
+not pull the list out from under the reader, and every such change redraws the
+list it is in. The rows ship `hidden` in `index.html` rather than being hidden
+once the counts arrive, or each would appear holding `…` and half of them would
+then vanish again.
+
+The count element is found inside the row rather than named: the row ids and the
+count ids do not share a pattern (`convertList` / `convertCount`), and a table
+mapping one to the other would be a second thing to keep in step. Hiding
+*Accounts* costs nothing, because *Settings → Accounts and statistics* is the
+other way to that page — checked before it was hidden.
+
+**A card says which series a book is in, or that it is in none.** The series line
+used to be drawn only when there was a series, so a standalone book showed
+nothing at all where it goes. Cards stack, and the eye reads the last series it
+was told about as still applying: The owner had *Warbreaker* sitting under
+*Oathbringer*'s "The Stormlight Archive · book 3" and nothing on the page gave
+him reason to think otherwise. Absence is not a statement, so the card makes one
+— **No Series**, in the same slot, quieter than a series because it is the lack
+of one. `seriesLine(b)` in `browse.js`, one copy for both pages.
+
+Saying it was not enough on its own. A series gets a `series-head` above its run,
+and that heading is what separates one run from the next; a run of books in no
+series gets no heading, so its first card sat tight under the last volume of the
+series above and still read as more of it. That card carries `apart` — 22px on
+top of the list's own 10px, so the break is three times an ordinary gap and
+cannot be read as anything else. Only the first of the run, and only when
+something precedes it: a list that *opens* with such a book is not pushed down by
+a gap above nothing. The comparison is `(b.series || '')`, because the server
+sends **null** for a book in no series (`NULLIF` in `SERIES`), and `null !== ''`
+would make the first card of every such list begin a new run.
+
+**And whether it is the whole book.** *Unabridged* sits under *Listened* on the
+admin card and is a different kind of thing: *Listened* is each listener's own,
+*Unabridged* is a fact about the book. So the admin states it
+(`POST /api/books/:id/unabridged`, refused to a listener) and the listening page
+only shows it, as a badge — a listener changes nothing about the collection
+(§7.12). Nothing in a file says it reliably: there is no tag for it, and a
+publisher who abridges rarely puts it in the title. Off means **nobody has
+said**, not "abridged", which is why it is a tick and not a three-way field.
+
+**Listening somewhere else moves the place here too.** A place lives on the
+server, so a phone moves it for every page — and nothing on a page ever read it
+again. The player wrote every ten seconds and no shelf was ever redrawn, so a
+desktop left open showed where you were when you opened it, for as long as you
+left it open. Worse than stale: `playBook` short-circuits for the book already in
+the bar and plays from that tab's own `currentTime`, which is then written back,
+so a desktop open and paused would overwrite a place the phone had moved on.
+
+`comingBack` in `browse.js` fires on `visibilitychange` and on `focus` — the
+first is the phone and the switched tab, the second the desktop window behind
+another window, where the tab never stopped being visible. It calls
+`placeMayHaveMoved` in `player.js`, which re-reads the book in the bar and takes
+the server's place **only while this tab is paused**: a tab still playing is the
+one moving the place, and taking the server's would drag it backwards under the
+listener. It does not start playing — returning to a page is not a press. The
+shelves are redrawn only when *Continue listening* is what is on screen;
+somewhere else in the library is where the reader put themselves.
+
+Three guards, each for a fault it had: **a few seconds between** returns, because
+the two events fire together as often as not; **only after actually going away**,
+because a page that has just loaded gets a `focus` of its own and that is the
+page starting, not somebody returning — without it the carried book was read over
+and silenced on every move between pages; and **paused only**, above.
+
+**And where did a place come from.** A player signs in as **one** listener and
+writes every position it keeps against that name, whoever is actually in the
+room: that is what the username in `/login` is for (§7.14). So a book somebody
+else was listening to appears on your own shelf, correctly, under your own name
+— and nothing anywhere said so. The owner had one, asked whether to get the other
+person to tick it off, and answering "whose is this?" meant reading the source
+to work out which faces can write a place at all. The answer was never the other
+person's to give: the row is yours, and unticking it on your own page is what
+removes it.
+
+**The app cannot do better than record it.** Nothing in a Music Assistant
+request says who pressed play: the `deviceInfo` on a playback session is what
+*this* app sends out, hardcoded, and MA sends nothing back. Identity is fixed at
+the moment MA logs in and every position after that carries it. So one provider
+shared by a household is one pile of places, and the remedy is on MA's side —
+one Audiobookshelf provider instance per person, each with that person's name,
+which MA supports. The README says so where the username is set, which is where
+the surprise is bought. The owner's install had MA on his own name, which is how
+somebody else's Star Wars book came to sit in his *Continue listening*.
+
+`progress.via` records the face: `page`, `music-assistant`, `home-assistant`, or
+empty for a row kept before 2.10.72. The tiles and the accounts page say it
+**only when it was not the page** — a place the page kept needs no label, and one
+a player kept is the case worth naming. It does not change who a place belongs
+to; it says how it got there, which is the question that could not be answered.
+
+**And whose read is it** — the same question, not asked until 2.10.40. Writing
+was closed when accounts arrived and reading was left open: every shelf, the
+Listened section, the line of numbers, the cards and one book's own progress took
+the listener from `?user=`, the page naming itself, and the server answered for
+whatever name it was given. Anybody signed in could read anybody else's places,
+finished books and hearts by typing a name into the address.
+
+The owner found it from the other end. Signed in as the administrator, he had another
+listener's book sitting in *Continue listening*: his browser still carried a name
+in `localStorage` from the picker that came before accounts, the page sent it,
+and the server believed it. One cause, two faces — a leak outward and somebody
+else's reading on your own screen.
+
+Home Assistant's own route had it too, and worse. `forHA` passes a request
+through when no `HA_TOKEN` is set — the common install — so a signed-in listener
+could ask `GET /api/ha?user=` for somebody else's places, and
+`/api/ha/continue.m3u?user=` would hand over the book and the second they
+stopped at. `haState` takes who the answer is about from its caller now; the
+route passes `whoReads(req)`, and the pushes inside `ha.js` go on naming the
+listener from Settings, which is theirs to name. The Audiobookshelf face was
+already right: `abs.js` reads the listener out of the token itself and answers
+nobody without one.
+
+`whoReads` is now the twin of `whoWrites` and is used by all ten: with a
+password set it is the session and only the session. The pages still send
+`?user=`, and must, because the password-less install has no session to ask and
+the name in the request is still all there is — so the parameter stays, and is
+ignored exactly when there is something better to go on. `req.listener` is a
+string for every cookie session, the empty one for an administrator with no
+`ADMIN_USER`, which is where `whoWrites` puts their places too; it is `undefined`
+only for the two machines that come in on a token of their own, and those go on
+naming the listener they act for.
+
+**The names that were already there.** Every one of them is approved and carries
+no password, and the first sign-in with such a name chooses one. Locking a
+household out of its own listening history to add a login would be a poor trade —
+and the admin page marks those names, so one nobody claims can be seen and
+removed rather than sitting there for ever.
+
+### 7.12a The hearts
+
+A row per person per book in `favourites`, with a trigger that drops it when the
+book goes. **Favourites** draws an authors column beside the books, built from
+the authors of the hearted books with a count each, and clicking one narrows to
+that author's hearted books in series order — the same as *Listened*, because a
+view and the column beside it are one view. It shipped without one: the handler
+cleared `#authors ul` and never filled it, so the heading stood over nothing
+beside a shelf of books that plainly had authors. The heart is drawn by whatever draws a book — card and shelf tile
+both — from one set held in the page, so the two places it appears cannot
+disagree. Pressing it colours it at once and asks afterwards: if the server
+refuses, it goes back. **Favourites** appears in the left column only while there
+is something in it, the way *Listened* does.
+
+### 7.12b What somebody has finished (`levels.js`)
+
+Ten levels, named by the owner, over the number of books somebody has **played to
+the end**: 10 Rookie, 20 Listener, 30 Book Hunter, 40 Story Seeker, 50 Book
+Master, 60 Story Master, 70 Audio Expert, 80 Audio Master, 90 Grand Master, 100
+Audio Legend Ultimate. Each level carries an icon, and the header draws it beside
+the name with the level under it.
+
+Nought to nine has **no name and no icon** — a level everybody starts at is not
+an accomplishment, and a badge saying so is noise. The line under the name is
+still drawn there, and says how far off the first one is: `10 to Rookie Level`.
+Something to work towards is worth more in that space than a gap, and a gap read
+as the app having failed to draw something rather than as the answer. The
+Accounts page says the same thing at more length, `No level yet · 10 book(s) to
+Rookie Level`, because that page is read rather than glanced at.
+
+**The administrator has a level too** (2.14.64). The header's level came from
+the listener session, which an administrator signed in with the `admin` cookie
+does not have, so it was worked out for the empty name: The owner had ten books
+finished and read `10 to Rookie Level`. `/api/account/me` now decides who is
+asking once — the listener, or the administrator by name — and the name, the
+level and the download rule all use that.
+
+**And a book played out through Music Assistant counts** (2.14.64). A session's
+syncs, its close and a session kept offline are playback; when one leaves the
+place at the end of the last track, that is a completion, as in the browser. A
+progress PATCH is not asked: "mark as finished" arrives there as `isFinished`
+with the place moved to the end, and that is a statement, like a tick.
+
+**The count is its own record, and that is the point.** `completions` is written
+when a book runs out and never rewritten: clearing your place in a book,
+unticking it or starting it again says what somebody is listening to *now* and
+nothing about what they have finished, and a tally that fell when somebody tidied
+up would not be worth having. It survives the book being deleted too — the
+reading happened — so the title is kept beside the id.
+
+**Ticking a book by hand does not count.** It is a useful thing to be able to say,
+and it is a statement; this counts what the app watched happen. So the two ways a
+completion is recorded are the player reporting that the last track ran out
+(`played: true` on `/api/listened`) and a position arriving at the end of the
+last track (`/api/progress`, the same `isFinished` the shelves use). Reaching a
+level is announced to Discord and toasted to the person who reached it, once —
+finishing the eleventh book is not news.
+
+**Downloading a whole book is the top level, or the admin's say-so.** The page
+hides the ⤓ below that, and hiding is not what enforces it: `/api/download/:id`
+refuses with a sentence saying how many books are still to go. The admin's grant
+sits *beside* the level rather than instead of it — somebody at the top who was
+then refused by a switch would be a puzzle. Every download is written down with
+the title and announced, and the Accounts page lists what each person has taken.
+
+**And it is the one tick that reaches the administrator.** They are let through
+every other check, which is right for everything the admin page does — but
+downloading is a thing a row on the accounts page allows, so that row allows it
+for them too. The owner turned *May download* off
+on his own row and went on downloading; from 2.10.64 he is refused, and told that
+his own row is where to turn it back on rather than to ask the administrator.
+
+An administrator whose name is **not** a row keeps what they always had: there is
+nothing to turn off, and nothing that could ever turn it back on, so the rule
+would be a lock with no key. *May listen* still does not reach them in either
+case — that tick governs `signIn`, and they do not come in that way.
+
+**Where that password lives is two answers, and the page has to give the right
+one.** `adminState()` says `env` or `stored`; `/api/accounts` carries it as
+`adminFrom`, and the badge on that row, the line beside *May download* and the
+sentence naming who you are all read it. The page cannot work it out for itself
+— `ADMIN_PASSWORD` is not something a browser can see — and it used to say the
+container in every case, which told an administrator who chose their password at
+the gate to go and edit a variable that is not what let them in, and never
+mentioned the thing they would actually want: setting it is the way back in if
+they forget. An answer that does not carry `adminFrom` falls back to the
+container reading, which is what every install was before 2.12.0. `first-run`
+checks the route in both states, because `pages` stubs it and would not notice
+the server dropping the field.
+
+`mayTakeABook(who, amAdmin)` is the whole rule, asked by the route that hands the
+book over **and** by `/api/account/me`, which decides whether the page offers the
+button. Those were two separate expressions of it, and they disagreed: the button
+was drawn and the download worked with the tick off. A page offering what the
+server would refuse is the same fault wearing the other face.
+
+### 7.13 Telling Discord (`notify.js`)
+
+A webhook address saved by the admin, and what is worth saying: somebody
+asked for an account (with their reason and whether they claim to know you),
+somebody signed in (the admin's own sign-in is not announced — it would be noise
+about yourself), a book started or stopped, with which book and who, and
+somebody **asking for a book** the collection has not got (§7.14) — the one
+message that asks the administrator to go and *do* something, which is why it
+names the author and the title plainly enough to paste into a shop.
+
+Every one of them carries text a person wrote, so every one is cleaned:
+`@everyone` and `@here` would ring every phone in the server, backticks and newlines would let a
+title write its own lines, and a message is bounded. The real fix for the pings
+is `allowed_mentions: { parse: [] }`, which is Discord's own switch rather than a
+guess at their syntax; the stripping is so the line still reads as words.
+
+The address itself is checked: https, one of Discord's own hosts, and a path
+beginning `/api/webhooks/` — this server posts to it on its own, so it must not
+become a "post this anywhere" button for whoever reaches the settings. Messages
+go one at a time in order, a 429 is waited out for as long as Discord asks, and
+the page is told whether one is saved and how the last line went, never the
+address.
+
+**Start and stop come from the player**, because nothing else can tell them
+apart: a position arriving every ten seconds says somebody is listening, never
+that they just pressed play. The page sends only the changes and the server keeps
+one book per listener, so a page that says "started" twice is a page, not two
+starts.
+
+### 7.14 Books somebody has asked for (`requests.js`)
+
+A listener types an author and a title; the administrator is told, goes and
+finds it, and drops it in. When the collection next has that book the request is
+answered without anybody having to remember it was open: the book becomes that
+person's **favourite** and they are told the next time they open the app. The
+button sits beside their own name in the header, because it is a thing *they*
+are asking for rather than something the collection does.
+
+**Matching is the whole of the difficulty**, and it can go wrong in both
+directions. A request that is never answered and nothing says so is the quiet
+failure; a request answered by the *wrong* book is the loud one, because it
+hands somebody a favourite they did not ask for and closes a request they are
+still waiting on.
+
+So the two sides are compared **normalised** — case, accents, punctuation and a
+leading article all taken off — and **exactly** after that. Deliberately not a
+fuzzy distance: an edit distance of two makes *Dune* match *June*. Exact-after-
+normalising is a rule somebody can predict, and the author counts as well as the
+title, because titles are not unique — there is more than one book called
+*Mistborn*, and a great many called *Twilight*.
+
+What that still misses is real: *Mistborn* asked for, *Mistborn: The Final
+Empire* delivered. So the administrator can **tie a request to a book by hand**,
+and that is not a fallback bolted on afterwards but half of the design. An
+automatic match that silently never happens is worse than no automatic match,
+because nothing says so.
+
+The rest of the shape:
+
+* **Asking twice is one request.** The same person asking for the same book
+  again — however they spell it the second time — answers `again: true`, makes
+  no second row, and does not ring the administrator's phone a second time. They
+  have forgotten; two rows would be two things to decide about.
+* **The scan is where it is looked at again**, against the whole collection
+  rather than against what that scan added: a book can also arrive by an import
+  or by hand, and *what is here now* is the honest question. It is one pass over
+  the books table, and only when a request is open.
+* **One book answers at most one request, and one request at most one book.**
+  Two people asking for the same book both get it; a single request never picks
+  between two books, and where two normalise the same the lower id wins —
+  arbitrary, but fixed, so the same scan twice does the same thing.
+* **Declined with a reason**, which the person who asked is shown. It leaves the
+  administrator's list and stays in their statistics, because "you turned this
+  down in March, and this is what you said" is a question somebody asks later.
+* **The news is said once.** A book that arrived or a request turned down is a
+  thing that happened while you were not looking, so it is a toast on the way in
+  and the server is told it has been said. The ids come from a page, so
+  `/api/requests/seen` filters them to the caller's own — marking somebody
+  else's as told would quietly lose it.
+* **The heart is handed in, not reached for.** `requests.js` decides *that* an
+  answered request becomes a favourite; `index.js` knows *how* a favourite is
+  written. One place each.
+* **Each row carries ⧉ Copy**, putting `author - title` on the clipboard,
+  because the first thing done with a request is to go and look for the book
+  online. It is the same class and the same delegated handler as the copy
+  buttons in *Series to complete* — the one on `#books` catches every
+  `.copy-search` inside it — so there is one copy button in this app rather than
+  two that drift apart. It is on settled requests too: a turned-down one is
+  often turned down because it could not be found, and the next place to look is
+  somewhere else.
+
+On the accounts page each person's row carries what they have asked for and what
+became of it — nine asked and one found is a different person to talk to than
+one and one. A row reads a lot of fields and a missing one takes the whole page
+down with it, so `requests` absent from an answer draws as zero rather than as a
+blank page; that has happened here once already, over a different field.
+
+## 8. The interface
+
+No framework, no build. `$` is `querySelector`, `api()` throws the server's
+`error` message, `toast()` shows it. `esc()` escapes `& < > "` — folder names and
+Google descriptions land in markup.
+
+### 8.0 `/player`: the player and nothing else
+
+The owner sent a video of the listening page on his phone: a column to scroll past,
+the book he was actually listening to somewhere in it, and **three** play/pause
+buttons on one screen — the card's, the bar's, and the bar's cover. So there is
+a screen that is only the player: the cover large, the title, the author, which
+chapter of how many, the seek line with the clock, and **one** play/pause with a
+chapter step either side of it and a ten-second step inside those. Nothing to
+scroll: `100dvh`, `overflow: hidden`, and the cover is the only part that gives.
+
+It is a **page of its own**, asked for as one, and that has a cost worth naming:
+a new document throws the `<audio>` away. The book is carried across and picked
+up — the same carry that already moves a book between `/`, `/admin` and `/ha` —
+so there is a moment of silence while it loads, and a browser that has decided
+this site may not make a sound by itself will leave it paused with the ▶
+waiting. A layer over the shelves would not have had either, and would not have
+been a page.
+
+**The way in is the cover in the bar**, on a phone. That is also how the third
+button went: on a narrow screen the cover opens the player instead of toggling
+it, and says `⤢` rather than wearing a `⏸` that does not pause. On a wide screen
+it still toggles, because there the bar is not cramped and `/player` is not
+offered. Asked of `matchMedia` at the moment of the tap, not of a flag worked
+out at load — a phone turned on its side is a wider screen.
+
+**And pressing Play on a phone goes there.** The cover was the only way in, so a
+reader who pressed Play on a card stayed on the shelf with the cramped bar — the
+thing this page replaces. The owner pressed play on his phone and never saw it. Now
+`goesToPlayer()` — narrow, and not already on `/player` — makes a press that
+*starts* a book write the carry with `playing: true` and go to `/player`, which
+picks it up by the same route as every other page. A press that *pauses* stays
+put: leaving the shelf to put a book down would be odd. Nothing is started on the
+page being left, so there is no blip of sound on the way out, and `handingOver`
+stops its `pagehide` from overwriting that carry with the paused book it honestly
+sees. A tab whose `sessionStorage` cannot be written plays where it is instead.
+`tests/to-player.mjs` runs both functions out of `player.js`.
+
+What is **not** on it: the chapter pulldown, the download and the volume. A
+phone has volume buttons on its side, and the other two are a page away. That is
+what `maybe(sel, fn)` in `player.js` is for — a page is allowed not to have a
+control, and reaching for one and finding `null` would be a page that dies at
+load with the rest of the player unbuilt.
+
+**How fast it is read** is a pulldown of eleven: 1.0 to 2.0 in tenths, nothing
+below 1, kept per browser like the volume because it is a thing about the
+listener rather than about the book. The part that breaks quietly is that
+`playbackRate` belongs to the element's *current* source, so a new `src` puts it
+back to 1 — a book set to 1.4 would drop to normal at every chapter. It is set
+again on every `loadedmetadata`. The bar carries the same pulldown on a wide
+screen, where there is room; on a phone it is here instead.
+
+**What is left follows the speed; the length does not** (2.14.40). Beside the
+pulldown, wherever it is — between the two clocks here, next to it in the bar
+on a wide screen — is how long is left *at that speed*: `7m left at 1.5×`, and
+plain `10m left` at 1.0. The clock on the right stays the length of the book,
+which is a fact about the recording; the owner chose that over shortening every
+length in the app, because a book is the same book whoever reads it fast. It is
+worked out from `playbackRate`, not from the setting, and redrawn on
+`ratechange`: a paused book gets no `timeupdate`, so without it a new speed
+changed nothing on screen until the book was played. On a phone the bar's
+length carries it as a tooltip too.
+
+**Ten seconds back and ten on** move through the *book*, not the file: ten back
+from a moment into chapter eight is the end of chapter seven, and a reader who
+meant "say that again" does not care where the file boundary fell. The same walk
+`seekTo` does when the bar is dragged, so the two cannot disagree about where a
+second is. Crossing a boundary loads a new file, and whether it plays afterwards
+is **what it was doing before** — somebody who paused and pressed ⟲10 has not
+asked for the book to start again.
+
+Three rules written for the library reached this page and had to be undone, all
+the same shape — a selector that names a container rather than the thing it
+styles. `footer input[type="range"]` left the seek line in the browser's default
+blue, and is `.rangey input[...]` now, a class the bar and this page both carry.
+`footer audio { display: none }` let the engine draw itself as a grey slab, and
+is `audio { display: none }`. And `main > *`, which gives each of the library's
+three columns its own scrolling, a dividing border and a tail of padding, put a
+**horizontal scrollbar** across the bottom of the seek line — a box with
+`overflow-y: auto` computes `overflow-x` as auto too. Undone on `#now` rather
+than narrowed there: the three columns are what that rule is for.
+
+**One copy of the browsing half.** The listening page and the admin page are
+different jobs — one plays books and changes nothing, the other files and tags
+and deletes — but they show the same shelves, tiles, search, *Listened* section
+and cover menu. Those were two copies, one in `shelf.js` and one in `app.js`,
+and twenty-two declarations had drifted to byte-identical: `browse.js` holds them
+once and both pages load it **before** their own script, because both use `$`,
+`api` and `esc` in their own top-level code and the scripts share one global
+scope. What stays with each page is what only that page decides — `state`,
+`drawBooks`, `loadHome`, `loadGenres` and the column functions — and `browse.js`
+calls those by name, so the seam runs one way: the shared file asks the page for
+what only the page knows, and the page never reaches back into it. The one
+reference that cannot be taken eagerly is `$('#brand').onclick`, which calls
+`loadHome()` rather than being handed it, since the page has not declared it yet
+when `browse.js` runs.
+
+The sweep took the declarations that were **byte-identical**, which left behind
+one that was alike but for a single line: `showSeriesOf`, where the admin page
+called a one-line `rememberOpen()` and the listening page wrote the same
+`localStorage` line out in full. It is in `browse.js` too now, with
+`rememberOpen` beside the `openGenres` it reads — two copies of a thing that must
+agree is how they come to disagree, whatever the reason they are two. What is
+left under one name on both pages differs for real reasons: `state`, `drawBooks`,
+`loadHome`, `loadGenres` and the column functions all know things only their own
+page knows.
+
+Two things about that arrangement are checked, because neither shows in
+`node --check`, which reads one file at a time: that `browse.js` is loaded first
+on both pages, and that no name is declared in both it and a page script — two
+`const $` in one scope is a `SyntaxError` that stops the whole page with nothing
+on the server any the wiser. `accounts.html` keeps its own small helpers instead
+of loading `browse.js`, which would run top-level code against shelves and a
+cover menu that page has not got.
+
+Layout, both pages: a header (title, **search box**, user select, and on the admin
+page the scan-scope select, *Scan library* and the **Settings pulldown**), then three columns —
+**Genres** (with a **Maintenance** section on the admin page), **Authors**,
+**Books** — a per-job progress area, and a footer player.
+
+Theme (CSS custom properties): `--bg #0e1014`, `--panel #16191f`, `--panel2
+#1c2027`, `--line #262b34`, `--text #e6e8ec`, `--dim #a2a9b8`, `--accent
+#7c5cff`, `--accent2 #22d3ee`; the body carries two large radial glows in the
+accent colours over `--bg`, fixed. `body { cursor: default; user-select: none }`
+because this is an application, not a document — inputs, descriptions and status
+text opt back in.
+
+**The day's pair, named once.** `--day` (degrees, set by `day.js`) turns two hues
+— `--hue1: calc(252 + var(--day))` and `--hue2: calc(188 + var(--day))` — and
+everything that moves with the day is derived from those: `--glow1` / `--glow2`
+are the pair at .34 and .30 opacity, which is the background; `--tint1` /
+`--tint2` are the same pair at full strength, for anything drawn *on* a panel,
+where a third of an opacity would be a smear. 252° and 188° are `--accent` and
+`--accent2` themselves — `#7c5cff` **is** `hsl(252 100% 68%)` and `#22d3ee` **is**
+`hsl(188 86% 53%)` — so on day nought every derived colour is the one the app was
+drawn in, which is what makes the turn invisible in a screenshot of day nought and
+obvious on any other day.
+
+The **progress bars** run `linear-gradient(90deg, var(--tint1), var(--tint2))`:
+left to right, the glow on the left of the page into the glow on the right, full
+strength. Both bars — `#progress .fill`, one per running job, and `#lookupBar` in
+the Find-metadata dialog — read the same pair, so they cannot drift apart. Nothing
+subscribes to anything: `day.js` sets `--day` on `documentElement` five seconds
+after midnight, and every rule above recomputes because it was written in terms of
+it. A bar running across midnight turns while it runs.
+
+Covers are 2:3 everywhere: 96×144 on cards, 104×156 on tiles, 60×90 on lookup
+candidates, 36×54 in the footer.
+
+**One job at a time.** `work(button, what, fn, alone = true)` refuses a second job
+with a toast, adds `body.working` (which greys every button that would start work,
+to opacity 0.45 and `pointer-events: none`, including `[data-pick]` candidates),
+disables the button that was pressed, and restores both in a `finally`. Every job
+button goes through it: scan, import, tag writes (card, needs-tags row and edit
+dialog), disk check, cover tidy, trash actions.
+
+Tag writes pass `alone: false`. They add `body.writing` instead, which greys
+everything a running write must hold back — a scan, an import, the disk check, the
+whole-collection run, *Find metadata*, *Edit metadata* — while leaving the other
+books' *Write into MP3s* buttons alive
+(`body.writing … button[onclick^="writeTags"]:not(:disabled)`). Each write's bar is
+named after its book, both while it runs and in what it says when it is done, or
+two bars side by side read as the same message twice.
+
+**One bar per job.** `newBar(label)` adds a `.job` bar to `#progress` so two
+concurrent jobs sit side by side and never share a counter; each polls its own
+status endpoint and removes itself a few seconds after finishing.
+
+**Genres fold.** Each genre with series shows a twist arrow (`▸`/`▾`). The arrow
+alone folds; clicking the **name** selects the genre and leaves the list as it
+was. Open genres are remembered in `localStorage.openGenres` and restored on
+load. Series rows are `li[data-genre][data-series]`, selected with `CSS.escape`.
+
+**A series head says what is missing.** Under every `series-head` —
+the one at the top of a series, and the ones `drawBooks` writes between the groups
+of an author's books — goes the `says` sentence from `/api/books` (§7.10a) as a
+`.series-gap`, red where a volume number has no book on it and quiet where the run
+is whole or cannot be judged. `drawBooks(books, heading, kind, states)` takes those
+states as its fourth argument; the lists that do not come from `/api/books` — a
+search, the Listened view — pass none and get no line. The page decides nothing
+about it but the colour.
+
+**Books** are cards: cover, listened checkbox, title with a listened/part/new
+note, author, `Series · <name> · book <n>`, badges (year, narrator, running time,
+and either the tags the files carry or *Not in MP3*), the description, and the
+actions — *Play*, *Find metadata*, *Write into MP3s*, *Edit metadata*, *Move…*,
+*Delete…*. The listening page shows the same card with *Play* only.
+
+**Landing view** (`#home`): the book you are in the middle of as a **card**,
+then shelves of tiles — the rest of *Continue listening* with a progress bar,
+and *Recently added*. `keptBooks(user)` reads every book the listener has a
+place in, each carrying `finished`; the shelf takes the ones that are not, whole
+rather than twelve at a time in SQL, or a dozen finished books would hide the
+one being listened to.
+
+The card is the owner's, pointing at a screenshot: the page led with a *tile* — a
+cover, a title and a sliver of progress — so the thing he had come back for was
+the thing with the least said about it. A card is what the rest of the app draws
+a book as, and the first of *Continue listening* is drawn as one: cover, series,
+year, how long, what it is about, Listened, and the one button. The shelf under
+it keeps the others, and the book on the card is **not** repeated as the first
+tile.
+
+`cardFor(b, apart, extra)` is lifted out of `drawBooks` for this rather than
+copied, so the home page cannot drift into drawing a card that says something
+subtly different from every other card. Each page keeps its own — the admin's
+carries *Unabridged* and five more buttons.
+
+The `extra` class earns its keep: the card is marked `carry-on`, and what tells
+a returning page that the shelves are on screen looks for **the shelf or the
+card**. It looked only for the shelf, and a reader with exactly one book on the
+go has no shelf — that book is the card — so coming back stopped refreshing for
+precisely the reader the refresh was written for.
+
+**The Listened section** sits in the genres column, under the genres and above
+Maintenance on the admin page: a `col-title` and one row with a count, both
+hidden while `/api/listened` is empty. Pressing the row browses by author — the
+authors of those books in the `#authors` column with a count each, all the books
+on the right, and one author's in series order when a name is picked — through the
+same `drawBooks` the library uses, so the cards, the tick and the buttons are the
+library's own.
+
+Each kept book also carries `into` and `percent`: the seconds of the tracks behind the listener plus their position, and that over the book's length. The line under a tile draws *that* — counting tracks made a book of one long file stand full from its first minute — and a book of one track says the time rather than "Track 1 of 1".
+
+**The tick sets itself.** `POST /api/progress` asks `isFinished` of the row it
+just wrote and sets `done = 1` when the place has reached the end of the last
+track; the pages do it too when the last track's `ended` fires, so a book that
+runs out is ticked at once rather than at the next save. It is only ever *set*
+there: it comes off by unticking, or by `playBook` starting a finished book over.
+Rows that were already at the end before this existed are ticked once at startup. The title and the row are siblings of the
+genres list rather than a box of their own: the column is read elsewhere as "the
+first list in it is the genres", and a list inside a box would be the first list
+of that box.
+
+**The player's transport is the app's own.** A browser will not let a page
+recolour its audio controls: the timeline lives in a shadow tree the page may not
+touch, so the line saying how far into a track you are was whatever grey the
+browser felt like, on a light slab in a dark interface. So `<audio>` carries no
+`controls` attribute and is `display: none` — it is only the engine — and the
+footer holds `#pPlay` (▶/⏸, lit while playing), `#pAt`, `#seek`, `#pOf`,
+`#pVolBtn` and `#vol`, then the track select and `#pClose`.
+
+**That bar measures the book, not the file playing.** It read
+`audio.currentTime / audio.duration`, which is the one file: on a book of many
+it filled up and started again at every track, and `#pAt` / `#pOf` counted the
+same way — a book an hour long, two minutes in, said *"0:40 of 3:11"*. It is the
+2.1.48 scar the other way round, where a tile counted tracks and a single-file
+book stood full from its first minute. `bookTime()` sums the lengths that came
+with the book: those before this track are where it starts, all of them are how
+long the book is. Because the bar is now a place in the *book*, dragging it may
+land in another file, so `trackAt(seconds, tracks)` walks the tracks — they are
+not the same length, so dividing would miss — and `playTrack` loads that one at
+the offset, playing only if it was playing before.
+
+Both are their own small pure functions so that `book-bar.mjs` can lift them out
+of `player.js` and run them, rather than keeping a copy in step by hand; the
+suite refuses outright if either is renamed, instead of quietly testing nothing.
+`bookTime()` answers **null** — and the bar falls back to the file, which is
+then the only thing certainly true — for a book of one file, where the two are
+the same anyway, and for any book with a track whose length the scan never read,
+because one missing length makes the total a lie.
+
+**The bar is there only while something is being listened to.** `<footer
+id="player">` ships `hidden`; `playBook` is the only thing that shows it, and
+`closePlayer()` is the only thing that puts it back:
+
+```js
+function closePlayer() {
+  saveProgress();            // putting the player away is not losing your place
+  audio.pause();
+  state.book = null;
+  $('#player').hidden = true;
+  sessionStorage.removeItem(CARRY);   // or the next page picks the book back up
+  markPlaying();             // and the cards stop saying Pause
+}
+```
+
+It runs in two cases, and only two. **`#pClose`**, the ✕ at the end of the bar —
+dim until hovered, because it sits next to the volume and is not a thing to press
+by accident. And **a book running out**: `finishedListening` calls it before its
+own early returns, so a book that ends with nobody named does not leave a dead
+bar standing either. Removing the carry matters as much as hiding the bar:
+`pagehide` only *writes* a carry while a book is loaded, so an old one left in
+`sessionStorage` would have the next page of the app pick the book straight back
+up and the bar would reappear on its own.
+
+**The carry says whose it is, and `pickUp` asks the server whether that is who
+is here.** It used to say only *what*, and a tab outlives a sign-in: The owner
+reported signing in as somebody else and getting the previous reader's
+*Continue listening*, in a private window too — sessionStorage being per tab
+rather than per person. Mario listened, signed out, Luigi signed in at the same
+tab and refreshed, and the player came back holding Mario's book at Mario's
+position.
+
+It was not only shown. Picking a book up loads it, and the place is written back
+under whoever is signed in — so in the reproduction Luigi came away with a
+**progress row in a book he had never opened**, which then appeared on his shelf
+as his own. A leak that writes is worse than one that reads.
+
+Three things close it, and the middle one is the only one that would have been
+enough on its own:
+
+* `pagehide` records `who: state.user` beside the book.
+* `pickUp` asks **`/api/account/me`** for the name and drops any carry that is
+  not that person's — including one with no name at all, from before this. Not
+  `state.user`: that is seeded from `localStorage` and holds the *previous*
+  reader's name until a page signs in, so comparing against it would have the
+  carry agree with itself. Asking also makes the call's timing irrelevant, which
+  matters because `/ha` loads `player.js` **without** `account.js` — hanging the
+  pick-up off the listening pages' `started()` stopped the book carrying to the
+  Home Assistant page, and `plays-on` caught it.
+* Signing out drops the carry outright. `pickUp` would refuse it anyway; leaving
+  one person's listening in the next person's tab is not something to be talked
+  out of.
+
+Two things that took a second attempt. `pickUp` runs **once per page** however
+many things ask — it is called at load and again from `started()`, for the
+sign-in that happens without one, and two runs racing both call `playBook` on
+the same book, the second re-seeking the first back to the carried position
+after it had moved on. `plays-on` caught that on the build machine, where the
+two calls are far enough apart to collide, and not here. And at the **gate**,
+with nobody signed in, it takes nothing but **keeps** the carry: the person
+about to sign in may be the one who left it, and dropping it there would lose
+their own book on the way back in.
+
+**Paused is not this.** A book stopped for a moment is still the book you are
+listening to, and the bar is the way back into it — hiding it on `pause` would
+leave no way to resume. What ends the bar is the book ending, or being asked.
+
+A book that has just run out also has `data-again` set on its card's play button,
+so with the bar gone the card says *▶ Play again* rather than *▶ Resume* — which
+would otherwise offer the last seconds of a book already finished.
+
+Both sliders are `<input type="range">` with the fill drawn by CSS from a custom
+property: `--played` is set on the element in JS, and
+`::-webkit-slider-runnable-track` paints
+`linear-gradient(90deg, #ffb628 0, #ffe066 var(--played), #2c3342 var(--played))`,
+with `::-moz-range-progress` for Firefox. A range gives dragging, clicking and
+the arrow keys for nothing, which a div would each have to be taught.
+
+`timeupdate`, `durationchange`, `loadedmetadata` and `emptied` redraw the time
+and the fill; while a drag is in progress (`input` fired, `change` not yet) the
+redraw leaves the thumb alone, or it would fight the finger holding it. `#pGet` is a plain `<a download>` at `/api/download/<book>`, so the browser does
+the saving. Volume is
+kept in `localStorage.volume` — the one thing the browser's controls did that a
+page cannot get back on its own.
+
+**The book goes on playing when you move between the app's pages.** `/`, `/admin`
+and `/ha` are three documents, and a switch between them destroys the `<audio>`
+element along with the rest of the page: there is no way to keep one element
+alive across a navigation. So the listening is handed over instead. On
+`pagehide` the player writes `{ id, track, position, playing }` into
+`sessionStorage.carrying` and sends the place to `/api/progress` by
+`navigator.sendBeacon` — an ordinary request is cancelled with the document that
+made it, which used to lose the last seconds at every switch. The next page reads
+that on load, loads the book at exactly that second, and calls `play()` only if
+it was playing when the last page went away.
+
+`sessionStorage`, not `localStorage`: this is one tab carrying on, not every
+window in the browser starting to play. And `playBook(id, carried)` takes a
+second argument for it, because a carried book is not a press of Play: it must
+not toggle, and a *finished* book must not be rewound to the beginning and
+unticked — that is what pressing Play on it means, not what carrying it means.
+
+Whether the new page may make a sound at all is the browser's to say, and it was
+measured rather than assumed: Edge refuses `play()` with `NotAllowedError` on a
+page opened cold, and allows it on a page reached by a click — `location.assign`,
+`location.replace` and a plain link alike, which is all three of the ways this
+app navigates. Reached any other way (a typed address, a refresh) the refusal is
+caught and the player is left loaded and waiting with a line saying to press ▶,
+rather than silently doing nothing.
+
+The shelf bar (`.tile .tbar`) is 5px of **yellow** — `#ffb628` to `#ffe066` — on a
+`#2c3342` track. It was 4px of the interface's own purple-to-cyan on
+`var(--panel2)`, which against a dark tile you had to hunt for; the job bars in
+`#progress` keep that gradient, because those are about work being done rather
+than about how far into a book somebody is.
+
+**Search**: typing is debounced 200 ms, Enter searches at once, Escape clears.
+Results head the column with `Search · <query> · <n> books`; nothing found says
+`Nothing matches "<query>".` Emptying the box restores what was on screen (series,
+author or the shelves). Drawing any other book list clears the box, so it never
+says something the screen does not.
+
+**The Settings pulldown.** There are two kinds of settings now — the library and
+its maintenance, and Home Assistant — and the second is a page rather than a
+dialog, so the header button is a menu over both. It is a `<details class="menu">`
+whose `<summary>` is styled as a button, so it opens and closes with no script;
+`#openSettings` (*Library and maintenance*) opens the dialog and `#openHa`
+(*Home Assistant*) goes to `/ha`. Script only closes it: on either choice, on
+Escape, and on a click anywhere outside it — a menu left hanging over the page it
+just opened is worse than no menu. On a phone the header wraps, which can leave the
+button far from the right edge, so under 720px the list is `position: fixed` with
+`left: 12px; right: 12px` rather than hung off the button, and its rows are 12px
+tall for a thumb.
+
+`#openSettings` is still the id that opens the dialog, so everything that drove it
+before still works.
+
+**Nothing about incomplete series lives in Settings.** It began there as a table
+and it is now one place in the left column, **Series to complete** under
+Maintenance, holding both answers: §7.10a's count over the collection and
+§7.10b's question to Wikidata. A dialog was the wrong home for a list a reader
+comes back to, and two homes for one question was worse than either. Moving it
+meant moving what it could do, so the row that names a local gap kept its way
+into the library — an *Open in library* button that leaves the maintenance view,
+unfolds that genre in the column (or it would land on the one row that cannot be
+seen) and opens the series — and the `hint` line naming the series nobody has
+numbered came too, since a reader who sees no rows deserves to know which series
+the verdict could not cover.
+
+**And the same size as its neighbour.** Settings holds as much as the Home
+Assistant page does, so `#settings` is `min(820px, 94vw)` wide — the page's own
+`max-width` — and `min(92vh, 1000px)` tall with `overflow-y: auto`, so moving
+between the two is not a jump between a narrow box and a full page. Every other
+dialog asks one thing and stays at `min(620px, 92vw)`. On a phone all of them are
+already full-screen sheets.
+
+**Dialogs** (native `<dialog>`): Settings (libraries with *Is a Genre*, a folder
+browser, genres, import path, the disk check, cover tidy, and the whole-collection
+tag run with its state line); *Who is listening*; *Import* (source, genre, author,
+series, title, and a line showing exactly where it will land); the **conflict**
+dialog comparing two copies row by row with the better value marked; *Find
+metadata* (five results, a search box, the author choice when two are credited,
+the series it read out of the title or subtitle as a tick beside its name and
+volume number, and category-as-genre buttons); *Edit metadata* (title, author, series, the book's number in that
+series, narrator, year, description — each in a `.field` row with a **⧉** button that
+copies it, then a **Cover** box that takes a pasted, dropped or chosen picture
+(§7.8b), and the book's folder and file count at the foot, above the buttons); *Move…*.
+
+***Move…* takes its genres from the folders.** It used to ask `/api/import` for
+that list, which walks the import folder and throws when there is none set — or
+when there is one and the share it names is not mounted. Moving a book has
+nothing to do with importing, and `moveBook` is an inline handler, so the throw
+went nowhere anybody would see: **the button did nothing at all** on an install
+that had never imported. It asks `/api/genrefolders` now, and catches that too,
+because the dialog is worth opening without the list — the genre the book already
+has is in it either way, so a move within a genre still works.
+
+It writes four folders, so a book that lives in a *part* of a series (§7.1) has
+one more above it than the dialog can express: `clean()` turns a slash into a
+dash, so typing both levels into **Series** makes one folder named for both
+rather than the nesting back. The preview says so — *"out of The Great Cycle /
+First Movement, which this cannot write"* — rather than letting a book leave the
+series it was filed under without a word.
+
+Two pages are one column rather than three, because they are read rather than
+browsed: `/ha` and `/accounts` (`body.one-column main.page`).
+
+**On a phone** (`@media (max-width: 720px)`): the three columns become one, and
+`document.body.dataset.col` — `genres` / `authors` / `books` — says which is on
+screen; the stylesheet hides the other two, and a wide screen ignores the
+attribute entirely. `show(col)` sets it, called where the interface already knew
+it had moved: `selectGenre` → authors, `drawBooks` and `loadHome` → books, and a
+click on any maintenance row → books. Each column heading carries the step
+out — `#backGenres` ("‹ Genres"), `#backCol` (named after where it goes, authors
+or genres, by `outOfBooks()`, which counts a filled authors column as a step of its
+own: *Listened* and *Needs tags* browse by author with no genre chosen) — and the genre column has `#toBooks` ("Books ›")
+forward. The page ships with `data-col="books"`, so it opens on the shelves before
+any script runs.
+
+The rest of the phone layout is CSS only: the header wraps to two rows with the
+search across the width (explicit `order` on each control), a card becomes
+`84px 1fr` with its actions a two-up grid beneath, `.fix` rows go one column,
+dialogs become full-screen scrolling sheets, rows and buttons are at
+least 40px, and `#progress` bars stack. Two details that are not cosmetic:
+**fields are set at 16px**, because a phone zooms the whole page when you focus a
+smaller one, and `height: 100dvh` on the body, because `100vh` puts the player
+behind the browser's own chrome. Between 721px and 1000px the three columns
+stay, narrower. `@media (hover: none)` drops the hover states, or a tapped button
+stays lit.
+
+**The player bar on a phone is four rows, each one thing**: the cover, what is
+playing and **✕**; the chapter, across the width; the clock, the volume and the
+download; the seek line. `order` on each control does the arranging, so the
+markup is one order for both screens and neither page has to know which it is
+on. Before that it was whatever fell out of wrapping, and the owner sent a
+screenshot with five faults on one screen: **Sign out** stranded mid-row (the
+block naming who is signed in carried no `order` at all, so it fell to 0 ahead of
+everything else, and had nothing beside it to take up the space), the bar's own
+pause button sitting next to a cover that is the same button, a bare **⤓** beside
+a volume slider, **✕** parked mid-bar, and the chapter line — the longest text
+there — clipped to 45% of the width.
+
+`#pPlay` was **taken out of the phone bar** in 2.12.56, on the grounds that the
+cover beside it is the same button and the book's own card carries a third.
+The owner asked for it back, and he was right: the card is only on screen while you
+are looking at that book, and a cover that happens to be a button is something
+you have to already know. The one control the bar exists for belongs in it. It
+**says what it does** — `⏸ Pause`, `▶ Resume`, or `▶ Play` where there is no
+place to carry on from — and sits on the row *below* the chapter rather than
+beside it, which is what it used to do and what cost the chapter its width.
+
+The cover keeps the affordance it gained: it is wrapped in the same `.cover` the
+cards use and `drawPlay()` gives it the same `⏸`/`▶`. The wrapper is
+`display: flex`, or a block would leave a sliver of line-height under the picture
+where a click would miss the image, which is what carries the handler and what
+the cover's right-click menu looks for. And `#pGet` **says "Download"**: there is
+no hovering on a phone to read a title from, and it is the one control in the bar
+that writes a file to somebody's device.
+
+The six controls cannot share a line at 375px — measured, they want 549px of 351
+— so the two with words on them, the ones pressed on purpose, take a row and the
+measurements take the next. The mute and the volume slider are **one element**,
+`<span class="vol">`: loose, the bar wrapped between them and left the slider
+alone across the full width, where a yellow bar under a yellow bar reads as a
+second progress line.
+
+**Nothing in the bar may change width while you look at it.** The bar wraps on a
+phone, so what a row demands decides how many rows the bar has and therefore how
+tall it is — and a bar that gains a row moves *up*, under the thumb that is
+pressing it. Two things in it used to change: `#pPlay`, where "▶ Resume" is
+eleven pixels wider than "⏸ Pause", and the clock, which grows a field when a
+book passes an hour. Both now hold one width, in `em` and `ch` rather than
+pixels so the reservation grows with whatever font the device actually draws in.
+
+The owner reported the jump on a **Galaxy S25** and it was never reproduced here: at
+360px the row had 28px of slack and at 320 it had already wrapped in both
+states. That is roughly what a different system font is worth, which is the
+argument for the fix and not proof of it. `plays-on` checks the thing that could
+move the bar — that the button is one width whatever it says — rather than
+claiming the bar stays put on a device nobody here has.
+
+**A long chapter name used to widen the whole page.** A `<select>` sizes itself
+to its widest option and a flex item's automatic minimum is its content, so
+*23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the
+box 575px wide inside a 375px window — and 498px inside a 1265px one, which gave
+the **desktop** a sideways scrollbar too. `min-width: 0` is the whole fix, and it
+belongs outside the phone rules, because a long chapter name is long on any
+screen. The phone gives the box the row; the desktop caps it at 240px.
+
+None of that is visible to `pages` — jsdom has no layout engine, so a stylesheet
+that puts a control in the wrong place is a change no portable suite can notice.
+`plays-on` drives a real browser, so it takes a phone-sized pass at the end
+(`Emulation.setDeviceMetricsOverride`, cleared after) and reads the computed
+positions: Sign out against the header's right edge and above the app's name, no
+play button in the bar, the cover's glyph, ✕ at the bar's top right, the chapter
+and seek lines at full width, and the download on the clock's row saying what it
+is. The two footers are written out **twice**, one per page, and `pages` holds
+them to each other control for control — one stylesheet and one `player.js`
+serve both, so a control added or rewrapped on one and not the other is a bar
+that works on the page somebody opened and not on the one they did not.
+
+The tag badge carries both forms — `.wide` with the list, `.narrow` with the
+count — and the media query picks one, since the full list is a paragraph on a
+phone.
+
+**The name of the app** in the header (`#brand`) calls `loadHome()`, so it is the
+way back to the shelves from a book list, a search or a maintenance list. Both it
+and the *Home* link clear the search box, since the shelves are not a search
+result either.
+
+Beside the name is `icon.svg` as `.mark`, which is the app's own drawing — the
+one the favicon already used and the one Unraid shows on its tile, through the
+`net.unraid.docker.icon` label on the image. It was a headphones emoji, so the
+tab, the Unraid tile and the page each showed something different; now all three
+are the same mark. Sized in `em` so it follows whatever heading it sits in — the
+header's 16px and the sign-in card's 17px — at 1.6, which is larger than the
+text on purpose: the drawing is made for 512px, and below about 20 its arc and
+the pages of its book run together. The artwork carries its own rounded dark
+square, so nothing in the stylesheet draws a background or a radius for it.
+
+**Unticking Listened** clears the place kept in the book: the tick means "I have
+listened to this", so `POST /api/listened {done: false}` deletes the progress row
+rather than setting `done = 0`. The card follows — the note goes back to *new* and
+the play button to *▶ Play* — and the book leaves *Continue listening*. A place
+lost this way is not recoverable, which is the price of the tick meaning what it
+says.
+
+**The version** the server is running is read from `package.json` at startup and
+returned by `/api/stats`, and both pages show it at the right-hand end of the
+status line. Without it there is no way to tell from the outside whether a
+container has actually been updated, which is exactly the question a bug report
+starts with.
+
+**Playing** is a toggle on the button of whatever offered it — a card in the
+library, or a tile on the **Continue listening** shelf, where each book carries a
+`button.tplay[data-play]` under its progress line. A tile's button stops the click
+from reaching the tile behind it, or one tap would play and pause in the same
+breath.
+
+The toggle itself: `playBook(id)` pauses or resumes
+when `state.book.id === id` and starts the book otherwise, so the button that
+started it is the one that stops it. `markPlaying()` writes the label and a `.playing` ring on every card button and
+every tile button. The label is *⏸ Pause* for the book that is playing, *▶ Resume*
+for the book that is loaded but paused **and** for any button marked
+`data-resume="1"` — a shelf tile always, a card when the book has
+`started` or `done` — and *▶ Play* only for a book with no place kept in it. That
+distinction is what makes a reload keep saying *Resume*: nothing is loaded in the
+player then, but the shelf still means "carry on with this". A button that has been
+the playing one is marked `data-resume` too, so it stays a *Resume* when another
+book takes over.
+
+**The cover is a play button as well.** The picture on a card carries
+`onclick="playBook(id)"`, so one click starts the book and the next pauses it —
+`playBook` was already a toggle. `#pCover`, the picture in the player, pauses and
+resumes whatever is loaded there. `markPlaying()` also writes `data-glyph` on each
+`.card .cover` (⏸ for the book that is playing, ▶ otherwise) and a `.playing` class;
+CSS draws it with `content: attr(data-glyph)`, on hover for any cover and always for
+the one that is playing, since a touch screen has no hover. The handler sits on the
+**image**, not on `.cover`, because the *Listened* tick lives in that box and a
+click on it must not start the book.
+
+It runs from the `play`, `pause` and `ended` events and at the
+end of `drawBooks` and `loadHome`, so a redraw does not forget which book is
+playing. The `onclick` attribute stays `playBook(...)`, because the stylesheet and
+the tests find the play button by it.
+
+**Staying put.** `backToView()` draws the view that is on screen again — the open
+maintenance list if there is one, else the series, the author, or the shelves — and
+both `refreshLibrary()` and the tail of `applyMeta` use it. Without it, applying
+metadata to a book from *Needs tags* threw the page into the library, or onto the
+shelves when a genre came with the metadata.
+
+**Maintenance lists** (admin page, `body.maintenance`): *Needs converting*,
+*Converted*, *Broken on disk*, *Import* (ten per page), *Replaced*, *Trash* — each
+with its count in the left column.
+
+*Needs tags* is the exception: it keeps the authors column, like *Listened*, so it
+does **not** set `body.maintenance`. `#needsTags` puts the authors of the books
+that need tags in that column with a count each and `drawFix(list)` in the pane;
+`untaggedOf(name)` narrows both the rows and the *Write into N book(s)* button to
+one author. `state.untaggedAuthor` is what `backToView()` returns to, so writing
+tags into a book — which redraws the list — does not throw the owner back to the
+top of a collection they are working through author by author.
+
+**And each row can hand you the book.** *Show the book* opens the library where
+that book lives — its genre, its author, its card — and marks the card for a
+moment, because an author with forty of them puts the right one somewhere in a
+wall of identical cards. The mark takes itself off after a few seconds: one that
+stayed would be a mark on the wrong book the next time something was looked at.
+Without it the way there was to read the genre and author off the row and find
+them by hand in two columns.
+
+The button hands over an id and nothing else, and `showUntagged(id)` looks the
+rest up in `state.untagged`. Every inline handler on this page passes numbers and
+`this`: a title or an author in one would have to be escaped for an HTML
+attribute and for JavaScript at the same time, and the first person to copy the
+pattern would get it wrong. `jumpToBook` finds the card by `data-id`, which both
+pages' cards now carry, and does nothing at all if it is not there — a book can
+have been moved or deleted since the list was built.
+
+The listening page mirrors browsing, series, folding, search and the player, and
+carries an **Admin** button that unlocks and opens the other page. A visitor who
+types the admin address is sent to the listening page.
+
+## 9. Invariants and traps
+
+Every rule here exists because its absence caused a real bug. A rebuild that
+skips them will reproduce the bugs.
+
+1. **`x += await y` loses updates.** The reference is read *before* the await, so
+   with several books in flight the additions overwrite each other. Read into a
+   local first. (A scan of seven books reported one.)
+2. **Two writers must not share a progress object** — that is the `193 / 157`
+   bar. Per-write sinks, plus a module-level single-writer guard that explains
+   itself when it refuses.
+3. **The scan's unchanged fast path must still refresh the tag-derived series**,
+   or series never appear for a library scanned by an older version.
+4. **A replacing import must scan with `force`**, or "same file names" is read as
+   "unchanged" and the old copy's duration, cover and description survive.
+5. **A volume number in a *tag* must be split off too**, or `The Dark Tower V`
+   becomes its own series beside `The Dark Tower`.
+6. **Concurrent cover writes**: two books can carry the same art. Write only when
+   the file is absent, and shrug if it appears meanwhile — on Windows the second
+   open can fail and would otherwise kill the whole scan.
+7. **A slow job must grey what would start another one**, candidates included, or
+   a second click reopens the conflict dialog while the first import is running.
+8. **A stepped-aside copy must be put back when the import fails**, or the
+   library points at a folder that is not there.
+9. **`progress.running` before the walk**, not after — the walk itself is slow.
+10. **`scan()` swallows its own errors**: nobody awaits it.
+11. **Delete the `broken` row when a book goes** (the trigger): SQLite reuses ids.
+12. **`COALESCE` every column in the search haystack**, or a NULL erases the row.
+13. **The cover URL marker must change when the title does** for books with no
+    art, or a rename shows the old drawn cover for a week.
+14. **No `{duration: true}` when parsing**: it reads every frame, about four
+    seconds per file.
+15. **Empty tag values are deleted, not written** — an empty frame reads as
+    present, and the Needs-tags list would clear itself falsely.
+16. **`node-id3` merges**: writing a subset does not remove other frames.
+17. **Never tell anyone to copy the repo template over
+    `templates-user/my-<name>.xml`** — that is where Unraid keeps their settings.
+18. **All SQLite work on the main thread.** `DatabaseSync` is one synchronous
+    connection; workers are for `NodeID3.update` only.
+19. **Only reads take a lane.** A pool of books whose files also pool must not
+    hold a lane while waiting for its children.
+20. **Sort file names numerically** (`localeCompare(…, {numeric: true})`), or
+    track 10 plays before track 2.
+21. **A scan changes the maintenance counts**, so the page must reload them when
+    one finishes — and redraw the list if it is the one on screen. Without that
+    *Needs tags* keeps its old number until the page is reloaded, and it looks as
+    though the scan did nothing.
+22. **A container that writes as root makes folders its owner cannot use.** Honour
+    `PUID`/`PGID`/`UMASK` and drop to that user before creating anything, or an
+    import lands somewhere the person who owns the share is refused permission to
+    write in.
+23. **Never remove the source of a copy before checking that every file arrived**,
+    with its size. A move that half happened and then deleted the original cannot
+    be undone.
+24. **Cover art beside the audio is cover art.** A book's cover is either a file
+    the app keeps or a `file:` path to a picture in the book's folder; a tag write
+    that only handles the first kind leaves a book asking for a cover it already
+    has, for ever, while the list promises a write can fix it.
+25. **The queue and the count of a resumable run must move together**, in one
+    transaction: a container stopped between them drops a book off the queue that
+    the count never counted.
+26. **A form field on a phone must be 16px or larger**, or the browser zooms the
+    whole page when it is focused and the layout jumps.
+27. **Never hand a browser the whole list of listeners.** `GET /api/users`
+    answers with the names *that browser* has claimed; a first-time visitor gets
+    an empty list, and the dialog then shows only a field to type one in.
+28. **Tooling note for whoever rebuilds this**: writing JavaScript through a
+    shell mangles template literals, `${…}` and `\d`. Use a file-writing tool for
+    anything containing them, and grep the result afterwards.
+29. **A series a lookup found has to reach the files.** A scan trusts the
+    files, so a series stored only in the database is dropped by the next one
+    unless the fast path keeps what it has and the tag write puts it in `TIT1`.
+    Both, in this app: the write for the books whose tags are written, the fast
+    path for the ones whose are not. And one `series_no` column serves both kinds
+    of series, so only the series the book is *shown* under may set it.
+30. **A media player must be able to fetch the audio itself.** Anything handed to
+    Home Assistant carries absolute URLs built from `BASE_URL` (or the forwarded
+    host), never a relative path and never `localhost`. And `/api/stream` stays open
+    even when `HA_TOKEN` is set, because a speaker sends no token.
+31. **A secret the page can set but never read.** The Home Assistant token goes in
+    and never comes out: the page is told `hasToken`, an empty token leaves the
+    saved one alone, and only `"-"` clears it. Any page that could read a secret
+    back would leak it to whoever opens that page.
+32. **Google's `seriesInfo` carries no series name**, and is attached to the
+    volume rather than to a search result. Read the name from `series/get` by
+    `seriesId` and cache it; never trust `shortSeriesBookTitle` as the name, which
+    is documented as the book's title within the series and is sometimes the book's
+    own. A diagnostic that spends the owner's API quota is a button they press,
+    never something a page does on its own.
+33. **A genre folder is the library, not litter.** Tidying up after a move walks
+    up from where the files came and stops at the genre folder: an empty author
+    folder is litter, an empty genre folder is a genre the user configured, and
+    removing it silently takes a column out of their page.
+34. **Where a too-deep book belongs is where it already is.** The fix for
+    `…/Book/Disc A/01.mp3` is to flatten it into `…/Book/`, so destination equals
+    source. Code that guards "you are sending it where it already is" has to let
+    that case through, or the commonest thing in *Not counted* cannot be fixed.
+35. **What a listener did has to be deleted with the book.** SQLite hands out
+    rowids again, so a `progress` row left behind by a scan that dropped a book
+    whose folder had gone was given to the next book added — arriving already
+    ticked off and halfway through a track — and the status line counted a book
+    that was not there. A trigger on `books` does it now, the way `broken` has
+    always had one; every table keyed by `book_id` needs the same.
+36. **A reader who cancels sends no `drain`.** Waiting on `write`'s answer with
+    only a `drain` listener never ends when the connection has gone, and adding a
+    listener per write without taking it off again leaks them by the thousand over
+    one book. Wait on `drain`, `error` and `close` together, settle once, and take
+    all three off.
+37. **Nothing can be said to a reader once the answer has started.** The error
+    wrapper answers a failure with a status and a JSON body, which throws when the
+    headers are already out — inside a `.catch`, which makes it an unhandled
+    rejection, and Node ends the process on those. Check `headersSent` first and
+    drop the connection instead.
+38. **Home Assistant forgets what is written into its state machine.** These
+    sensors are states written over the REST API, and HA empties them when it
+    restarts, so a repeat is the only thing that keeps them there. The repeat has
+    to work with nobody watching: it needs the address this app is reached at, so
+    that address is written down when a browser is here and used again after a
+    restart — waiting for a visitor meant an updated container and a restarted HA
+    left no sensors at all.
+39. **An id beats an element rule, whatever the media query.** Every dialog is a
+    full-screen sheet on a phone, said as `dialog { … }` inside the phone block.
+    `#settings`, sized later to match the Home Assistant page, quietly took that
+    away from itself on phones too: an id wins over an element selector wherever
+    it stands. A rule of that kind has to be said again for the phone.
+40. **The tap that ends a long press is still a click.** A hold that opens a menu
+    on a phone is followed by a `click` on whatever was held: without swallowing
+    that one click the menu shuts again and the cover underneath starts playing.
+41. **Nothing survives a page switch except what was written down.** The three
+    pages are three documents; the `<audio>` element does not carry over. What
+    goes on playing does so because `pagehide` stored the book, the track and the
+    second, and the next page loaded them again. A request begun on the way out
+    does not survive either — that place goes by `sendBeacon` or it is lost.
+42. **A new page may only make a sound if a click brought the reader to it.**
+    Measured, not assumed: `play()` on a page opened cold is refused with
+    `NotAllowedError`. So the refusal is caught and said out loud — a player that
+    silently does nothing reads as a broken app.
+43. **`player.js` is parsed after the page's own script**, because it uses what
+    that declares. Nothing in it may run before the page has drawn: the only
+    thing it does at load is pick up a carried book.
+44. **A path that came from outside is resolved and contained before it reaches
+    the disk** (`safepath.js`, §7.8c). Three routes took one and did not: a cover
+    column that `GET /api/cover/:id` serves without asking for a password, and
+    the source folder of an import and of a filing, both of which get moved. "The
+    page never sends anything else" is not a check — the body of a request is not
+    the page.
+45. **A walk that read nothing must remove nothing.** The scan's reconciliation
+    drops books it did not see, and what it sees is empty when it could not read
+    a thing: a `libraries` setting that will not parse answers `[]`, and a share
+    that is mounted but unreadable lists nothing. Both emptied the whole library,
+    and the `progress_follows_books` trigger took every listener's place with it.
+    Reconcile only under roots that were listed without error, and only where the
+    folder really is gone — a folder that exists but cannot be read is not
+    evidence of anything.
+
+
+46. **A lock is taken before the first `await`, not after it.** `convertBook`
+    set `convertProgress.running` after probing every source — several awaits in
+    — so two requests a moment apart both read it as false and both converted
+    the same book into the same folder. A check in the route is not a lock
+    either: two requests can both pass it.
+47. **A write that answers `false` is a failure, and silence is not success.**
+    `writeTag` resolves false for a file it could not open; nobody counted the
+    falses, so a book whose every file was unwritable came back `written: 0` with
+    no error, and the whole-collection run counted it done — *0 file(s) tagged in
+    200 book(s)*. Count them, say which, and let `books.tagged` claim only what
+    every file really carries, since that column is what *Needs tags* reads.
+48. **A half-done copy is swept before it is reported.** `moveFolder` falls back
+    to copying across devices and verifies every size; when that came up short it
+    threw and left the partial destination standing — which made the import's own
+    rollback skip itself, because it only restores when the destination is free.
+    The library then pointed at a broken folder with the good copy renamed
+    `Replaced - …` beside it.
+49. **An address that arrived in a request is fetched the careful way**
+    (`outbound.js`): https only, the name resolved and refused if any address it
+    answers with is private, no redirects, a timeout, a byte ceiling, and an
+    answer that says it is a picture. This server can reach the router, the other
+    containers and `169.254.169.254`; fetching whatever it is handed makes it a
+    way in to all of them. DNS can still change between the check and the fetch,
+    which is said here rather than pretended away.
+
+    **And every outbound call says the same**, not only that one: `fetch` follows
+    a redirect unless told otherwise, and four of the seven did not say. Home
+    Assistant's call carries a long-lived token and the three to Google Books
+    carry the owner's API key in the query string, so a followed redirect hands a
+    credential to whatever the first host names next. Those hosts are fixed, so
+    nothing could aim them anywhere — but the habit costs one word, and
+    `outward.mjs` reads the source and fails when a new call is written without
+    it. Measured before the change: none of googleapis.com, wikidata.org or
+    query.wikidata.org redirects, so refusing one breaks nothing.
+50. **Text that goes into a file with line syntax is folded to one line.** An
+    `#EXTINF` line ends at the newline, so a book title carrying one wrote the
+    rest of the playlist. Titles come from folder names and tags, neither of
+    which is this app's to trust.
+51. **A token belongs to the address it was made for.** Pointing the Home
+    Assistant setting at another host while keeping the token hands it to
+    whatever is there on the next call — a typo is enough — so changing the
+    address forgets the token, and the address itself has to be `http(s)://host`
+    with nothing after it.
+52. **A guard in a page guards one page** (`onejob.js`). `work()` in app.js keeps
+    one browser from starting a second job, which is worth having and is not a
+    lock: a phone beside a laptop, or a reload in the middle of an import, is a
+    request that page never knew about — and what it reaches moves folders,
+    renames them and deletes them. The routes that move files take a server-side
+    lock and answer **409** with the name of the job that holds it. Tag writes
+    stay out of it on purpose: each touches only its own book (§7.3).
+53. **scrypt is slow on purpose, so it may not be synchronous.** `unlock` hashed
+    twice with `scryptSync` on a route that asks for no password to reach, which
+    made guessing a way to stop the server answering anything at all. It hashes
+    off-thread now, works the stored side out once, and a wrong password costs
+    the asker a wait that doubles from half a second to thirty — per address, so
+    a mistyped password does not lock the house.
+54. **Open is not the same as taking whatever arrives.** A listener has no
+    password (§7.12) and `POST /api/users`, `/api/progress` and `/api/listened`
+    stay open, because that is the model. They still cut a name to 60 characters
+    and strip control characters from it, and a place in a book has to be a book
+    that exists, a whole track index and a position that is a number at all.
+55. **A held poll that is replaced must be answered, not dropped.** A second
+    Engine.IO poll overwrote the first, whose own timer then found `s.waiting`
+    pointing elsewhere and left it hanging until the client gave up. The older
+    one is answered with a ping first.
+
+56. **The gate is one middleware, not fifteen guards.** Fifteen routes is
+    fourteen chances to forget one, and the one forgotten is the one somebody
+    finds. Routes keep their own stricter guards on top of it.
+57. **A session that does not move is not a seven-day session.** Every request
+    pushes the week out again; seven days of *quiet* is what ends it. The
+    sessions are in the database, so a restart does not sign the house out.
+58. **Once anything is locked, a write belongs to the session.** A name in the
+    request body would let one account write into another's place in a book,
+    which is the thing accounts were added for.
+59. **Text a person wrote is cleaned before it becomes syntax somewhere else.**
+    A title could write playlist lines; a name could ring every phone in a
+    Discord server. `allowed_mentions: { parse: [] }` is the switch that settles
+    the second, because it is Discord's own rather than a guess at their syntax.
+60. **"No such name" and "wrong password" are one sentence**, or the sign-in
+    route answers the question "who has an account here?" for anybody who asks.
+
+61. **What somebody has finished is kept apart from what they are listening to.**
+    A level counts books the app watched run out, in a record of its own that is
+    never rewritten — because clearing a place in a book, unticking it or
+    starting it again says nothing about what has been finished, and a tally
+    that fell when somebody tidied up would not be worth having.
+62. **A tick by hand is a statement, not a completion.** Only the player
+    reporting that the last track ran out, or a position arriving at the end of
+    it, adds to the count.
+63. **Hiding a button is not enforcing a rule.** Downloading is refused by the
+    route for anybody below the top level without the admin's grant; the page
+    hides the control so that a button which would only be refused is not
+    offered.
+
+64. **Nothing this app shows takes the browser's top layer and keeps it.** The
+    top layer is shared — a modal `<dialog>`, a `[popover]`, and the inline menu
+    a password manager puts over a password field are all in it, and the last one
+    in wins. A card that sits there permanently, as the sign-in gate did, makes
+    an extension fight for its own menu and warn the reader about the page. Use a
+    modal dialog for what a reader must answer *and dismiss*; anything that
+    stands until the app puts it away is an ordinary element with `hidden`.
+
+65. **A failure says what went wrong to the log, and nothing to the stranger.**
+    A framework's default error page is written for the person who wrote the
+    code, and it is sent to whoever asked: this one carried the server's
+    absolute paths and line numbers to any approved listener. Every throw that
+    nothing else catches ends at one handler, which logs the reason and answers
+    with a sentence that says only that there was one. A refusal thrown
+    deliberately — it carries a status — keeps its own words, because those are
+    written for the reader. And a question a route cannot answer is a 400 that
+    says what was missing: a 500 there is the app blaming itself for a typo.
+
+## 10. Measured performance
+
+Numbers from the machine this was built on (20 CPUs; the share is SMB on a NAS).
+Both benchmark scripts read disjoint halves of the same tree so a warm cache
+cannot flatter the parallel run.
+
+| What | Before | After |
+| --- | --- | --- |
+| one tag read per book, cold, on the share | 1159.9 ms/book | 376.0 ms/book (3.1×) |
+| the same on a local SSD | 2.0 ms/book | 0.4 ms/book (4.6×) |
+| one tag write, 5 MB file | 18.5 ms | 6.4 ms (2.9×) |
+| worst event-loop stall while writing | 29 ms | 12 ms |
+| 480 files of 5 MB, whole-collection write, end to end | ~8.9 s | 3.0 s |
+| scan of a 60-book library, local SSD, end to end | 1.2 s | 0.8 s |
+
+**Serving a library of 1200 books** (36 000 tracks, one genre holding 420 of them),
+measured against the real page in a browser rather than guessed at:
+
+| What a click costs | Server | In the page |
+| --- | --- | --- |
+| the genres column | 3–16 ms | — |
+| a genre → its authors | 2–16 ms | 7–9 ms, 60 authors drawn |
+| an author → their books | 15–16 ms | 6–45 ms |
+| a series of 35 books | 14–16 ms | 48 ms, **16** covers asked for, not 35 |
+| the shelves | 2–16 ms | 12 ms |
+| every count at once (`refreshLibrary`) | — | 99 ms over eleven addresses |
+
+Nothing here is the database: a genre is one `GROUP BY` over a table of a thousand
+rows. What a big view costs is **pictures**, one request per card, so every `<img>`
+on a card and a tile carries `loading="lazy"`: a browser asks for what is on
+screen and the rest as it is scrolled to. On a server whose books live on spinning
+disks that is the difference between waking the array for 35 files and for 16.
+
+The lesson worth keeping: the read side is **latency**, so overlap it (lanes); the
+write side is **synchronous CPU work in a native module**, so move it off the main
+thread (workers). Do not use threads for the reads or lanes for the writes.
+
+## 11. Verification
+
+Test scripts are standalone `.mjs` files run with plain `node`, each building its
+own fixture library of real (silent) MPEG frames, starting the server on its own
+port with its own `DATA_DIR`, asserting with a one-line `check(label, got, want)`,
+and printing `all checks passed`. UI suites drive a headless browser over CDP
+(`--headless=new --remote-debugging-port=9222`) and evaluate expressions in the
+page. `.dockerignore` keeps them out of the image; they are not shipped, which is
+not the same as not kept.
+
+**The page's own logic, without a browser.** Everything above the `plays-on` line
+checks the server. The faults that have actually reached the owner were in the page:
+*Move…* that did nothing because the route it asked threw (2.9.8), Favourites
+with an empty Authors column (2.7.64), a book number dropped on save. Every one
+was found by hand, because the only thing that could drive a page needed a
+browser. `pages` loads `index.html` and `listen.html` into **jsdom** with their
+real scripts and a `fetch` it answers for, then drives handlers and reads the
+DOM — no server, no browser, under a second. Three things make it work and each
+is a trap worth naming:
+
+* The scripts go in as real `<script>` elements, **not** `window.eval`. A classic
+  script's `const` lands in the window's lexical scope and the next script sees
+  it; an `eval` keeps it to itself, so `browse.js` would define `$` and `app.js`
+  would not find it.
+* They are appended **after** the window is fitted with what jsdom has not got
+  (`showModal`, `close`, `scrollIntoView`) and with the stub `fetch`. The page's
+  own `<script src>` tags are stripped from the HTML first, or they would run
+  before any of that was in place.
+* Which scripts, and in which order, is **read off the page**, not listed in the
+  suite. The order is the point — a second copy of the list would be a thing to
+  keep in step.
+
+**Asking `broke` is half the point, and it was being asked in one place.** The
+accounts page threw while wiring its rows for two weeks: the administrator's row
+has no *May listen* — their sign-in does not go through it — and the loop that
+hangs a handler on every row took it without looking, so `forEach` stopped on
+that row and every row drawn after it was left with nothing wired. The Delete
+buttons were all there and none of them did anything, which is a state no
+rendering check can see. The harness collected the error on every run and the
+checks read markup instead. They assert `broke` wherever a page is **driven**
+now, not only where it is loaded, and a control is checked for a handler and for
+reaching the far end when pressed.
+
+A route the suite has not been told about **refuses**, so the page's own
+`.catch(() => …)` supplies the empty shape, which is what it does when a route is
+off or a share is not mounted. A route that gains a caller with no fallback shows
+up as a fault instead of passing on a `{}` nobody reads. Loading the scripts is
+itself a check: two of them declaring one name is a SyntaxError that stops a page
+dead, and that now shows up as the page failing to load rather than as a regex
+over the source guessing at declarations — which is what `accounts` did until
+2.10.16. What `accounts` keeps is the seam the disk-reading suite cannot reach:
+the page served at `/admin` is the file `pages` drives.
+
+`jsdom` is this project's one **dev dependency**. The image is built
+`--omit=dev`, so none of it ships; the workflow's `suites` job runs `npm ci`
+rather than `npm ci --omit=dev` for that reason, and `pages` says so plainly if
+it is run without. That job also runs `npm audit --omit=dev --audit-level=high`:
+`proxy-addr` went critical overnight in 2.10.8 and was noticed only because an
+install happened to be running for another reason. Only what ships is asked
+about, and only high and above fails — a moderate advisory in a test tool is not
+a reason to stop a release of something else.
+
+**The browser it drives is whichever one is there.** `plays-on` named one path —
+Edge, in `Program Files (x86)`, on the machine this was written on — which is
+why the only suite that drives the real pages could not run on a build machine,
+and so ran nowhere at all while accounts were added and both pages were
+refactored under it. It tries Edge, Chrome and Chromium in turn for the platform
+it is on, says which it found, and takes `PLAYS_ON_BROWSER` for one kept
+somewhere else. Chromium is tried last on purpose: the unbranded build ships
+without the MP3 decoder, and this suite plays MP3s. Off Windows it also passes
+`--mute-audio` (a build machine has no sound card, and `currentTime` moves
+whether or not anything is audible), `--no-sandbox` and `--disable-dev-shm-usage`.
+
+**What is in the repository, and what is only described here.** Until 2.6.64 the
+suites lived on one machine and nothing in `tests/` was committed at all: this
+table named seventy-four of them and a clone had none, so the checks the spec
+leans on could not be run by anybody who had only the spec. These eighteen are in
+`tests/` now, and `npm test` (`tests/run-all.mjs`) runs the sixteen that run
+anywhere — `ogg-lengths` among them, which needs `ffmpeg` to make the Ogg it
+checks and says so and checks nothing where there is none, rather than passing
+quietly on an empty library:
+
+| In the repository | |
+| --- | --- |
+| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 53 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
+| `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
+
+**A failing suite says why again at the end.** `run-all` streams each suite's
+output as it always has, and now keeps what a failing one said and repeats it
+under the tally — the `FAIL` lines with their `got`/`want`, or whatever threw.
+Not a tail: a suite that fails its third check and passes forty more has the
+answer at the top, so the last lines of its output are forty `ok`s. Stack frames
+are dropped, because a throw prints its sentence and then twenty lines of node's
+own plumbing, which would push the sentence out.
+
+This is from losing one. `series-complete` failed once in a whole-suite run and
+passed every time after; it prints a careful paragraph about what it tried and
+what answered, and that went by unread because the run was piped through a
+`grep` keeping only the lines the reader thought mattered. Instrumentation that
+only pays out if nobody filters the output is instrumentation that does not pay
+out.
+
+The rest of the table below is a record of what was checked while the app was
+built, kept because it says what each rule is *for* — but those scripts are not
+here, and a row in it is not a check anybody can run.
+
+Server suites:
+
+| Suite | What it pins down |
+| --- | --- |
+| `admin-test` | every changing route refused while locked, listening routes still answering, right/wrong password, the cookie, lock again, no route to set a password, a stored hash cleared at startup |
+| `scan-scope` | scanning one library leaves the others alone; a full scan forgets a library no longer listed; an unknown folder is refused |
+| `sibling-series` | volume grouping: bare first volume, one volume alone, disc folders, short prefixes, titles that merely end in roman letters, two series kept apart |
+| `copy-fields-ui` | the copy button beside every field: one per field naming its own, on the same row with the field still full width and still so on a 380px screen, each button reaching the real clipboard through both paths — the browser API and, with `navigator.clipboard` taken away as it is over http, the textarea inside the dialog — an empty field saying so and leaving the clipboard alone, no textarea left behind, and nothing saved on the book |
+| `series-number-edit` | the number field in Edit metadata: it is there and opens empty for an unnumbered book, a typed number is saved and orders the series shelf, a wrong one can be corrected and emptied again, a book in no series keeps none, a lookup's own volume number arrives in the field where a correction beats it, a result with no number keeps the book's and saving does not take it off, a result that has one replaces it, and emptying the field by hand still clears it |
+| `narrator-not-author` | where a narrator comes from: the author in the artist tag is not one, nor is a file with no tags at all, a composer frame is one even when it names the author, one naming somebody else stands, a narrator typed in Edit metadata survives a scan, and the startup sweep clears an author-as-narrator only where the files name none |
+| `use-metadata-ui` | Use metadata against a stubbed result: which button calls what, the dialog opening filled from the choice with the lookup closed, nothing saved until Save, the author and series pickers deciding what arrives, a corrected title winning over Google's, the series number and the rest saved with it, the book moved into the series folder, a result without a series leaving a filed book where it is, and Edit metadata opened on its own being untouched |
+| `unreachable-tailscale` | the DNS message sends the reader to the host's `/etc/resolv.conf`, names `100.100.100.100` and `tailscale set --accept-dns=false`, does not send them to the container's own Tailscale fields (which do not set this), asserts no mechanism it cannot know (no TUN, no userspace, no sidecar), still names the custom-network case, and leaves Tailscale out of every other failure |
+| `unreachable` | what a lookup says when the request never arrives: a name that does not resolve called DNS with where Unraid keeps that setting, a resolver that does not answer the same, a timeout saying the name resolved and nothing answered, a refused or dropped connection, an intercepted certificate, anything else still carrying its code and message, the address named being the one asked about — and nothing anywhere claiming to know there is no internet |
+| `lookup-waits` | Find metadata opens with the search in the box and asks Google nothing, the body saying to press Search and the box focused and selected; the dialog naming the address and the catalogue it is about to ask, following the setting without a reload and saying "letting it choose" when there is none; Search asking once and asking what is in the box, not what the folder said; Enter doing the same; and the cover menu opening the same waiting dialog |
+| `google-country` | the catalogue as a setting: the list offered to the page with "let Google decide" first, the container variable as the starting point, a choice kept and upper-cased, a word that is not a country code refused whole rather than cut down to its first two letters, and what each choice does to the request — `country=NL`, no `country` at all, and a change taking effect without a restart |
+| `google-pacing` | how the lookup asks, with Google stubbed: what `waitBefore` makes of 200, 403, 503, 429, a Retry-After of two seconds and one of an hour; a busy search tried again after the wait Google named; five results probed one at a time, at least 130 ms apart; the key and country on every request; and a second lookup of the same book costing one search and nothing else |
+| `series-lookup` | the series read out of what Google answers: brackets, subtitles and Google's own series line in every shape, numbers as digits, words and roman numerals, and silence for `(Unabridged)`, an imprint, a year, a volume count, a series named after the book |
+| `series-two-step` | how Google keeps series, and what it says when there is none: a series lent from the edition that has it to the ones that do not, the ebook catalogue and then all forty records asked when none has it, a sibling volume's number never borrowed, another book's series never borrowed, `country=` on every request; every branch of `whyNone` — no series data, 403, a self-named line, an unnamed id, a timeout — and silence where a series was found. Plus: the name behind `series/get`, cached across books; `orderNumber` over `bookDisplayNumber`; a half number as no number; the fallbacks when Google will not name one; a result whose text said it is not asked about; and a refused, broken or self-named answer costing the series and not the lookup. Plus what the report says per book |
+| `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
+| `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
+| `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
+| `series-tags` | the series real tagged MP3s say: digits alone are none, a name with a number is both, a SERIES text frame is read, a number kept from before is let go; an empty series from a lookup leaves it, `clearSeries` takes it off the book and out of the files, and a scan afterwards does not read it back |
+| `series-online` | choosing the right Wikidata entry and refusing to guess: the novel series taken over the album, the film and the game of the same name; a shelf whose books match none of them told it is probably a different series; a name that is a book and not a series; a name Wikidata never heard of; an endpoint that will not answer reported rather than read as 'complete'; one name asked of Wikidata once but judged for each shelf on its own |
+| `covers-zip` | the duplicates archive after the second zip writer here was dropped for the streaming one: every loose cover in, the loose copies gone, the size it reported matching the file, and **Windows' own Expand-Archive** unpacking all three byte for byte — an archive is either readable by the tools people have or it is rubbish, and nothing in the app can tell the difference |
+| `abs-contract` | the Audiobookshelf face against what Music Assistant will parse: every required field of every model `aioaudiobookshelf` reads — login, user, permissions, server settings, library, folder, item, book, metadata, track, audio file, chapter, progress, series, author, narrator — plus the enums it refuses anything else for, the Engine.IO handshake its client opens at setup and will not start without, the doubled slash it sends, a token in the query for the audio and none without, a position from MA landing on the right track, finishing there ticking the book here, and every address answering 404 when MA_TOKEN is unset |
+| `series-complete` | what a series is missing: a gap in the middle, a missing first book, a whole run claiming the run and no more, an unnumbered book counted and said beside the gap, a series nobody numbered saying so rather than giving a verdict, a single book judged not at all — and a series split between two authors read as whole from either, which is what pins the count to the series and not to the books on screen. Then the same count over the whole collection: only the series with a hole listed, the two-volume hole above the one-volume ones, a whole series and a single book both absent from it, and the unnumbered series named apart with the genre a row needs to open it |
+| `one-writer` | two different books at once are both written; the same book twice is refused with a reason; counts never run past their own totals |
+| `two-writes` | a long write and a short one from another series side by side, each reporting its own total under its own book; the same book refused; the whole-collection run refused while they run, and starting once they are done |
+| `phone-ui` | at 390×844 with touch: one column at a time, the steps through and back with their named buttons, nothing wider than the screen, a 16px field, thumb-sized rows, the short tag badge, a dialog filling the screen — and all three columns back on a wide screen with the stepping buttons hidden |
+| `permissions` | the report names who the app writes as and what it was asked for, covers the data folder, every library, the import folder and a book folder, says whether each can be written in, names one that is not there rather than calling it unwritable, and leaves no probe file behind |
+| `moves` | a plain move; a move onto a folder that holds something refused with nothing touched; a move into an empty folder; a copy that cannot finish leaving every file of the original where it was; and every file error a share throws put into words |
+| `as-user` | the app starts with and without `PUID`/`PGID`/`UMASK`, says which user it became or why it could not, and treats nonsense in those variables as nothing at all |
+| `import-empty` | the kept list drops a book whose folder has gone, empties when the folder is emptied, picks up a new one from the background pass, ignores a folder left behind with no audio, and reads from scratch on a refresh |
+| `import-empty-ui` | with the panel open and the folder emptied behind its back, the list empties itself within seconds, says the folder is empty, the count follows, and a book dropped in appears — nothing pressed |
+| `skipped` | every way a folder full of audiobooks can be walked past — a book one level too deep, files it cannot read, an empty folder, audio loose in a genre or author folder, a copy set aside — each named with its reason; counted plus not counted is what is on the disk; moving a too-deep book up one level raises the count |
+| `file-skipped` | filing a folder the scan walked past: the three shapes that can be filed each found, the fields filled in from the folders and from the first file's tags, the genres on offer being the library's, a too-deep book flattened where it is with its disc folders in front of each name and the emptied folders gone, loose audio taken out of a genre folder without touching the folder, a series level made when one is given, the tags written, the row off the list at once, the books still there after a rescan with nothing walked past — and its refusals: a folder that has gone, one with nothing left in it, a destination that is taken, an unknown genre |
+| `file-and-menu-ui` | in the page: the *File this book…* button per fileable row, the dialog prefilled, what it says it found and where it goes, that changing a field follows and an empty author says what is missing, the filing itself with its message, the row and the count going, the files together on disk and the book under its series. Then the cover's menu on both pages: its five items on the admin page and three on the listening page, at the pointer and inside the window, closed by a click, Escape or scrolling, never opened by a right-click on anything but a cover, the tick going both ways and taking the card's glyph and the listened count with it, starting again throwing the kept place away and playing the first track, *Edit metadata* opening on that book, the download asking for `/api/download/<id>` and that really being a zip of every file, and the same menu on the player's own cover |
+| `skipped-ui` | the **Not counted** row: absent when empty, there with a count after a scan, the bar saying so, and the list grouped by reason with a path for each |
+| `stay-put` | applying metadata from Needs tags leaves that list on screen — with a genre change too, and from the edit dialog — while from the library it still returns to the author |
+| `same-book` | while a long write runs, every further request for that book is refused with the same reason — singly, three at once, with a different `pick`, and from the whole-collection run; another book writes meanwhile; metadata without a file write is still allowed; the book is free again afterwards |
+| `same-book-ui` | in the page: the pressed button dead, that book's metadata buttons held back, one bar only, a second call answered in words, a request that skips the page refused by the server, the batch counting it as one it could not do, and everything free again afterwards |
+| `folder-cover` | a book whose art is a `cover.jpg` beside the audio: a write puts that picture into the files, so the book leaves Needs tags and a rescan reads it back; art dropped in later is found by a scan |
+| `convert-id3-ogg` | one of the owner's own files, copied into a fixture: an .ogg carrying a 100 kB ID3 tag, which the scan cannot read at all (no length), converts without a word about invalid data, comes out as one MP3 with a real length, and leaves the file it came from under Converted |
+| `convert-mp3` | converting end to end with a real ffmpeg: the books that are not MP3 and what they are, the tools being found with nothing set up, an m4b of three chapters becoming three named and numbered MP3s of the right length, the original kept under `.converted` and listed, a chapterless .ogg becoming one MP3, a scan afterwards leaving the kept originals alone, and deleting them one by one and all at once |
+| `convert-ui` | the two rows and their counts, the list naming what a book is, the button on because the tools are in the container, the cover menu offering it only for a book that is not MP3, converting from the list, and the counts and the list that was on screen following it |
+| `needs-tags-authors` | Needs tags as a browse: the authors column visible and not a maintenance list, one row per author with its count, the pane opening on all of them, an author narrowing the rows and the write-all button, both buttons still on every row, the chosen author surviving a redraw, an author leaving the column when their last book is fixed, and the empty state saying every book carries its tags |
+| `needs-tags` | what the list counts and what a write can fix; tags written by another program are picked up by a rescan, values and all; a scan does not blank what the app knows when the files are silent, and the file wins when it is not |
+| `scan-unreadable` | what a scan does with a file it cannot read: both books on Broken on disk with how many files and which one, the reason in words, the book that reads fine left off, a rescan leaving both verdicts standing from the one file it reads, the count being only what that scan read, a readable file taking a book off the list again, the warning line naming what is left, and the disk check's own verdict surviving the next scan |
+| `scan-counts` | tags written outside the app, then **Scan library** pressed in the page: the count in the left column follows without a reload, and the list redraws if it is on screen |
+| `clean-urls` | `/` is the listening page and `/admin` the other; the old file names redirect to them; every asset, the api and a 404 are unaffected |
+| `progress-follows` | a place in a book going with the book: three books, the highest id ticked off and part-heard, its folder taken away; after the rescan nothing counts as listened and nothing waits on the shelf; the next book added takes that freed id and is a fresh book with no place kept in it; and a place in a book that is really there survives a rescan |
+| `download-abort` | five downloads broken off part way and a file taken away mid-send: the app is still there, still answering, nothing on stderr — no listener leak, no error thrown once the headers are out — and a download left alone still arrives whole, the promised length, with every file in it |
+| `download` | a whole book as one archive: the type, the name in both spellings, the promised length matching what arrives, **Windows extracting it** with PowerShell and every file compared byte for byte with the one on disk, two discs whose file names collide both surviving renamed apart, a missing book as a 404, and a book whose files are gone saying so instead of sending an empty archive |
+| `plays-on` | the book goes on playing across every switch the interface offers — `/` to `/admin` by the Admin button, on to `/ha` through the Settings pulldown, back to `/admin`, and `/ha` to `/` — each time the same book, not paused, its clock really moving, and picked up within a second of where it was left, never at the start and never elsewhere in the book; a book paused first comes back loaded at its place and *stays* paused; a page opened before anything has been played carries nothing and shows no player at all; and not one of the three pages throws anything into the console along the way. Then a **phone-sized pass**, which is the only automated look the phone layout gets: Sign out at the header's right edge and above the app's name, no play button in the bar, the cover carrying the `⏸` that says what a tap will do, ✕ at the bar's top right, the chapter and seek lines across the full width, and the download saying what it is on the clock's row |
+| `transport` | the player's own controls, on both pages and on a phone: no browser controls left, ours in their place, it plays and the button says how to stop it, the yellow grows as it plays, dragging the line seeks to where it was dragged, the button pauses and resumes, the volume slider sets and remembers the volume, mute says so, and a reload keeps it |
+| `played-line` | how far into a book you are, measured rather than read off the stylesheet: the line is there and part filled, its first stop is the yellow, it is 5px, and its contrast against both the track and the tile is at least 5:1 — on both pages and on a phone |
+| `unlisten` | ticking Listened keeps the place, unticking deletes it; the book drops off Continue listening, starts from the beginning next time, and the counts follow; unticking one that was never ticked is harmless |
+| `brand-home` | the name of the app leads back to the shelves from a book list, a search and a maintenance list, on both pages and on a phone, and clears the search box |
+| `tile-play` | on both pages and at phone width: every Continue listening tile has a button under its progress reading *Resume* — after a page reload as well — and the Recently added tiles none; it starts the book and becomes its Pause; pressing again Resumes; the other tile takes the pause with it; the tile behind the button does not answer the same tap; the cover still plays |
+| `ha` | what Home Assistant is handed, against a fixture long enough that the hours are real numbers: the counts, the hours total/listened/left with a book part-way through a track and another marked done, the continue queue's track, position, percentage and hours left, the playlist's order and `from=`, `continue.m3u` with its two headers, the generated YAML, `HA_TOKEN` refusing and accepting both ways while the audio stays open, and `BASE_URL` deciding every URL |
+| `ha-restart` | the sensors after a restart, which is how they are lost: configured and pushed once by hand, then the app stopped and started again with nobody opening a page — within seconds all six are written once more, carrying the address the app was reached at before, and the page can say when. With the push set to "only when asked", a restart writes nothing by itself |
+| `ha-push` | the app driving Home Assistant, against a stand-in HA that checks the Bearer token and records every call: the address and token saved without the token ever coming back, the ping naming which HA answered, media players filtered and sorted, the six sensors previewed and then written one POST each, playing a book as play_media then media_seek with the right payloads, "carry on" with no book named, a light refused, a refused token explained and remembered, forgetting and re-pasting a token, and an address with a dashboard path or nothing behind it |
+| `settings-menu` | the header pulldown and the size of what it opens: the dialog 820px wide like the Home Assistant page and near the window's height; no bare Settings button, two items, hanging under the button and inside the window, closing on a click elsewhere and on Escape, the first opening the dialog and the second going to `/ha`, and at 390px opening as a sheet that fits the screen with thumb-sized rows |
+| `ha-ui` | the Settings block: the numbers it shows, the book it names with its track and percentage, and the YAML offered as selectable text when the clipboard is refused |
+| `page-colours` | the page's own two glows, read back from what the browser paints rather than from the stylesheet: two glows on all three pages with today's turn already applied, the pair keeping its distance, seven days each a different colour and each 37° on from the last, the same day twice the same colour, a year to come round, a drawn cover kept no longer than today, the page turning on the same day number the covers do, and a page whose script never ran still in the colours the app was drawn in |
+| `cover-colours` | the drawn cover's two colours: a pair 42° apart, spun 37° a day, every day of a week different, the same picture twice on one day, two books still unalike, a year to come back round, and a cache that expires at midnight and never lasts a day |
+| `cover-click` | on both pages: clicking a cover plays that book and clicking it again pauses it, the picture shows ⏸ while it plays and ▶ otherwise, the player's own cover does the same, the other book's cover takes the pause with it, and the *Listened* tick inside the cover starts nothing |
+| `listened-authors` | the tick that sets itself and the browsing: a place in the middle leaves the tick alone, a place at the end sets it and the answer says so, the list is what has the tick and the counts agree; on both pages the row reads *Books you’ve listened to*, the authors of those books are in their own column with a count each, all the books to begin with, one author’s in series order with the series named and every one of them ticked; a book played to its end ticks itself without anybody pressing anything, and playing it again takes the tick off |
+| `listened-column` | the section in the column: `/api/listened` holding what is done with and nothing else, newest first, each book carrying what a card needs; on both pages a *Listened* title after *Genres* with the count on its row, the shelves down to two, the row drawing those books as cards under a *Listened · N books* heading with the author column out of the way and *Play again* on each, the light going off the row when a genre is picked; and the count following a book that is unticked or started again, the section leaving the column when it empties |
+| `play-again` | a book at its end: what the server calls finished — not a book nobody opened, not one halfway through, not one that has only reached the last track, but one within a tenth of the end of it, and one the tick says is listened — carried on the shelves, the cards and a search alike; and in both pages, the tile and the card of such a book reading *Play again* and playing from the first track, while a book loaded in the player keeps its Pause and its Resume |
+| `play-pause` | the card that is playing offers Pause, pressing it again Resume, and once more carries on; starting another book moves the pause to it; a redraw of the list remembers which book is playing |
+| `two-writes-ui` | pressing one book's *Write into MP3s* greys that button and the file-moving ones, leaves the other books' write buttons alive, and gives each write its own named bar |
+| `tagall-test` | the resumable run: paused across a restart, resumed to completion, every file written once, a fresh run starting over, a `running` row settled to `paused` at startup |
+| `validate-test` | each broken reason found, a recheck clearing a repair, delete-to-trash versus forget, progress ending complete |
+| `covers-test` | unused covers moved aside, a cover back in use kept, the 1000-file threshold, zipping, deleting |
+| `replace-rollback` | a failing replacing import puts the old copy back, leaves no `Replaced` row, and the same import then works |
+| `who-names` | a first browser is offered nobody, then only its own name; two browsers never see each other's; a shared browser is offered both; an empty name claims nothing; a forged cookie is ignored; a deleted name drops off |
+| `who-ui` | the dialog a stranger sees: asked, offered nobody though names exist, a field labelled *Your name*, an empty dropdown; after typing, remembered and not asked again |
+| `cover-fallback` | art present → the file; none → SVG with title and author; art deleted → SVG; unknown book → 404; deterministic; a rename asks for a new picture |
+| `requests` | a book asked for and the administrator told, with enough to go and find it; the same book asked for twice is one request however it is spelled, and Discord is not told again; both halves needed, and nobody signed in may ask. Then the matching, which is where this goes quietly wrong in both directions: the right author with the wrong title is not it, the right title by the wrong author is not it either, the book that *was* asked for answers it and becomes that person's favourite, and a later scan does not answer it twice. The news is waiting once and not twice; one listener cannot mark another's as told; a declined request carries the reason in the administrator's own words. Declining and tying need the administrator; a near miss is left open until tied by hand, and that path hearts the book too. The per-person tally for the accounts page, and the normalising itself — case, punctuation, accents, a leading article — with *Dune* still not *June* |
+
+UI suites: `search-ui` (the box on both pages: each match kind, multi-word,
+nothing found, clearing, letting go on a genre click), `greyed-button` (the
+clicked button and everything else greyed at click time, restored after),
+`collapse` (arrow folds, name selects, remembered across a reload),
+`series-bars` (series nested under genres, reading order, two jobs two bars),
+`edit-path` (the dialog names the folder and the file count), `broken-ui`,
+`three-checks`, `repro-conflict`, `ui-covers`.
+
+Two habits worth copying. **Fixture exhaustion and timing are test bugs, not app
+bugs**: a suite that writes tags consumes its own Needs-tags rows, and a job that
+now finishes in 300 ms cannot be observed 500 ms later — sample state in the same
+turn as the click. **Order by a real column**: with books inserted in
+finishing order, a fixture query that orders by a column full of zeroes falls back
+to insert order and looks broken when the app is right.
+
+## 12. Rebuilding, in order
+
+1. `package.json` (ESM, the three dependencies, `start`), `Dockerfile`,
+   `.dockerignore`, `docker-compose.yml`, the Unraid template, and `install/`
+   — the LXC script, its systemd unit and its settings file (§5).
+2. `db.js` — schema, migrations, settings, `getLibraries`.
+3. `admin.js`, then `index.js` with the routes of §6 as stubs; get the static
+   pages served and `/api/admin` answering.
+4. `pool.js`, then `scan.js` — this is the heart of it, and §7.1 and §9 are what
+   make it right. Make `scan-scope`, `sibling-series` and `rescan-series` pass.
+5. `placeholder.js` and the cover route; make `cover-fallback` pass.
+6. The read-only interface: three columns, genres with series and folding, cards,
+   the player, the landing shelves, the listening page, search.
+7. `google.js` + `tagpool.js` + `tag-worker.js`, then `tagall.js`; make
+   `one-writer` and `tagall-test` pass.
+8. `import.js` with the comparison, the two prefixes and the rollback; make
+   `replace-rollback` pass.
+9. `trash.js`, `validate.js`, `covers.js` and their maintenance lists; make
+   `validate-test` and `covers-test` pass.
+10. `work()`, the per-job bars and the greying; make `greyed-button` pass.
+11. README (which is also the Docker Hub page), the wiki, the workflow. `npm
+    test` before the commit, not after the push. Bump,
+    commit, tag, push, and check the build the tag starts. The file table in §4
+    counts lines, so it goes stale at every change: put the real counts back with
+    the bump, or the table stops being something a reproduction can be checked
+    against — eight of its rows had drifted by 2.6.16, one of them by 143 lines.
+
+## 13. Where this version stands
+
+| Version | What it added |
+| --- | --- |
+| 1.8.40 | greying the button that started a job, wherever it was pressed |
+| 1.8.48 | lanes for disk reads, worker threads for tag writes; the folder shown in the edit dialog |
+| 1.8.56 | a cover drawn for books with no art |
+| 1.8.64 | the folder and file count moved to the foot of the edit dialog |
+| 1.8.72 | the search box on both pages |
+| 1.9.0 | README brought up to date, with a screenshot of the drawn covers |
+| 1.9.8 | a browser is only offered the names it has used itself |
+| 1.9.16 | two books, or two series, can have their tags written at the same time |
+| 1.9.24 | a layout for phones, and Play becomes Pause on the card it started |
+| 1.9.32 | a play button on every Continue listening tile |
+| 1.9.40 | a book with a place kept in it says Resume, not Play |
+| 1.9.48 | addresses without file names, the app's name leads home, unticking Listened clears the place |
+| 1.9.56 | a scan takes the values from tags written elsewhere, and the counts follow it |
+| 1.9.64 | cover art beside the audio is written into the files; the version is on screen |
+| 1.9.72 | one write per book in the page too, whichever way it is asked for |
+| 1.10.0 | a scan reports the folders it walked past, and a maintenance list stays put |
+| 1.10.8 | an emptied import folder empties the list that offers its books |
+| 1.10.16 | the app writes as the user that owns the share, and a move never half-happens |
+| 1.10.24 | with nothing set it follows the data folder's owner, and Settings reports what every folder allows |
+| 1.10.32 | a lookup finds the series too, read out of the title and subtitle Google answers with |
+| 1.10.40 | and out of Google's own series line, asked for per result, for the books whose title says nothing |
+| 1.10.48 | series read the way Google actually keeps them — id, order, and the name behind `series/get` — with a report in Settings on what it answered |
+| 1.10.56 | and when there is no series, the dialog says why: what was asked, what Google answered, and whether another result may carry it |
+| 1.10.64 | a country on every request, a series lent between editions of one book, and the ebook catalogue asked when no edition has one |
+| 1.10.72 | forty records read instead of five, so a series named in the title of any record of the book is found |
+| 1.11.0 | the cover is a play button, and the colours of a drawn one turn over every night |
+| 2.12.0 | **there is always an administrator, and until there is, nothing opens.** An install with no `ADMIN_PASSWORD` ran open — `isAdmin()` answered true for everybody, so the collection, every listening position and all the accounts were there for anything that could reach the port, with nothing on screen to say so. The gate asks for one on first run, keeps it hashed in `settings`, and three routes answer until it is made. `ADMIN_PASSWORD` on the container still wins, which is the way back in after a forgotten one. This locks an install that was open yesterday: nothing is lost, but it asks before it answers |
+| 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
+| 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
+| 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.14.16 | **Play on a phone opens the player.** Pressing Play on a card or in a list on a narrow screen goes to `/player` and starts there, through the carry; a pause stays where it is. It had been written and left switched off behind a `false &&`; it is on, and `tests/to-player.mjs` checks it |
+| 2.14.8 | **Home Assistant gets a sensor per listener**: which book that person is in the middle of as the state, with the chapter, how far through, and when they began it. And a finished book **stays** in the list, marked read, with **how long they took over it** — from the day they opened it to the day they finished, which the app knew neither end of. `progress.started` is written on the first place kept in a book and carried into `completions` when it is finished, because a progress row does not survive un-ticking and a completion is meant to. A book begun before any of that was written down says nothing rather than guessing |
+| 2.14.0 | **the player has a page of its own.** the owner sent a video of the listening page on a phone: a column to scroll past, the book he was listening to somewhere in it, and three play/pause buttons on one screen. `/player` is the other thing — the cover large, the title, the author, the chapter, the seek line, and **one** play/pause with a chapter step either side and a **ten-second** step inside those. Nothing to scroll. The cover in the bar is the way there on a phone, which is also how the third button went: there it opens the player and says ⤢ rather than wearing a ⏸ that does not pause. **How fast it is read** is a pulldown of eleven, 1.0 to 2.0 in tenths, kept per browser and set again on every source — `playbackRate` belongs to the current one, so a book at 1.4 used to drop to normal at every chapter. Three rules written for the library had to be undone here, all the same shape: a selector naming a container rather than the thing it styles — the seek line in the browser's blue, the `<audio>` drawn as a grey slab, and `main > *` putting a horizontal scrollbar across the seek line |
+| 2.13.8 | every request carries **⧉ Copy**, putting `author - title` on the clipboard: the first thing done with a request is to go and look for the book online, and retyping what somebody already typed is the kind of work a button removes. The same class and the same delegated handler as the copy buttons in *Series to complete*, so there is one copy button in this app rather than two that drift. On settled requests as well — a turned-down one is often turned down because it could not be found, and the next place to look is somewhere else |
+| 2.13.0 | **you can ask for a book the collection has not got.** A button beside your own name in the header, an author and a title, and the administrator is told on Discord with enough to go and find it. When the collection next has that book the request answers itself: it becomes the asker's **favourite** and they are told the next time they open the app, once. Matching is normalised — case, accents, punctuation, a leading article — and then **exact**, on the author *and* the title, because a fuzzy distance makes *Dune* match *June* and titles are not unique. What that misses, the administrator **ties by hand**, which is half the design rather than a fallback: an automatic match that silently never happens is worse than none, because nothing says so. Asking twice is one request; a request can be turned down with a reason the asker is shown; and each person's row on the accounts page says what they have asked for and what became of it. The suite found a real one on its first run — the duplicate check ran its query with the parameter left off |
+| 2.12.96 | **the page opens with the book you are in the middle of, as a card.** the owner, pointing at a screenshot: the home page led with a *tile* — a cover, a title and a sliver of progress — so the thing he had come back for was the thing with the least said about it. The first of *Continue listening* is a card now, the one the rest of the app draws a book as, and the shelf under it keeps the others without repeating it. `cardFor` is lifted out of `drawBooks` rather than copied, so a card on the home page cannot drift from every other card. And the marker that tells a returning page the shelves are on screen counts the **card** as well as the shelf — it looked only for the shelf, and a reader with one book on the go has none, so coming back stopped refreshing for exactly the reader it was written for |
+| 2.12.88 | **nothing in the player bar changes width while you look at it.** The bar wraps on a phone, so what a row demands decides how tall the bar is — and a bar that gains a row moves *up*, under the thumb pressing it. `#pPlay` was eleven pixels wider saying "▶ Resume" than saying "⏸ Pause", and the clock grows a field when a book passes an hour. Both hold one width now, in `em` and `ch` so the reservation grows with the device's own font. The owner reported the jump on a **Galaxy S25**; it was never reproduced here, where the row had 28px of slack — which is about what a different system font is worth, and is an argument for the fix rather than proof of it. The check is on the thing that could move the bar, not on the bar staying put on a device nobody here has |
+| 2.12.80 | **the book a tab carries now says whose it is.** the owner: sign in as somebody else and you get the previous reader's *Continue listening*, in a private window too. A tab outlives a sign-in and `sessionStorage` belongs to the tab, so the carried book — which said *what* but never *whose* — came back in the next reader's player at the previous reader's position. It was not only shown: picking a book up loads it and the place is written back under whoever is signed in, so the reproduction left Luigi with a **progress row in a book he had never opened**. `pagehide` records the name, `pickUp` asks `/api/account/me` whether that is who is here and drops anything else, and signing out drops it outright. Asked of the *server*, not of `state.user` — that is seeded from `localStorage`, holds the previous reader's name, and would have agreed with the stale carry. Asking also makes the timing irrelevant, which `/ha` needs: it loads `player.js` without `account.js` |
+| 2.12.72 | **a long chapter name widened the whole page.** A `<select>` sizes itself to its widest option and a flex item's automatic minimum is its content, so one chapter called *23 - A Memory of Light - Chapter 23 - The Last Battle Begins At Dawn* made the box 575px wide inside a 375px window — and 498px inside a 1265px one, so the **desktop** had a sideways scrollbar too and nobody had noticed. `min-width: 0`, outside the phone rules, because a long name is long on any screen. The bar also has **its own play/pause back**, saying `⏸ Pause` or `▶ Resume` rather than leaving a glyph to be recognised: taking it out in 2.12.56 left the cover and the book's card, and the card is only on screen while you are looking at that book. And the mute and the volume slider are one element, after the bar wrapped between them and left the slider across the full width, where a yellow bar under a yellow bar reads as a second progress line |
+| 2.12.64 | **the author, the year and the genre on a card are each a way somewhere.** A card names all three and each is the start of the next question — *what else has this one written*, *what else is from 2015* — and the way to ask was to read the word, find it in a column and click that. A search was worst: a result from any shelf at all, and nothing on it saying which. The author opens their shelf with the genre selected beside it, the year opens `/api/year` (every book of it, across the shelves), and the genre is **said** on any view that spans them. Which views those are the answer already knows: `/api/books` is given a genre and sends none back, and everything that reaches across sends it — asking `state.genre` instead meant a search run after browsing an author showed no genres at all. `data-` attributes rather than inline handlers, because an author called *O'Brian* ends a string argument in the middle |
+| 2.12.56 | **the player on a phone is four rows, each one thing.** the owner sent a screenshot with five faults on one screen: *Sign out* stranded mid-row, the bar's own pause button beside a cover that is the same button, a bare ⤓ next to a volume slider, ✕ parked mid-bar, and the chapter line — the longest text there — clipped to 45% of the width. `order` on each control arranges the bar now; `#pPlay` is not drawn at all, because three ways to pause is two too many and the cover is the one that stays, so it is wrapped to carry the same `⏸`/`▶` every other cover in the app does; and `#pGet` says **Download**, there being no hovering on a phone and it being the one control in the bar that writes a file to somebody's device. None of it is visible to `pages` — jsdom has no layout engine — so `plays-on` takes a **phone-sized pass** and reads the computed positions, and `pages` holds the two copies of the bar to each other control for control |
+| 2.12.48 | **the hinge came off the door 2.12.0 closed.** Making `adminRequired()` return `true` ended the install that ran open; it left behind every branch that asked, and three of those were the controls themselves — `whoWrites` falling back to a name in the request body, `whoReads` to `?user=`, and a line in `mayTakeABook` handing every book to everybody. All three still written out, all three one `return false` away, behind a function whose name invites exactly that edit. Gone, with the function, so there is nothing left to flip. Nothing behaves differently — every suite passes unaltered — and `accounts` still fails four checks the moment the read leak is put back by hand, which is the part that matters |
+| 2.12.40 | the accounts page says **which administrator it is talking about**. It told everybody that the administrator signs in "with the name and password the container was given" — one of two answers since 2.12.0, and the wrong one for anybody who made their account at the gate on first run: it sent them to edit a variable that is not what let them in, and left out the one thing they would want, that setting it is the way back in if they forget. Three places said it; `/api/accounts` carries `adminFrom` and all three read that one answer. The old "every check here lets them through" went with it, untrue since *May download* began reaching them. The half `pages` cannot see — the route itself — is checked in `first-run`, both ways round, because a server that quietly stopped sending it would leave every administrator reading the container wording again with every page check still passing |
+| 2.12.32 | the container's **Notes panel** in the Proxmox GUI carries the app's own icon, its address and its own links, where the engine had put its logo and an *Open Script Page* button pointing at a page that does not exist for an app it does not host. `description()` is replaced outright — there is no seam for the image the way there is for the banner — and `packaging` holds the replacement to working out `IP`, which the engine's version set as a side effect and every closing line reads. And **the manual caught up with eight days of app**: a page for installing on Proxmox, an administrator that always exists, accounts where a dropdown used to be, missing volumes as lines, No Series, Unabridged, the update dot, phone-to-desktop places, and one Music Assistant provider being one listener |
+| 2.11.80 | accounts can be deleted again. Giving the administrator's row fewer controls in 2.10.64 broke the loop that wires every row: it took `[data-may-listen]` without looking, that row has none, and `forEach` stopped there — so every row after it was drawn with its buttons dead. The jsdom harness collected the error on every run for two weeks and nothing read it, because the checks asked what the markup held and the markup was perfect |
+| 2.11.72 | the app says when a newer version is out, and on an LXC install offers to take it — three ways that are one procedure: the button, `my-audiobook-collection-update` in the container, and the `ct/` command again on the host. It **asks** rather than installs: it runs as PUID and a page that can run a root script runs it for whoever reaches it, so it writes a file and a root-owned path unit that takes no argument does the work |
+| 2.11.64 | one command on a Proxmox host, and it is the standard one. The hand-rolled creator is gone: offering it beside the helper script is what had the owner run the wrong one twice — he pasted the command he already had, saw my menus, and said the GUI was still wrong. There is a standard for this and a second way of doing the same job is not a kindness. And it ends by saying how to mount the two folders, with the container's own id filled in: that is the moment somebody needs it, because the app is up and has nothing to show until the host hands the collection over |
+| 2.11.56 | **`ct/my-audiobook-collection.sh`**: a real Proxmox VE Helper Script, asked for outright. Not an imitation of the look but their engine, loaded from `community-scripts/core` — so the banner, Default and Advanced settings, the storage radiolist and the closing line with the address are the real ones. An app outside their repository can use it because the engine resolves `ct/` and `install/` from `COMMUNITY_SCRIPTS_URL`, which this points here |
+| 2.11.48 | the storage pool can be chosen, which it could not be from the quick path: it was offered only under *Advanced*, so Default silently took whichever pool `pvesm` listed first. It is a `--radiolist` with the free space beside each name now, the shape `select_storage` uses in the scripts this is modelled on, and it is asked in both paths — unless the host has one pool, which is not a choice |
+| 2.11.40 | the Proxmox script **asks**, the way the community scripts it is modelled on do: a whiptail menu, then the defaults or every setting one at a time, with the storages and templates the host actually has in the menus. *Default settings* still asks where the audiobooks are, since a container with nothing mounted is the most common way this ends badly. It fetches no framework to do it — theirs source a `build.func` from another repository and run it as root on the hypervisor, and `packaging` checks none of these three ever starts to |
+| 2.11.32 | **`proxmox-create-lxc.sh`** makes the container and installs into it, which is what one command on a Proxmox host is expected to do — `lxc-install.sh` installs onto whatever machine it runs on, so pasted at a host prompt it put node, ffmpeg and a service on the hypervisor. It refuses there now and names the other two. **`uninstall.sh`** takes it off a machine again, keeping the database and the settings unless asked for `--purge`. And the installer says when it is in an **unprivileged container**, which Proxmox makes by default: every id is shifted by 100000, so `PUID=99` is 100099 on the host and the app is refused permission to write in a collection whose permissions look right from the host. It reads `/proc/self/uid_map`, says what the ids become and what the two ways out are, and carries on. The README builds a Proxmox container from nothing |
+| 2.11.24 | it installs into an **LXC container** as well: `install/lxc-install.sh` does the four things the image was doing — a node, ffmpeg, the app at its newest tag, and a systemd service — writes a settings file it will never overwrite, and updates in place when run again. `packaging` holds the two ways to install to each other, since they describe one app twice and nothing would have noticed them drifting; it found `TRUST_PROXY` and `ALLOW_ROOT` settable on one and not the other. `.gitattributes` pins the script and the unit to LF, because a shell script with CRLF does not run at all |
+| 2.11.16 | the maintenance column shows only what is waiting. A row there is a job to be done, and nine of them reading 0 said nothing except that the column was long — *Series to complete, 68* sat among eight noughts. `counts()` sets the number and the row's visibility together, so the rule is one thing in one place. *Import* is not a count of work and stays; so does whichever row is the view on screen, or emptying the trash from inside the trash would pull the list out from under the reader |
+| 2.11.8 | the run of books in no series is set apart from the series above it — saying *No Series* on the card was not enough on its own, because a series is separated from what follows by its heading and these have none, so the first of them carries the gap instead. And it is called *No Series* rather than *Standalone* |
+| 2.11.0 | failing to read a job's progress is no longer the job failing: `trackProgress` gave up on the first unanswered poll, and the caller put that complaint ahead of the answer from the request that did the work, so a tag write that finished reported *"Writing tags failed: lost contact with the server"*. And a card says which series a book is in **or that it is in none**. The line was drawn only when there was a series, and cards stack, so *Warbreaker* under *Oathbringer*'s "The Stormlight Archive · book 3" read as part of it — absence is not a statement, so the card says *Standalone*. And *Unabridged*, under *Listened* and a different kind of thing: *Listened* is each listener's, this is the book's, so the admin states it and the listening page only shows it |
+| 2.10.88 | converting is started, not awaited. `POST /api/convert/:id` answered only when the conversion was over, so the page held one request open for the length of an m4b — and anything that dropped it reached the page as the conversion failing: the bar left, *Convert to MP3* came back, and ffmpeg carried on in the container. Both halves of what the owner saw, one cause. The route answers at once and the status carries the outcome, so a reload during one rejoins it |
+| 2.10.80 | listening on a phone shows up on the desktop. A place lives on the server and nothing on a page ever read it again, so a desktop left open showed where you were when you opened it — and, open and paused, would overwrite a place the phone had moved on, because a press resumes from that tab's own clock. The page picks the place up when it comes back, and redraws *Continue listening* when that is what is on screen |
+| 2.10.72 | a kept place says which face kept it. The owner had a book on his own *Continue listening* that somebody else was listening to — correctly under his name, because a player signs in as one listener and writes every position against that name — and asked whether to get the other person to tick it off. Nothing in the app could answer "whose is this?", and the answer was never theirs to give. `progress.via` records `page`, `music-assistant` or `home-assistant`, and the tiles and the accounts page say it only when it was not the page |
+| 2.10.64 | *May download* reaches the administrator, asked for outright after 2.10.40 explained why it did not. Downloading is a thing a row on the accounts page allows, so that row allows it for them; an administrator with no row of their own keeps what they had, because a rule there is no key to would be a lock. `mayTakeABook` is the one expression of it, read by the route **and** by the page that decides whether to offer the button — those were two, and they disagreed. Two checks written for this in 2.10.40 turn out to have asked about a book the fixture does not have, so both got a 404 and could not have failed |
+| 2.10.56 | a failing suite says why again under the tally, instead of forty lines of `ok` scrolling over the one sentence that explains it — the `FAIL` lines and their `got`/`want`, or whatever threw, with the stack frames left out. `series-complete` failed once and was never diagnosed because its own careful message was filtered away by the `grep` the run was piped through |
+| 2.10.48 | the same leak, on the Home Assistant route: `forHA` passes a request through when no `HA_TOKEN` is set, so a signed-in listener could ask `/api/ha?user=` for somebody else's places and `continue.m3u` would hand over the book and the second they stopped at. Found by going back over the rest of the app after 2.10.40 rather than by anybody hitting it. The Audiobookshelf face was already right |
+| 2.10.40 | a place in a book belongs to whoever kept it, on the way out as well as in. Eight routes took the listener from `?user=` — the page naming itself — so anybody signed in could read anybody else's shelves, finished books and hearts by typing a name into the address, and a browser still carrying a name from before accounts put somebody else's book in the owner's *Continue listening*. `whoReads` is the twin of `whoWrites`: the session, and only the session |
+| ″ | "finished" has one home. `countsAsRead` moved to `finished.js` with the other two senses of the word written out beside it, and the line of numbers under every page and the accounts page both ask it now — they counted the stored tick, which drifts from it on any database old enough or re-scanned since, so a list of four sat under a 1. And the administrator's own name, when it is also a row on the accounts page, is marked as theirs: the password badge and *May listen* are about a listener account and govern nothing the administrator does, which read as *May download* being broken (that one reaches them from 2.10.64). Their visits are recorded, so that row stops saying "never signed in", and *Last here* carries the date at last |
+| 2.10.24 | `app.js` was 2402 lines and is now three files: the maintenance column and its file operations are `maint.js`, the edit dialog with its cover and lookup is `edit.js`, and what both of them call stays in `app.js`. The split is along what each part touches, and `pages` is what made it safe to make |
+| 2.10.16 | the pages have a suite of their own: `pages` loads both of them into jsdom with their real scripts and drives the handlers, so *Move…* dying on a route that throws, an empty Authors column and a dropped book number are checks rather than things the owner finds. Two scripts declaring one name is now a page that will not load instead of a regex over the source; and the workflow asks `npm audit` about what ships on every run |
+| 2.10.8 | `proxy-addr` 2.0.8, for a critical advisory published since the last release — it is what Express works `req.ip` out with, and `req.ip` is what the sign-in backoff counts against; and the helper that asked "is this book finished" is `countsAsRead`, since `isFinished` is Audiobookshelf's name for something else |
+| 2.10.0 | the database keeps copies of itself — one file held every listening position, account, level and heart, with no second copy anywhere — and the routes that move and delete books have a suite at last |
+| 2.9.80 | each number on an account's row says which question it answers: *played to the end* and *ticked* both count finished books and are not the same count, which read as a fault |
+| 2.9.72 | the tag is the last step: push, wait for Checks, then tag — three faults this session were found after a tag had gone out and the work called finished |
+| 2.9.64 | the README and the wiki know about a series published in parts: six pages, including the one called *How your folders are read*, still said the app could not do what 2.9.0 taught it |
+| 2.9.56 | the two suites that spawn a server refuse to run when something already answers on their port, and wait for their own to die rather than orphaning it there |
+| 2.9.48 | `showSeriesOf` joins the one copy in `browse.js`: the 2.8.0 sweep took what was byte-identical and left this behind over a single line |
+| 2.9.40 | the ffmpeg install in Checks gets four minutes rather than the job's six hours: a slow mirror hung it for fifteen and the suites never ran — the app itself is unchanged from 2.9.32 |
+| 2.9.32 | a book number can be given to a book in a part: the edit dialog was told the series *above* the part, so the guard that keeps one series' numbers out of another dropped every one of them |
+| 2.9.24 | every action the build machine runs is pinned to a commit rather than to a tag somebody else can move, with the version it is named beside it |
+| 2.9.16 | the header carries the app's own mark instead of a headphones emoji, so the tab, the Unraid tile and the page all show one drawing |
+| 2.9.8 | *Move…* opens on an install that has never imported: it asked `/api/import` for a list of genres, which throws without an import folder, and an inline handler swallowed that — the button did nothing at all |
+| 2.9.0 | an author who writes in parts: `Auteur / Serie / Onderdeel / Boek` is read, with the part as the series and the one above it kept beside to group by — those books used to be passed over as "deeper than the layout reads" and never appeared at all |
+| 2.8.80 | `plays-on` waits ninety seconds for a browser to open its port rather than thirty, which the build machine was finishing just inside — and it says how long that took, so the number has a measurement behind it; the app itself is unchanged from 2.8.72 |
+| 2.8.72 | a row in *Needs tags* can hand you the book: *Show the book* opens the library at its genre and author and marks its card for a moment |
+| 2.8.64 | the build machine gets an ffmpeg, so `ogg-lengths` checks something there rather than saying "nothing checked" into a green run — the app itself is unchanged from 2.8.56 |
+| 2.8.56 | the scan steps over an ID3 tag bolted onto an `.ogg` the way converting has since 2.3.40: those books had no length, nothing for the player's bar to measure, and a place on *Broken on disk* — all from a tag the app already knew how to skip |
+| 2.8.48 | a looked-up cover is named for what its bytes are, the way a pasted one always was: it read the Content-Type and called everything that was not a PNG a `.jpg`, so a WebP thumbnail landed in `covers/` under a name two things then believed |
+| 2.8.40 | every outbound call refuses to follow a redirect, including the four that did not say and so would have handed the Home Assistant token or the Google key to wherever the first host pointed; both workflows ask for a read-only token |
+| 2.8.32 | `plays-on` runs on the build machine too: it finds whatever Chromium-family browser is there instead of naming one path on one machine, and has a job of its own in Checks |
+| 2.8.24 | `plays-on` drives the app as it is: it signs in at the gate, and its 22 checks pass for the first time since accounts arrived — the only automated cover the three pages have |
+| 2.8.16 | the player's bar measures the book rather than the file playing — on a book of many files it filled up and started again at every track — and dragging it now seeks across files |
+| 2.8.8 | a throw nothing caught answered with the stack trace as an HTML page — absolute server paths, to any approved listener; one handler behind every route now logs the reason and tells the asker only that there was one, and `/api/books` and `/api/authors` say what was missing instead of crashing |
+| 2.8.0 | the browsing half of the two pages is one file: twenty-two byte-identical declarations out of `shelf.js` and `app.js` into `browse.js`, with checks that it loads first on both and that no name is declared twice |
+| 2.7.72 | the reason box shows an example of what to write, which is what the two copied-hint requests actually needed; the machinery built for the autofill that was never happening is out again |
+| 2.7.64 | Favourites has its authors column: the authors of the hearted books with a count each, and clicking one narrows to that author — it had been cleared and never filled |
+| 2.7.56 | a reason that is the form's own wording is refused and said to be so, and the box is emptied when the form opens — two requests arrived carrying the sentence printed under it, and what filled it is still unestablished |
+| 2.7.48 | the sign-in card is in the middle of the screen again — a `#gate` width left over from the dialog was shrinking the backdrop to 440px — the Admin button is the administrator's alone, and the reason box refuses autofill and writing suggestions |
+| 2.7.40 | the ask-for-an-account card scrolls to its own top when it is taller than the window, and an account request with no reason says so in Discord rather than sending an empty quote |
+| 2.7.32 | the sign-in card gives the browser's top layer back, so a password manager stops warning about the page; and an account's row says their level, what they are playing now and what they are in the middle of |
+| 2.7.24 | the accounts and their statistics are a page of their own at `/accounts`, with a tick per person for may-listen and may-download rather than a row of buttons |
+| 2.7.16 | the Discord line in Settings says whether a webhook is saved: the call that fills it in had landed in the wrong handler |
+| 2.7.8 | ten levels over the books somebody has played to the end, with the icon and its name beside theirs; the author under the title in the player; downloading earned at the top level or handed over by the admin, listed per person and announced |
+| 2.7.0 | listeners are accounts: asked for with a reason, approved by the admin, signed in with a password and remembered for seven days — plus a heart on every book, an Accounts page with what each person has listened to, and a line to Discord when somebody asks, signs in, or starts and stops a book |
+| 2.6.64 | the checks are in the repository and run on every push, the dependency advisory is cleared, and the smaller things the read turned up |
+| 2.6.56 | one job at a time on the server rather than only in the page, a password that costs the guesser, and what the open routes will take |
+| 2.6.48 | what this app fetches when it is told an address, what it writes into a playlist, and which Home Assistant its token belongs to |
+| 2.6.40 | three jobs that could finish without having done the work: a swept-up half-copy, tag writes that answer `false` counted as the failures they are, and a conversion lock taken before the first await |
+| 2.6.32 | a path from outside is resolved and contained before it reaches the disk — covers, import sources, filing sources — and a scan that could read no library removes nothing |
+| 2.6.24 | housekeeping: the file table counts what the files hold, two comments back beside what they explain, and the last of the removed series table swept out of the stylesheet |
+| 2.6.16 | the listening page's script is `shelf.js`: a reverse proxy in front of one install refused `/listen.js` outright |
+| 2.6.8 | a cover can be pasted into Edit metadata — or dropped, or chosen — and is written into the MP3s with the rest |
+| 2.6.0 | a Wikipedia button under Copy to search on every missing volume, opening in a new tab |
+| 2.5.80 | the authors column of Series to complete is actually on screen, grows while the check runs, and what Wikidata said survives a restart |
+| 2.5.72 | one build per release: the workflow runs on tags only, so two runs can no longer race for `:latest` |
+| 2.5.64 | a hole in your own numbering is drawn as a book too: a series head and one card per missing volume, one under the other, instead of a dense line |
+| 2.5.56 | one place for incomplete series: the Settings table is gone, and Series to complete under Maintenance holds both answers — with the Open in library button the table used to have |
+| 2.5.48 | Series to complete is browsed like the library — authors in their column, a missing volume drawn as the card it would be — and every one carries a copy button to search with |
+| 2.5.40 | Series to complete, under Maintenance: what is missing between the books you have, and — asked of Wikidata — which volumes exist that you do not have |
+| 2.5.32 | a read of every file: ten things the review found, from a socket handshake anyone could open by the hundred to a zip writer whose comment promised what its last line undid |
+| 2.5.24 | an update to the container no longer stops a book playing: a session id carries the book, so one opened before the restart still answers |
+| 2.5.16 | audio plays: a listener signed in with a password fetches every part through Music Assistant, which looks the session up here first, and that address was missing |
+| 2.5.8 | the versioning rule in §2 says what the tags actually did: there is no ceiling at 75, and four lines ran to .80 |
+| 2.5.0 | pressing play in Music Assistant works: the playback session was the one answer invented rather than transcribed, and it went out missing seven required fields |
+| 2.4.80 | the series listing ends: it ignored its paging, and the client that reads it pages with a loop that only stops on an empty page |
+| 2.4.72 | browsing into an author or a series in Music Assistant works: the two addresses it asks for were missing, and a missing one reads there as a wordless NotFoundError |
+| 2.4.64 | Music Assistant can be pointed at this app: it answers as an Audiobookshelf server, so MA's own provider browses the collection, plays it, and syncs where you got to |
+| 2.4.56 | this document brought back in step with the code: the four releases below it, the `converted` table and the `progress` trigger in the schema, the day in the cover marker, the convert routes, and every line count |
+| 2.4.48 | the progress bars stand in the day's own colours: they fill from the glow on the left of the page into the one on the right, and turn with it at midnight |
+| 2.4.40 | Settings lists every series with a volume missing, widest hole first, a row opening that series — the same count as the line under a series head, over the whole collection |
+| 2.4.32 | the player bar goes away when there is nothing to listen to: a book that runs out takes it with it, and a ✕ puts it away by hand |
+| 2.4.24 | a series head says which volume is missing, read from the numbers the books already carry — and says so where no verdict can be given |
+| 2.4.16 | the book goes on playing when you move between the app's pages: the player is one file all three of them load, the Home Assistant page has one too, and the listening is handed from each page to the next |
+| 2.4.8 | a lookup is one request: the series hunt that cost eight is a button, and a refusal is tried eight short times instead of three long ones |
+| 2.4.0 | a 503 is asked about once more without the key, so "Google is busy" and "Google will not serve this key" stop looking the same |
+| 2.3.80 | and the lookup says which one it is about to ask, in the dialog, before a word is sent |
+| 2.3.72 | which Google catalogue answers is chosen in Settings, "let Google decide" included — asking for a catalogue that does not match the server is what "busy" often is |
+| 2.3.64 | the lookup stops asking Google for the busy signal it complained about: one request at a time, waiting as long as Google says, and answers kept for five minutes |
+| 2.3.56 | a cover is fetched when it comes into view, so a shelf of 35 books asks the disk for 16 pictures instead of 35 |
+| 2.3.48 | a scan says which files it could not read, on Broken on disk and in its own line, instead of a book quietly arriving with no length |
+| 2.3.40 | an .ogg with an ID3 tag in front of it converts: the tag is skipped by its own length, ffprobe’s reason is no longer silenced, and a tool that answers once is not asked again |
+| 2.3.32 | the file inventory counts what is there, convert.js included, and "does not transcode" is no longer among the non-goals |
+| 2.3.24 | the cover menu asks again when it is pressed, so an answer from page load cannot stand after the container has restarted |
+| 2.3.16 | and the address that answers it cannot fail silently: it runs inside the error wrapper, so a throw is a reason and not an HTML page |
+| 2.3.8 | every refusal to convert names a reason: an older container, a server that would not answer, or what the tool said |
+| 2.3.0 | ffmpeg and ffprobe are part of the image: the upload in Settings, and everything that could go wrong with it, is gone |
+| 2.2.72 | .m4b and .ogg books can be converted to MP3, a chapter to a track, and the files they came from are kept under Converted |
+| 2.2.64 | Needs tags browses by author, the way the genres do: the authors in the column beside it, one author's books in the pane |
+| 2.2.56 | Find metadata opens with the search in the box and waits for Search, instead of asking Google the moment it is clicked |
+| 2.2.48 | a lookup result with no volume number leaves the number the book already has, instead of emptying the field and taking it off on save |
+| 2.2.40 | every field in Edit metadata has a button that copies it to the clipboard, over plain http as well |
+| 2.2.32 | the narrator is what the composer frame says and nothing else — it used to fall back to the artist, which is the author — and Edit metadata has a field for the book's number in its series |
+| 2.2.24 | Use metadata opens Edit metadata on the result that was chosen, so what Google offered is read and corrected before it is saved |
+| 2.2.16 | and sends the reader to the host, which is where a container gets its resolver: `tailscale set --accept-dns=false` there, once, for every container |
+| 2.2.8 | and names the setting the Unraid template actually has, `--accept-dns=false` in Tailscale Extra Parameters, claiming no mechanism nobody has looked at |
+| 2.2.0 | a lookup with no DNS names the cause that was actually behind it — Tailscale built into the container — and the README and the wiki say what to set |
+| 2.1.72 | the resolver is the container's own business again: 2.1.64's `--dns=1.1.1.1` and the startup line naming resolvers are out |
+| 2.1.64 | *(taken back out in 2.1.72)* the container was given 1.1.1.1 as its resolver |
+| 2.1.56 | a lookup that cannot reach Google says which failure it was — no DNS, nothing answering, a refusal, an intercepted certificate — and gives up after fifteen seconds |
+| 2.1.48 | the line under a tile measures time, not tracks: a book of one long file no longer stands full from its first minute |
+| 2.1.40 | a book that runs out ticks itself as listened, and the Listened section browses by author |
+| 2.1.32 | Listened is a section in the column beside the genres, and the shelves keep only what is being listened to |
+| 2.1.24 | a shelf of its own for what has been listened to, so Continue listening is only what you are in the middle of |
+| 2.1.16 | a book you have finished offers Play again, and plays from the top |
+| 2.1.8 | the page itself turns with the day, in step with the drawn covers |
+| 2.1.0 | the sensors come back after a restart of either side, without anybody opening a page |
+| 2.0.80 | Settings is a full-screen sheet on a phone again |
+| 2.0.72 | a place in a book goes when the book goes; a download that is cancelled or breaks lets go of everything; a hold on a phone opens the cover menu without starting the book |
+| 2.0.64 | what the folders say about a walked-past book comes before what its tags say |
+| 2.0.56 | a right-click on a cover: over again, the tick, the whole book, and the metadata; and a folder the scan walked past filed from the page it was reported on |
+| 2.0.48 | ⤓ in the player downloads the whole book — every file in one streamed archive |
+| 2.0.40 | the player draws its own transport, so its progress line is yellow too — a browser will not let a page recolour its own controls |
+| 2.0.32 | the line that says how far into a book you are is yellow, and wide enough to see |
+| 2.0.24 | the Settings dialog is the size of the Home Assistant page |
+| 2.0.16 | Settings became a pulldown over the two kinds of settings: the library, and Home Assistant |
+| 2.0.8 | a Home Assistant page of its own: a long-lived token, six sensors written straight into HA, and its media players played from here — no YAML anywhere |
+| 2.0.0 | Home Assistant: the totals, the hours, the continue queue and the new books as one JSON document, and a playlist that carries a book on to any media player |
+
+Earlier in the 1.8 line: series from three sources, collapsible genres, one
+progress bar per job, the resumable whole-collection tag write, the disk check and
+**Broken on disk**, the import quality comparison with **Replaced** and
+`Not Imported - `, the cover tidy-up, the scan-scope pulldown, the two-author
+choice, and moving both secrets onto the container.

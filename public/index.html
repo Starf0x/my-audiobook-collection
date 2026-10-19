@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Audiobook Collection</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<script src="day.js"></script>
+</head>
+<body data-col="books">
+<header>
+  <!-- The dot sits on the icon rather than anywhere in the page, because the
+       icon is the one thing on every screen and in the corner the eye starts
+       from. It carries its own title: a title on a child wins over the h1's. -->
+  <h1 id="brand" title="Back to the shelves"><span class="marked"><img src="icon.svg" class="mark"
+    alt=""><span id="updateDot" hidden title="Update available"></span></span> My Audiobook Collection</h1>
+  <input id="q" type="search" class="search" placeholder="Search books, authors, series…"
+    autocomplete="off" spellcheck="false">
+  <div class="spacer"></div>
+  <div id="whoAmI" title="Signed in as"></div>
+  <!-- Beside the name, because it is a thing *you* are asking for rather than
+       something the collection does. The administrator asks the same way: a
+       list of what is wanted is worth having whoever wrote it. -->
+  <button id="askForBook" class="ghost" hidden title="Ask for a book the collection has not got">＋ Request</button>
+  <button id="signOut" class="ghost" hidden>Sign out</button>
+  <button id="adminBtn" class="ghost" hidden>Lock</button>
+  <select id="scanWhich" title="Which library folder to scan"></select>
+  <button id="scan" class="ghost">Scan library</button>
+  <!-- two kinds of settings now, so the button is a pulldown over both -->
+  <details id="settingsMenu" class="menu">
+    <summary class="ghost">Settings ▾</summary>
+    <ul>
+      <li id="openSettings">Library and maintenance</li>
+      <li id="openAccounts">Accounts and statistics</li>
+      <li id="openHa">Home Assistant</li>
+      <!-- Only here while there is one to install, and gone the moment there is
+           not: a menu entry that does nothing is worse than no entry. -->
+      <li id="installUpdate" class="stands-out" hidden>Install the update</li>
+    </ul>
+  </details>
+</header>
+
+<main>
+  <aside id="genres">
+    <div class="col-title">Genres<button class="back linkish" id="toBooks">Books ›</button></div><ul></ul>
+    <div class="col-title" id="favTitle" hidden>Favourites</div>
+    <ul id="favRows" hidden>
+      <li id="favList"><span>Books you&rsquo;ve hearted</span><span class="count" id="favCount">0</span></li>
+    </ul>
+    <div class="col-title" id="listenedTitle" hidden>Listened</div>
+    <ul id="listenedRows" hidden>
+      <li id="listenedList"><span>Books you&rsquo;ve listened to</span><span class="count" id="listenedCount">0</span></li>
+    </ul>
+    <!-- Every row here but Import ships hidden and is shown by `counts()` when
+         it has something in it: a row is a job waiting to be done, and a column
+         of noughts says only that the column is long. Hidden to begin with
+         rather than hidden once the counts arrive, or each one would appear
+         holding "…" and then half of them would vanish again. Import is not a
+         count of work — it reads "–" until a folder is set, and it is the way
+         to set one. -->
+    <div class="col-title">Maintenance</div>
+    <ul id="maintRows">
+      <li id="needsTags" hidden><span>Needs tags</span><span class="count" id="needsTagsCount">0</span></li>
+      <li id="convertList" hidden><span>Needs converting</span><span class="count" id="convertCount">0</span></li>
+      <li id="convertedList" hidden><span>Converted</span><span class="count" id="convertedCount">0</span></li>
+      <li id="brokenList" hidden><span>Broken on disk</span><span class="count" id="brokenCount">0</span></li>
+      <li id="seriesList" hidden><span>Series to complete</span><span class="count" id="seriesCount">0</span></li>
+      <li id="requestList" hidden><span>Requests</span><span class="count" id="requestCount">0</span></li>
+      <li id="accountList" hidden><span>Accounts</span><span class="count" id="accountCount">0</span></li>
+      <li id="skippedList" hidden><span>Not counted</span><span class="count" id="skippedCount">0</span></li>
+      <li id="importList"><span>Import</span><span class="count" id="importCount">…</span></li>
+      <li id="replacedList" hidden><span>Replaced</span><span class="count" id="replacedCount">0</span></li>
+      <li id="trashList" hidden><span>Trash</span><span class="count" id="trashCount">0</span></li>
+    </ul>
+  </aside>
+  <section id="authors"><div class="col-title"><button class="back linkish" id="backGenres">‹ Genres</button>Authors</div><ul></ul></section>
+  <section id="books"><div class="col-title"><button class="back linkish" id="backCol">‹ Back</button>Books <button id="home" class="linkish">Home</button></div><div class="list"></div></section>
+</main>
+
+<!-- one bar per running job is added here, side by side -->
+<div id="progress" hidden></div>
+
+<!-- Asking for a book the collection has not got. Two fields, because two are
+     what the administrator needs to go and find it; the third is for whatever
+     the other two do not carry — a narrator, an edition, "the one with the
+     green cover". -->
+<dialog id="askDlg">
+  <h2>Request an audiobook</h2>
+  <p class="hint">Ask for a book this collection has not got. The administrator is told, and when
+    it arrives you are too — and it goes straight into your Favourites.</p>
+  <label>Author</label><input id="askAuthor" autocomplete="off">
+  <label>Title</label><input id="askTitle" autocomplete="off">
+  <label>Anything else (optional)</label><input id="askNote" autocomplete="off"
+    placeholder="a narrator, an edition, where you saw it…">
+  <p class="hint missing" id="askSaid"></p>
+  <div class="row end"><button id="closeAsk" class="ghost">Cancel</button><button id="doAsk">Send</button></div>
+  <div id="askMine"></div>
+</dialog>
+
+<footer id="player" class="rangey" hidden>
+  <!-- The cover is the bar's play/pause button, as every other cover in the
+       app is. Wrapped so it can carry the same ⏸/▶ glyph the cards do: it was
+       clickable and said nothing, which was survivable while the bar had a
+       button of its own beside it and is not now that it has none. -->
+  <div class="cover" data-glyph="▶"><img id="pCover" alt=""></div>
+  <div class="meta">
+    <strong id="pTitle"></strong>
+    <!-- who wrote it and which genre it is in, one line; the genre is a way there -->
+    <span class="by"><span id="pAuthor"></span><button id="pGenre" class="genre-link" hidden></button></span>
+    <span id="pTrack"></span>
+  </div>
+  <!-- the audio element is the engine; the transport below is ours, because a
+       browser's own controls cannot be recoloured -->
+  <audio id="audio" preload="metadata"></audio>
+  <button id="pPlay" class="ghost" title="Play or pause">▶</button>
+  <span id="pAt" class="tick">0:00</span>
+  <input id="seek" type="range" min="0" max="1000" value="0" step="1"
+    aria-label="Position in this track">
+  <span id="pOf" class="tick">0:00</span>
+  <!-- The mute and the slider are one control wearing two hats, so they are one
+       thing to the layout as well. Loose, the bar wrapped between them on a
+       phone and left the slider alone across the full width, where a yellow bar
+       under a yellow bar reads as a second progress line. -->
+  <span class="vol"><button id="pVolBtn" class="ghost" title="Mute or unmute">🔊</button>
+    <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="Volume"></span>
+  <!-- The whole book, not the one track that happens to be playing. The arrow
+       carries the word with it: on a phone there is no hovering, so a lone ⤓
+       beside a volume slider is a guess, and this is the one control in the bar
+       that writes a file to somebody's device. -->
+  <a id="pGet" class="ghost" title="Download the whole book" download><span aria-hidden="true">⤓</span>Download</a>
+  <!-- How fast it is read. In the bar on a wide screen; on a phone it is on
+       the player's own page, where there is room for it. -->
+  <!-- how long is left at that speed, beside the control that changes it -->
+  <span id="pLeft" class="left"></span>
+  <select id="pSpeed" title="How fast the book is read"></select>
+  <select id="trackSelect"></select>
+  <!-- put the player away: the place is kept, the bar goes -->
+  <button id="pClose" class="ghost" title="Put the player away">✕</button>
+</footer>
+
+<div id="status"></div>
+
+<!-- A layer, not a <dialog>: `showModal()` puts an element in the browser's top
+     layer, and a password manager's inline menu is a popover in that same layer.
+     With this open it sat permanently underneath, so Bitwarden re-showed its menu
+     on every keystroke and, after five tries in five seconds, switched itself off
+     with "This page is interfering with the Bitwarden experience." Nothing behind
+     this is worth guarding with `inert` anyway — the API is the guard, and there
+     is nothing loaded to click. -->
+<div id="gate" class="gate" hidden>
+  <div class="gate-card">
+  <h2><img src="icon.svg" class="mark" alt=""> My Audiobook Collection</h2>
+  <!-- First run: nobody is the administrator yet, and until somebody is, the app
+       answers nothing. Shown instead of the sign-in card, not beside it. -->
+  <div id="gateClaim" hidden>
+    <p class="hint">This app has no administrator yet, so nothing in it will open. Make one now —
+      it is the account that approves listeners, scans the library and changes what is in it.</p>
+    <label>A name for the administrator</label><input id="gcName" autocomplete="username">
+    <label>A password (at least 8 characters)</label>
+    <input id="gcPass" type="password" autocomplete="new-password">
+    <p class="hint missing" id="gcSaid"></p>
+    <div class="row"><button id="gcGo">Make this the administrator</button></div>
+    <p class="hint">It is kept here, hashed. Setting <code>ADMIN_USER</code> and
+      <code>ADMIN_PASSWORD</code> on the container overrides it, which is also the way back in
+      if this password is ever forgotten.</p>
+  </div>
+
+  <div id="gateSignIn">
+    <p class="hint">Sign in to carry on where you were. Where you got to in a book, the books
+      you have finished and the ones you have hearted are kept per person.</p>
+    <label>Name</label><input id="giName" autocomplete="username">
+    <label>Password</label><input id="giPass" type="password" autocomplete="current-password">
+    <p class="hint missing" id="giSaid"></p>
+    <div class="row"><button id="giGo">Sign in</button>
+      <button id="giAsk" class="linkish">I have no account yet</button></div>
+  </div>
+
+  <div id="gateAsk" hidden>
+    <p class="hint">Ask for an account. The administrator sees your request and decides;
+      once it is approved you can sign in with the name and password you choose here.</p>
+    <label>The name you want to listen under</label><input id="gaName" autocomplete="username">
+    <label>A password (at least 8 characters)</label><input id="gaPass" type="password" autocomplete="new-password">
+    <!-- The placeholder gives an example because two people, stuck for what to
+         write, copied the sentence below this box and sent that as their reason.
+         `autocomplete="off"` so a browser does not offer back what somebody else
+         typed on this shared screen; writing suggestions are left alone, since
+         help composing a sentence is the opposite of the problem here. -->
+    <label>Why would you like access?</label>
+    <textarea id="gaWhy" rows="3" autocomplete="off"
+      placeholder="A sentence is enough — for instance, who you are and how you know the person who runs this."></textarea>
+    <label class="pick"><input type="checkbox" id="gaKnows"> I know the administrator</label>
+    <p class="hint">No email address is asked for and none is kept.</p>
+    <p class="hint missing" id="gaSaid"></p>
+    <div class="row"><button id="gaGo">Ask for an account</button>
+      <button id="gaBack" class="linkish">I do have an account</button></div>
+  </div>
+  </div>
+</div>
+
+<dialog id="settings">
+  <h2>Settings</h2>
+  <label>Library folders (on the server) — add as many as you like</label>
+  <p class="hint">Add the folder that <em>contains</em> your genre folders, e.g. <code>/audiobooks</code>.
+    If that folder also holds things you do not want scanned, add the genre folders one by one instead
+    and tick <em>Is a Genre</em> behind each of them.</p>
+  <ul id="libList"></ul>
+  <div class="row">
+    <input id="libPath" placeholder="/audiobooks">
+    <button id="browseBtn" class="ghost">Browse…</button>
+    <button id="addLib">Add</button>
+  </div>
+  <div id="browser" hidden>
+    <div class="row"><strong id="browserPath"></strong><button id="browseUp" class="ghost">Up</button>
+      <button id="browsePick">Use as library</button>
+      <button id="browseImportPick" class="ghost">Use as import folder</button></div>
+    <ul id="browserList"></ul>
+  </div>
+  <label>Genres</label>
+  <p class="hint">A genre is a folder. Creating one makes the folder, and adds it as a library
+    folder when your libraries are single genre folders.</p>
+  <ul id="genreList"></ul>
+  <div class="row">
+    <input id="genreParent" placeholder="folder it goes in">
+    <input id="newGenre" placeholder="New genre">
+    <button id="addGenre">Create</button>
+  </div>
+
+  <label>Import folder (on the server)</label>
+  <div class="row"><input id="importPath" placeholder="/import"><button id="browseImport" class="ghost">Browse…</button></div>
+  <p class="hint">New audiobooks are picked up from here. Use <em>Import</em> in the left column
+    to file one under a genre and author.</p>
+
+  <label>Folder permissions</label>
+  <p class="hint">Who this app writes as, and what each folder lets it do. If it creates folders you
+    are then refused permission to open, that is what this shows: set <code>PUID</code> and
+    <code>PGID</code> on the container to the user that owns the share — 99 and 100 on Unraid — and
+    hand back what was made as root with
+    <code>chown -R 99:100 /mnt/user/Audiobooks</code>.</p>
+  <button id="checkPerms" class="ghost">Check folder permissions</button>
+  <div id="permsOut"></div>
+
+  <label>Version</label>
+  <p class="hint" id="updateState">Looking…</p>
+  <div class="row">
+    <button id="updateCheck" class="ghost">Check for a newer version</button>
+    <button id="updateNow" class="ghost" hidden>Install it</button>
+  </div>
+  <p class="hint" id="updateHow"></p>
+
+  <label>The database's own copies</label>
+  <p class="hint">Your audiobooks are on your share and survive almost anything. Where everybody
+    is in each book, the accounts, the levels, the hearts — all of that is in one file beside
+    them, and this keeps a copy of it once a day. They go in <code>backups</code> next to the
+    database, so whatever you already keep of your appdata takes them with it. Restoring one is
+    stopping the container, putting the copy back as <code>library.db</code>, and starting it.</p>
+  <p class="hint" id="backupState"></p>
+  <div class="row">
+    <button id="backupNow" class="ghost">Back up now</button>
+  </div>
+
+  <label>Telling Discord</label>
+  <p class="hint">A webhook address from a Discord channel — <em>Channel settings → Integrations →
+    Webhooks</em>. With one saved, this app posts a line there when somebody asks for an account,
+    when somebody signs in, and when a book starts or stops. Nothing else is sent, and the address
+    is never shown back to this page.</p>
+  <p class="hint" id="hookState"></p>
+  <div class="row">
+    <input id="hookUrl" type="password" placeholder="https://discord.com/api/webhooks/…"
+      autocomplete="off">
+    <button id="hookSave" class="ghost">Save</button>
+    <button id="hookTest" class="ghost">Send a test line</button>
+    <button id="hookForget" class="ghost danger">Forget it</button>
+  </div>
+
+  <label>Home Assistant</label>
+  <p class="hint">A page of its own: the address of your Home Assistant, one long-lived access token
+    from it, and this app writes its own sensors into it and plays books on its media players. Nothing
+    to configure on the Home Assistant side.</p>
+  <div class="row"><button id="toHa" class="ghost">Open the Home Assistant page</button></div>
+
+  <label>Which Google Books catalogue answers</label>
+  <p class="hint">Google keeps series data per country's catalogue, so this decides how much of it
+    comes back. The United States has the most — but asking for a catalogue that does not match
+    where your server stands is answered often enough with <em>Google Books is busy</em>, and then
+    your own country, or letting Google decide, is what works. Nothing else changes: the same books,
+    the same covers.</p>
+  <div class="row">
+    <select id="googleCountry"></select>
+  </div>
+
+  <label>Series that are not complete</label>
+  <p class="hint">Both answers live together in <strong>Series to complete</strong>, in the left
+    column under Maintenance: what is missing between the books you already have, counted from
+    their own numbers, and — when you ask Wikidata there — which volumes exist that you do not
+    have at all.</p>
+
+  <label>What Google says about series</label>
+  <p class="hint">Asks Google about the first books that have no series yet, and reports what came
+    back: the series it names, where that came from — the title, the subtitle, or Google's own series
+    data — and how many requests it took. Use it to see why a book gets no series offered. It spends
+    one to three requests of your daily Google quota per book.</p>
+  <div class="row">
+    <button id="seriesReport" class="ghost">Ask about 15 books</button>
+    <select id="seriesReportN">
+      <option value="15" selected>15 books</option>
+      <option value="30">30 books</option>
+      <option value="40">40 books</option>
+    </select>
+  </div>
+  <div id="seriesOut"></div>
+
+  <label>Books against the disk</label>
+  <p class="hint">Opens every file of every book to find what a scan cannot see: a folder that
+    is gone, a truncated download, a share that answers but will not read. This reads your whole
+    collection, so on a large one it takes a long time — minutes, not seconds. Whatever it finds
+    is listed under <em>Broken on disk</em> in the left column.</p>
+  <button id="validateAll" class="ghost">Check every book against the disk</button>
+
+  <label>Cover files</label>
+  <p class="hint">Covers are named after the image, so a book that gets new artwork leaves its old
+    file behind. This looks for cover files no book uses any more and moves them to
+    <code>covers/duplicates</code>, overwriting a file of the same name already there.</p>
+  <button id="tidyCovers" class="ghost">Tidy up unused covers</button>
+
+  <label>Tags in the MP3 files</label>
+  <p class="hint">Writes album, artist, album artist, genre, year, description, cover art and
+    zero-padded track numbers into every MP3 of every book, using what this app shows. Nothing is
+    written empty: a book with no description or narrator keeps whatever its files already carry.</p>
+  <p class="hint">This runs on the server, so it keeps going when you close the page, and what is
+    left of it is remembered — stop it and it carries on from the same book, even after a restart.</p>
+  <p class="hint" id="tagAllState"></p>
+  <div class="row">
+    <button id="tagAll" class="ghost">Write tags into all MP3s</button>
+    <button id="tagAllStop" class="ghost danger" hidden>Stop</button>
+  </div>
+  <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
+</dialog>
+
+
+
+<dialog id="importDlg">
+  <h2>Import audiobook</h2>
+  <p class="hint" id="iSource"></p>
+  <label>Genre</label><select id="iGenre"></select>
+  <label>Author</label><input id="iAuthor">
+  <label>Series (optional)</label><input id="iSeries">
+  <label>Title</label><input id="iTitle">
+  <p class="hint" id="iWhere"></p>
+  <div id="iFound"></div>
+  <div class="row end">
+    <button id="closeImport" class="ghost">Cancel</button>
+    <button id="iLookup" class="ghost">Find metadata</button>
+    <button id="iGo">Move into the library</button>
+  </div>
+</dialog>
+
+<dialog id="conflict">
+  <h2>This book is already there</h2>
+  <p class="hint" id="cWhere"></p>
+  <div id="cTable"></div>
+  <p class="hint" id="cVerdict"></p>
+  <p class="hint">Replacing keeps the book's place in the library, and everyone's position in it:
+    the copy that is there now is renamed <code>Replaced - …</code> and listed under
+    <em>Replaced</em> until you delete it. Keeping the one you have renames the incoming folder
+    <code>Not Imported - …</code> and leaves it in the import folder.</p>
+  <div class="row end">
+    <button id="cCancel" class="ghost">Cancel</button>
+    <button id="cSkip" class="ghost">Keep the one I have</button>
+    <button id="cReplace">Replace with the new one</button>
+  </div>
+</dialog>
+
+<dialog id="fileIn">
+  <h2>File this book</h2>
+  <p class="hint">A folder the scan walked past. Say what book it is, and it is moved to
+    <code>genre / author / series / title</code> and added to the library — with those same words
+    written into its files, so it stays where it belongs after the next scan.</p>
+  <p class="hint path" id="fWhat"></p>
+  <p class="hint" id="fFound"></p>
+  <label>Genre</label><select id="fGenre"></select>
+  <label>Author</label><input id="fAuthor">
+  <label>Series (optional)</label><input id="fSeries">
+  <label>Title</label><input id="fTitle">
+  <label class="pick"><input type="checkbox" id="fTags" checked> Write these into the files as well</label>
+  <p class="hint" id="fWhere"></p>
+  <div class="row end">
+    <button id="fCancel" class="ghost">Cancel</button>
+    <button id="fGo">File it</button>
+  </div>
+</dialog>
+
+<dialog id="move">
+  <h2>Move book</h2>
+  <p class="hint">Moves the folder on disk. The listened state and playback position stay with the book.</p>
+  <label>Genre</label><select id="mGenre"></select>
+  <label>Author</label><input id="mAuthor">
+  <label>Series (optional)</label><input id="mSeries">
+  <label>Title</label><input id="mTitle">
+  <p class="hint" id="mWhere"></p>
+  <div class="row end"><button id="closeMove" class="ghost">Cancel</button><button id="doMove">Move</button></div>
+</dialog>
+
+<dialog id="lookup">
+  <h2>Metadata lookup</h2>
+  <div class="row"><input id="lookupQuery" placeholder="title author"><button id="lookupSearch">Search</button></div>
+  <p class="hint" id="lookupWhere"></p>
+  <div id="lookupProgress" hidden><div class="track"><div id="lookupBar"></div></div><span id="lookupState"></span></div>
+  <div id="lookupBody"></div>
+  <div class="row end"><button id="closeLookup" class="ghost">Close</button></div>
+</dialog>
+
+<dialog id="edit">
+  <h2>Edit metadata</h2>
+  <label>Title</label>
+  <div class="field"><input id="eTitle"><button class="ghost copy" data-copy="eTitle" title="Copy to the clipboard">⧉</button></div>
+  <label>Author</label>
+  <div class="field"><input id="eAuthor"><button class="ghost copy" data-copy="eAuthor" title="Copy to the clipboard">⧉</button></div>
+  <label>Series</label>
+  <div class="field"><input id="eSeries"><button class="ghost copy" data-copy="eSeries" title="Copy to the clipboard">⧉</button></div>
+  <p class="hint">A series is a folder, so changing this moves the book into
+    <code>genre / author / series / book</code>. Emptying it moves the book back up.</p>
+  <label>Book number in the series</label>
+  <div class="field"><input id="eSeriesNo" type="number" min="0" step="1"><button class="ghost copy" data-copy="eSeriesNo" title="Copy to the clipboard">⧉</button></div>
+  <p class="hint">Where the book comes in that series: it orders the shelf and goes
+    into the tags. Leave it empty when there is no number.</p>
+  <label>Narrator</label>
+  <div class="field"><input id="eNarrator"><button class="ghost copy" data-copy="eNarrator" title="Copy to the clipboard">⧉</button></div>
+  <label>Year</label>
+  <div class="field"><input id="eYear"><button class="ghost copy" data-copy="eYear" title="Copy to the clipboard">⧉</button></div>
+  <label>Description</label>
+  <div class="field"><textarea id="eDescription" rows="4"></textarea><button class="ghost copy" data-copy="eDescription" title="Copy to the clipboard">⧉</button></div>
+  <label>Cover</label>
+  <div class="cover-edit" id="eCoverBox">
+    <img id="eCover" alt="">
+    <div class="cover-say">
+      <p class="hint" id="eCoverSay">Copy a picture anywhere — right-click an image,
+        <em>Copy image</em> — then press <kbd>Ctrl</kbd>+<kbd>V</kbd> here. You can also drop
+        a file on this box, or <button type="button" class="linkish" id="eCoverPick">choose one</button>.
+        It is kept when you save, and forgotten if you cancel.</p>
+      <button type="button" class="ghost" id="eCoverUndo" hidden>Put the old cover back</button>
+    </div>
+    <input type="file" id="eCoverFile" accept="image/jpeg,image/png" hidden>
+  </div>
+  <p class="hint path" id="ePath"></p>
+  <div class="row end">
+    <button id="closeEdit" class="ghost">Cancel</button>
+    <button id="saveEdit" class="ghost">Save</button>
+    <button id="saveEditTags">Save + write into MP3s</button>
+  </div>
+</dialog>
+
+<!-- right-click (or long-press) a cover -->
+<div id="coverMenu" class="cmenu" hidden>
+  <div class="cmenu-title" id="cmTitle"></div>
+  <button data-act="restart">↺ Start again from the beginning</button>
+  <button data-act="listened" id="cmDone">☑ Mark as listened</button>
+  <button data-act="download">⤓ Download the whole book</button>
+  <button data-act="convert" id="cmConvert" hidden>⤳ Convert to MP3…</button>
+  <button data-act="edit">✎ Edit metadata…</button>
+  <button data-act="find">🔍 Look up metadata…</button>
+</div>
+
+<div id="toast"></div>
+<script src="browse.js"></script>
+<script src="app.js"></script>
+<!-- the maintenance column, and the edit dialog with its cover and lookup:
+     after app.js, which declares `state` and the helpers both of these call -->
+<script src="maint.js"></script>
+<script src="edit.js"></script>
+<!-- signing in, and the hearts: both pages, one copy -->
+<script src="account.js"></script>
+<!-- after the page's own script: the player leans on what that declares -->
+<script src="player.js"></script>
+</body>
+</html>
