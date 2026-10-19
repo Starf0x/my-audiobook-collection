@@ -1339,7 +1339,7 @@ app.get('/api/ha/book/:id.m3u', forHA, (req, res) => {
 // media player at this and get whatever the listener is in the middle of.
 app.get('/api/ha/continue.m3u', forHA, (req, res) => {
   const state = haState(req, VERSION, whoReads(req));
-  const first = state.continue.find((b) => !b.listened) || state.continue[0];
+  const first = state.listening[0] || state.continue[0];
   if (!first) return res.status(404).type('text/plain').send('Nothing to continue.');
   const list = bookPlaylist(req, first.id, first.track - 1);
   if (!list) return res.status(404).type('text/plain').send('That book has no files.');

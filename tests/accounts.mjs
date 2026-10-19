@@ -651,6 +651,36 @@ check('guessing starts costing after a handful of tries', refused > 0, true);
     [true, undefined]);
   check('and one person’s reading does not appear on another’s sensor',
     (bo.finished || []).length, 0);
+
+  // Not one book: the whole of Continue listening. Ada picks up a second book
+  // she began earlier, and plays a third to its last seconds without ticking it.
+  // The shelf counts that third one as read, so the sensor has to as well —
+  // with only the tick to go on it stayed "the one she is in the middle of".
+  db.prepare(`INSERT INTO tracks (book_id, idx, path, title, duration)
+              VALUES (5, 0, ?, 'One', 60)`).run(path.join(`${bookDir}-undated`, '01.mp3'));
+  db.prepare(`INSERT INTO tracks (book_id, idx, path, title, duration)
+              VALUES (4, 0, ?, 'One', 60)`).run(path.join(`${bookDir}-later`, '01.mp3'));
+  db.prepare(`INSERT OR REPLACE INTO progress (user, book_id, track_idx, position, updated, started, done)
+    VALUES ('Ada', 5, 0, 45, '2026-10-18 21:00:00', '2026-09-20 08:00:00', 0)`).run();
+  db.prepare(`INSERT OR REPLACE INTO progress (user, book_id, track_idx, position, updated, started, done)
+    VALUES ('Ada', 4, 0, 59, '2026-10-19 11:00:00', '2026-10-01 09:00:00', 0)`).run();
+
+  const again = Object.fromEntries(haEntities(req, '9.9.9').map(([id, state, a]) => [id, { state, ...a }]));
+  const ada2 = again['sensor.audiobook_ada'];
+  const going = ada2.listening || [];
+  check('the sensor lists every book on their Continue listening shelf, newest first',
+    going.map((b) => b.title), ['A Book', 'An Undated Book']);
+  check('each with how far in they are',
+    going.map((b) => [b.chapter, b.chapters, b.percent]), [[1, 1, 33], [1, 1, 75]]);
+  check('and when each was begun and last heard',
+    going.map((b) => [b.started, b.last_heard]),
+    [['2026-10-01 09:00:00', '2026-10-19 10:00:00'], ['2026-09-20 08:00:00', '2026-10-18 21:00:00']]);
+  check('a book played to its end counts as read here as it does on the shelf',
+    [ada2.state, going.some((b) => b.title === 'A Later Book')], ['A Book', false]);
+  check('and the count of books read says the same as the list',
+    ada2.listened_books, 1);
+  check('and somebody with nothing on the go has an empty shelf, not somebody else’s',
+    again['sensor.audiobook_bo'].listening, []);
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');

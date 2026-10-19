@@ -155,7 +155,7 @@ async function loadQueue() {
   const listener = $('#haListener').value;
   const s = await api(`/api/ha?user=${encodeURIComponent(listener)}`).catch(() => null);
   if (!s) return;
-  const going = s.continue.filter((b) => !b.listened);
+  const going = s.listening;
   $('#haQueue').innerHTML = going.length ? `<table class="cmp">
       <tr><th>Book</th><th>Where</th><th></th></tr>
       ${going.map((b) => `<tr>
