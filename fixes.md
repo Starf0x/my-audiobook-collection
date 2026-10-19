@@ -799,6 +799,26 @@ and every check there now asks `typeof … === 'number'` before comparing.
 that compares two values read from the same answer must first prove the answer
 has them: two missing fields are equal.
 
+### The administrator's level was worked out for nobody (2.14.64)
+
+The owner had finished ten books in the web player and his header said "10 to
+Rookie Level". The completions were all there, under his name. `/api/account/me`
+computed the level from `listenerOf(req)` — the listener session — and an
+administrator signs in with the `admin` cookie and no listener session, so it
+asked about the empty name and got 0. The download rule two lines below had
+always used `listener || adminName()`; the level line next to it had not.
+
+`levels.mjs` had every level check against Ann, a listener, so the one kind of
+account that could not have a level was the one no check signed in as.
+
+**Fixed** by working out who this is once, at the top of the route, and using
+that for the name, the level and the download rule alike. A check for the
+administrator goes red with the old line.
+
+**Rule:** where "who is asking" is spelled out more than once in a route, work
+it out once and use that. And a feature about a person is checked as each kind
+of person the app has — here a listener *and* the administrator.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

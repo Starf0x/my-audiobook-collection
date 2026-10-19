@@ -525,6 +525,23 @@ try {
   });
   check('but saying not finished does take it off', tickOf(), 0);
 
+  // A book played out on a speaker counts towards a level, as one played out in
+  // the browser always has (2.14.64). "Mark as finished" does not: Music
+  // Assistant sends `isFinished` for that as well, and a statement is not a
+  // book heard to the end — the same rule as a tick on the card.
+  const completed = () => db.prepare('SELECT COUNT(*) AS n FROM completions WHERE user = ? AND book_id = ?')
+    .get('Morgan', first).n;
+  // the PATCH above moved the place to the end of the book: by the place alone
+  // this would count, and it is a statement, not a book heard
+  check('marking it finished in Music Assistant is no completion', completed(), 0);
+  const end = await get(`/api/session/pl-${first}-tothend`);
+  await fetch(`${BASE}/api/session/${end.id}/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ currentTime: 30, timeListened: 18, duration: 30 }),
+  });
+  check('a book played to its end through Music Assistant is a completion, for a level',
+    completed(), 1);
+
   // --- and it is not there at all without the token --------------------
   const anon = await fetch(`${BASE}/api/libraries`);
   check('no token, no answer', anon.status, 401);

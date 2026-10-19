@@ -22,6 +22,8 @@
 // Home Assistant answers are gated by HA_TOKEN.
 import { db } from './db.js';
 import { baseUrl, sameSecret } from './ha.js';
+import { countsAsRead, keptOne } from './finished.js';
+import { finishedABook } from './listeners.js';
 
 export const inboundToken = () => (process.env.MA_TOKEN || '').trim();
 export const enabled = () => !!inboundToken();
@@ -314,6 +316,17 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
     .run(user || '', bookId, idx, left, new Date().toISOString(), said, said);
 }
 
+// A book played out on a speaker is a completion, as one played out in the
+// browser always was — and that is what a level is made of (2.14.64). Asked
+// only of what Music Assistant reports *while playing*: a session's syncs, its
+// close, and a session it kept offline. Not of a progress PATCH, because "mark
+// as finished" there arrives as `isFinished` with the place moved to the end,
+// and that is a statement, like a tick on a card.
+function heardToTheEnd(user, bookId) {
+  const kept = user ? keptOne.get(user, bookId) : null;
+  if (kept && countsAsRead({ ...kept, done: 0 })) finishedABook(user, bookId);
+}
+
 export const user = (name) => ({
   id: `us-${b64(name || '')}`,
   username: name || 'listener',
@@ -595,7 +608,10 @@ export function syncSession(id, body, asking) {
   sessions.set(String(id), { book: said.book, user, at: Date.now() });
   const seconds = Number((body || {}).currentTime);
   // a sync says where the listener is, never whether they are done
-  if (Number.isFinite(seconds)) writeProgressFromWhole(user, said.book, seconds, undefined);
+  if (Number.isFinite(seconds)) {
+    writeProgressFromWhole(user, said.book, seconds, undefined);
+    heardToTheEnd(user, said.book);
+  }
   return true;
 }
 
@@ -612,6 +628,7 @@ export function syncFromLocal(user, said) {
   const seconds = Number((said || {}).currentTime);
   if (!bookId || !Number.isFinite(seconds) || !book(bookId)) return false;
   writeProgressFromWhole(user, bookId, seconds, undefined);
+  heardToTheEnd(user, bookId);
   return true;
 }
 
