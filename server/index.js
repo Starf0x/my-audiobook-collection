@@ -969,7 +969,9 @@ const seriesState = (genre, name) => {
 };
 
 // Books of one author, or of one series: the same card either way, and with them
-// what each series on the page is missing.
+// what each series on the page is missing. The genre comes back too, although it
+// was asked for: The owner wants every card to say which genre it is in, and on a
+// phone the column that would say so is not on screen (2.14.48).
 // A genre, and an author or a series within it. Both are needed — the page
 // never asks otherwise — and asking without them used to reach SQLite with
 // `undefined` to bind, which threw. Saying so is the answer; a 500 from a
@@ -981,7 +983,7 @@ app.get('/api/books', (req, res) => {
   if (req.query.parent) {
     if (!req.query.genre) return res.status(400).json({ error: 'Say which genre.' });
     const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                    b.description, b.cover, b.duration, b.tagged, b.unabridged,
+                                    b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
                                     p.position > 0 AS started, ${KEPT}
                              FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                              WHERE b.genre = ? AND b.parent_series = ?
@@ -1000,7 +1002,7 @@ app.get('/api/books', (req, res) => {
     return res.status(400).json({ error: 'Say which genre, and which author or series in it.' });
   }
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                  b.description, b.cover, b.duration, b.tagged, b.unabridged,
+                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}

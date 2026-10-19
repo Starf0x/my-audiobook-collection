@@ -1962,13 +1962,23 @@ author)` and `selectGenre` — and the year is the one new route, `/api/year`:
 every book of that year across the whole collection, since a year is not a shelf
 and what is wanted is the run of them across all of the shelves.
 
-**Whether to say the genre is asked of the answer, not of the column.** A view
-that spans the shelves sends a genre with each book; `/api/books` is given one
-and so sends none back. That is the whole test, and the card needs no flag. It
+**Whether to say the genre is asked of the answer, not of the column.** It
 asked `state.genre` first — what the *column* has selected — and a search run
 after browsing an author showed no genres at all, the column still holding the
 one from before. Found by looking, in a browser, after every check passed; it is
 a check now.
+
+**And since 2.14.48 every answer carries it, so every card says it.** It was
+left off a view of one genre on purpose, `/api/books` sending none back, as a
+word repeated on every card. On a phone that left an author's books saying
+nothing about where they were: one column is on screen at a time, and the two
+that say *Fantasy* and *Stephen King* on a wide screen were off to the side.
+The owner asked for both. So `/api/books` sends the genre like every other route,
+and an author's books open under a head of their own — `Fantasy · Stephen King
+· 5 books`, the genre a way into it, the same family as a year's head
+(`authorHead` in `browse.js`, called by both pages' `selectAuthor`). The author
+on a home tile is a link too, to the same place; it stops its click, because
+the tile's own click starts the book.
 
 `/api/year` takes four digits or answers with an empty list. An **empty** year
 is the part of that guard which does something: the column is text and an

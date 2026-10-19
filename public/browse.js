@@ -80,7 +80,7 @@ const tile = (b, resumable) => {
     <img src="/api/cover/${b.id}?v=${b.coverV || 0}" alt="" loading="lazy" decoding="async">
     ${heart(b.id)}
     <div class="t">${esc(b.title)}</div>
-    <div class="a">${esc(b.author)}</div>
+    <div class="a">${byLine(b)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
       <div class="a">${how}</div>
@@ -205,17 +205,15 @@ const yearBadge = (b) => (b.year
       title="Every book in the collection from ${esc(b.year)}">${esc(b.year)}</button>`
   : '');
 
-// Only where it is not already the answer: browsing one genre, every card on
-// screen is in it, and a badge saying so on all of them is a word repeated
-// forty times. A search, Favourites, Listened, a year and the maintenance lists
-// all reach across the shelves, and there the genre is the thing a card does
-// not otherwise say.
+// On every card, wherever it is drawn. It used to be left off a view of one
+// genre, as a word repeated on every card — but on a phone the genre column is
+// not on screen, so an author's books said nothing about where they were, and
+// The owner asked for it back everywhere (2.14.48). `/api/books` sends it now, like
+// every other route.
 //
-// Which of those a view is, the answer already knows: `/api/books` takes a
-// genre and so does not send one back, and every route that spans them does.
-// This asked `state.genre` instead, which is what the *column* has selected —
-// so a search run after browsing an author showed no genres at all, the column
-// still holding the one from before. The payload is the honest test.
+// Read from the payload, never from `state.genre`, which is what the *column*
+// has selected: a search run after browsing an author once came back carrying
+// the genre from before.
 const genreBadge = (b) => (b.genre
   ? `<button class="badge linkish" data-genre="${esc(b.genre)}"
       title="Everything in ${esc(b.genre)}">${esc(b.genre)}</button>`
@@ -232,6 +230,18 @@ async function booksOfYear(year) {
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   $('#authors ul').innerHTML = '';
   await drawBooks(books, `${year} · ${books.length} book${books.length === 1 ? '' : 's'}`, 'Year');
+}
+
+// Where an author's books are, said above them: `Fantasy · Stephen King · 5
+// books`, with the genre a way into it. A wide screen says the same with the two
+// columns beside it; a phone shows one column at a time, so after a tap on an
+// author the books arrived with nothing to say whose shelf this was or which
+// genre it is in. The same head as a year's, so the two read as one family.
+function authorHead(genre, author, count) {
+  $('#books .list').insertAdjacentHTML('afterbegin', `<div class="series-head where">
+    <button class="linkish" data-genre="${esc(genre)}" title="Everything in ${esc(genre)}">${esc(genre)}</button>
+    · ${esc(author)} · ${count} book${count === 1 ? '' : 's'}</div>`);
+  wireCardLinks();
 }
 
 // Hung on after each draw, the way the cover handlers are. One pass over the

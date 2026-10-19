@@ -583,6 +583,13 @@ check('guessing starts costing after a handful of tries', refused > 0, true);
   check('an empty year is not a year, and does not hand over every undated book',
     (await of('', admin.cookies)), []);
 
+  // An author's own shelf sends the genre back although it was asked for: every
+  // card says its genre now, and on a phone the column that would is off screen.
+  const shelf = (await get(`/api/books?genre=Fantasy&author=${encodeURIComponent('An Author')}`,
+    admin.cookies)).body;
+  check('an author’s shelf says which genre each of its books is in',
+    (shelf.books || []).map((b) => b.genre), ['Fantasy', 'Fantasy']);
+
   // What is *not* checked here, and why. The guard is `/^\d{4}$/`, and the rest
   // of what it rejects — `201`, `20155`, `MMXV`, `2015' OR '1'='1` — comes back
   // empty whether it is there or not: the query is parameterised, so a string
