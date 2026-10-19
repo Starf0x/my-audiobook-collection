@@ -34,8 +34,9 @@ again.
 
 ## 2 · What it publishes
 
-Six sensors, written straight into Home Assistant's state machine, so they appear
-the moment the first send lands:
+Six sensors about the collection, and one more for each listener, written
+straight into Home Assistant's state machine, so they appear the moment the first
+send lands:
 
 | Entity | State | Also carries |
 | --- | --- | --- |
@@ -45,6 +46,7 @@ the moment the first send lands:
 | `sensor.audiobook_hours_listened` | hours listened | hours left |
 | `sensor.audiobook_hours_left` | hours left | |
 | `sensor.audiobook_next_up` | the title to carry on with | the book id, track of how many, seconds in, per cent, hours left, its playlist — and the whole **queue** |
+| `sensor.audiobook_<name>` | the book that listener is in the middle of, or `nothing` | everything on their **Continue listening** shelf with how far in they are, and the books they have **finished**, with how long they took — see below |
 
 *Whose progress to report* picks the listener; with one listener it is that one.
 *Send to Home Assistant* sets how often — Home Assistant **forgets** states written
@@ -64,6 +66,89 @@ entities:
   - sensor.audiobook_hours
   - sensor.audiobook_hours_listened
   - sensor.audiobook_next_up
+```
+
+### One sensor per listener
+
+Every account gets `sensor.audiobook_<name>` — `sensor.audiobook_morgan`,
+`sensor.audiobook_ada`. The name is made lower case with anything that is not a
+letter or a digit turned into `_`, so *Anne-Marie* is `sensor.audiobook_anne_marie`.
+Two names that come out the same get a number on the second one rather than
+overwriting each other.
+
+Its **state** is the book that person listened to last and has not finished, so
+an entities card shows it with nothing else to set up. Its **attributes**:
+
+| Attribute | What it is |
+| --- | --- |
+| `listening` | every book on that person's *Continue listening* shelf, newest first — the same books, by the same rule, as the shelf in the app, up to twelve |
+| `finished` | the books they have played to the end, newest first, up to 25. A book stays here once it is finished |
+| `listened_books` | how many books they have read, counted the way the app counts them |
+| `hours_listened` | hours of audio behind them |
+| `author`, `chapter`, `chapters`, `percent`, `hours_in`, `hours_left`, `started`, `last_heard`, `playlist` | the same details for the book in the state, for cards that only want that one |
+
+Each book in `listening` carries `title`, `author`, `series`, `series_no`,
+`chapter` and `chapters`, `percent` through the book (by time, not by chapter),
+`hours_in`, `hours_left`, `started`, `last_heard` and `playlist`, which plays it
+from the chapter they are on.
+
+Each book in `finished` carries `title`, `author`, `finished_at` and — when the
+app knows when it was begun — `started`, `days` and `took` (*the same day*,
+*1 day*, *14 days*). **How long** runs from the day the book was first opened to
+the day it was finished: not hours of audio, and not time since it was last
+touched. Books finished before version 2.14.8, which is when the app began
+writing down when a book was started, have no `took`: the app does not guess.
+
+A book counts as finished when it is ticked *Listened*, or when the place kept
+in it is at the end of its last track — the same rule as the shelf, so a book
+played out but never ticked moves from `listening` to the read count straight
+away. It appears in `finished` once it has actually been played to the end.
+
+### A dashboard card for it
+
+The built-in **Markdown card** reads the attributes directly; nothing to
+install. One person:
+
+```yaml
+type: markdown
+title: The owner's audiobooks
+content: |
+  {%- set p = 'sensor.audiobook_morgan' %}
+  ### Listening
+  {%- for b in state_attr(p, 'listening') or [] %}
+  - **{{ b.title }}** · {{ b.author }}<br>
+    {{ b.percent }}% · chapter {{ b.chapter }} of {{ b.chapters }} · {{ b.hours_left }} h to go
+  {%- else %}
+  Nothing on the go.
+  {%- endfor %}
+
+  ### Finished
+  {%- for b in (state_attr(p, 'finished') or [])[:10] %}
+  - ✓ **{{ b.title }}** · {{ b.author }}<br>
+    {{ b.finished_at[:10] }}{% if b.took is defined %} · took {{ b.took }}{% endif %}
+  {%- else %}
+  Nothing finished yet.
+  {%- endfor %}
+```
+
+The whole household on one card, one section per listener, found by the
+`listening` attribute only these sensors carry:
+
+```yaml
+type: markdown
+title: Who is listening to what
+content: |
+  {%- for s in states.sensor if s.attributes.listening is defined %}
+  ### {{ s.attributes.listener }}
+  {%- for b in s.attributes.listening %}
+  - **{{ b.title }}** · {{ b.percent }}%
+  {%- else %}
+  - nothing on the go
+  {%- endfor %}
+  {%- for b in (s.attributes.finished or [])[:3] %}
+  - ✓ {{ b.title }}{% if b.took is defined %} · {{ b.took }}{% endif %}
+  {%- endfor %}
+  {%- endfor %}
 ```
 
 ## 3 · Play a book on a media player

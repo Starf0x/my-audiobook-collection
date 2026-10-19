@@ -1649,6 +1649,26 @@ the chapter, how far through, hours in and left, when they began it, and the
 playlist to carry on from. Somebody with nothing on the go says `nothing`
 rather than borrowing the newest book in the house.
 
+**And the whole shelf, not one book** (2.14.24). A person reading two books at
+once showed one of them. The attribute `listening` is their *Continue
+listening* shelf — every book not yet read, newest first, up to the twelve
+`/api/home` shows — each with chapter of chapters, per cent by time, hours in
+and left, started, last heard and its playlist. `haState` gives it as
+`listening` beside `continue`, which keeps its old meaning (the twelve newest
+places, read ones included and marked) for whatever already reads it.
+
+Two things changed underneath, both the shelf's rule reaching Home Assistant:
+
+* **read is `countsAsRead`**, the tick *or* a place at the end of the last
+  track. It was the tick alone, so a book played out and never ticked stayed
+  "the one they are in the middle of" on the sensor while the shelf had already
+  put it away. `listened_books` is `readCount` for the same reason.
+* **the twelve are counted after the filter.** The query took the newest twelve
+  places and then dropped the read ones, so somebody with eight finished books
+  among their last twelve had four on the sensor and more on the shelf.
+  `sensor.audiobook_next_up`'s queue, `/api/ha/continue.m3u` and the queue on
+  the app's own HA page read `listening` too.
+
 **A finished book stays in the list**, marked read, with **how long that person
 took over it**. That is from the day they first opened it to the day they
 finished: not hours of audio, which is a fact about the book, and not time since

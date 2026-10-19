@@ -16,6 +16,7 @@
 // `media_player.media_seek` once playback has started.
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting } from './db.js';
+import { countsAsRead, readCount } from './finished.js';
 
 // Where this app is reachable from, which is not always where the request came
 // from: HA may talk to a hostname the browser never uses, and a media player has
@@ -106,8 +107,9 @@ export function haState(req, version = '', who = null) {
       (SELECT COUNT(*) FROM books) AS books,
       (SELECT COUNT(*) FROM tracks) AS files,
       (SELECT COALESCE(SUM(duration), 0) FROM books) AS seconds`).get();
-  const done = db.prepare('SELECT COUNT(*) AS n FROM progress WHERE done = 1 AND user = ?')
-    .get(user).n;
+  // read by the rule every other count of "listened" uses, so a sensor and the
+  // list beside it cannot say two different numbers (2.10.40)
+  const done = readCount(user);
   const listened = listenedSeconds(user);
 
   const link = (b, trackIdx) => ({
@@ -119,12 +121,44 @@ export function haState(req, version = '', who = null) {
     }),
   });
 
-  const keptGoing = db.prepare(`${BOOK}, p.track_idx, p.position, p.done, p.updated, p.started
+  // Every place kept, not the newest twelve: `listening` below is the shelf's
+  // list, and twelve rows of which eight were finished books left four on it.
+  // `trackSeconds` is what `countsAsRead` needs to see a book played to its end
+  // that nobody ticked.
+  const kept = db.prepare(`${BOOK}, p.track_idx, p.position, p.done, p.updated, p.started,
+      (SELECT t.duration FROM tracks t WHERE t.book_id = b.id AND t.idx = p.track_idx) AS trackSeconds
       FROM progress p JOIN books b ON b.id = p.book_id
       WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
-      ORDER BY p.updated DESC LIMIT 12`).all(user);
+      ORDER BY p.updated DESC`).all(user);
   const behind = db.prepare(`SELECT COALESCE(SUM(t.duration), 0) AS s FROM tracks t
       WHERE t.book_id = ? AND t.idx < ?`);
+  const place = (b) => {
+    const into = behind.get(b.id, b.track_idx).s + b.position;
+    // read by the same rule as the shelf and the Listened section: the tick, or a
+    // place sitting at the end of the last track. It was the tick alone, so a book
+    // played out but never ticked was still "the one they are in the middle of".
+    const read = countsAsRead(b);
+    return {
+      id: b.id,
+      title: b.title,
+      author: b.author,
+      series: b.series || '',
+      series_no: b.series_no || 0,
+      track: b.track_idx + 1,
+      tracks: b.tracks,
+      position: Math.round(b.position),
+      into_hours: hours(into),
+      left_hours: read ? 0 : hours(Math.max(0, b.duration - into)),
+      percent: read ? 100
+        : Math.max(0, Math.min(100, b.duration ? Math.round((into / b.duration) * 100) : 0)),
+      listened: read,
+      updated: b.updated,
+      // when they began it, which is not when they last touched it
+      started: b.started || '',
+      ...link(b, b.track_idx),
+    };
+  };
+  const places = kept.map(place);
 
   return {
     version,
@@ -138,28 +172,12 @@ export function haState(req, version = '', who = null) {
       listened: hours(listened),
       left: hours(Math.max(0, totals.seconds - listened)),
     },
-    // what to carry on with, newest first: the same list the shelves show
-    continue: keptGoing.map((b) => {
-      const into = behind.get(b.id, b.track_idx).s + b.position;
-      return {
-        id: b.id,
-        title: b.title,
-        author: b.author,
-        series: b.series || '',
-        series_no: b.series_no || 0,
-        track: b.track_idx + 1,
-        tracks: b.tracks,
-        position: Math.round(b.position),
-        into_hours: hours(into),
-        left_hours: hours(Math.max(0, b.duration - into)),
-        percent: b.duration ? Math.round((into / b.duration) * 100) : 0,
-        listened: !!b.done,
-        updated: b.updated,
-        // when they began it, which is not when they last touched it
-        started: b.started || '',
-        ...link(b, b.track_idx),
-      };
-    }),
+    // every book with a place kept, newest first, finished ones included and
+    // marked — the twelve this has always answered with
+    continue: places.slice(0, 12),
+    // and the shelf itself: Continue listening, which is the books not yet read,
+    // up to the twelve `/api/home` shows
+    listening: places.filter((b) => !b.listened).slice(0, 12),
     // and what has just arrived
     new: db.prepare(`${BOOK} FROM books b ORDER BY b.id DESC LIMIT 12`).all().map((b) => ({
       id: b.id,
@@ -331,8 +349,16 @@ export function everybody(req) {
   const seen = new Map();
   return users.map((name, i) => {
     const s = haState(req, '', name);
-    // The one they are in the middle of: the newest row that is not finished.
-    const reading = s.continue.find((b) => !b.listened) || null;
+    // The one they are in the middle of is the newest of what they have on the
+    // go; the rest of that shelf comes too, each book with how far in they are.
+    const reading = s.listening[0] || null;
+    const listening = s.listening.map((b) => ({
+      id: b.id, title: b.title, author: b.author, series: b.series, series_no: b.series_no,
+      chapter: b.track, chapters: b.tracks, percent: b.percent,
+      hours_in: b.into_hours, hours_left: b.left_hours,
+      ...(b.started ? { started: b.started } : {}), last_heard: b.updated,
+      playlist: b.continueFrom,
+    }));
     const finished = db.prepare(`SELECT c.book_id, c.title, c.at, c.started, b.author
         FROM completions c LEFT JOIN books b ON b.id = c.book_id
         WHERE c.user = ? ORDER BY c.at DESC LIMIT 25`).all(name)
@@ -343,14 +369,14 @@ export function everybody(req) {
     const key = slug(name);
     const id = seen.has(key) ? `${key}_${i}` : key;
     seen.set(key, true);
-    return { name, id, reading, finished, hours_listened: s.hours.listened, listened_books: s.listened_books };
+    return { name, id, reading, listening, finished, hours_listened: s.hours.listened, listened_books: s.listened_books };
   });
 }
 
 export function haEntities(req, version) {
   const asked = { headers: req.headers, protocol: req.protocol, query: { user: haSettings().listener } };
   const s = haState(asked, version);
-  const next = s.continue.find((b) => !b.listened) || s.continue[0] || null;
+  const next = s.listening[0] || s.continue[0] || null;
   const attrs = (extra) => ({ attribution: 'My Audiobook Collection', ...extra });
   const short = (b) => ({
     id: b.id, title: b.title, author: b.author, track: b.track, tracks: b.tracks,
@@ -380,7 +406,7 @@ export function haEntities(req, version) {
     ['sensor.audiobook_next_up', next ? next.title : 'nothing', attrs({
       friendly_name: 'Audiobook next up', icon: 'mdi:play-circle-outline',
       ...(next ? { book_id: next.id, ...short(next), hours_left: next.left_hours } : {}),
-      queue: s.continue.filter((b) => !b.listened).map(short),
+      queue: s.listening.map(short),
     })],
     // One per listener: what that person is in the middle of is the state, so a
     // dashboard card can show it without digging into attributes, and what they
@@ -398,6 +424,9 @@ export function haEntities(req, version) {
           playlist: p.reading.continueFrom,
         } : {}),
         listened_books: p.listened_books, hours_listened: p.hours_listened,
+        // everything on their Continue listening shelf, newest first, the book
+        // in the state above included — and what they have finished below it
+        listening: p.listening,
         finished: p.finished,
       })]),
   ];

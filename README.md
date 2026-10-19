@@ -48,6 +48,7 @@ The full manual, with screenshots of every part of it, is in the
 * Unticking *Listened* clears the place kept in that book, so it starts from the beginning again
 * **⤓ downloads the whole book** — every file of it in one archive, not the single track that is playing
 * **Home Assistant** reads the collection and carries a book on to any media player in the house
+* And a **sensor per listener**: every book they have on the go with how far in they are, and the books they finished with how long they took — with a ready-made dashboard card in [docs/home-assistant.md](docs/home-assistant.md)
 * **Music Assistant** can be pointed at it as an Audiobookshelf server: browse the books there, play them on any speaker, and the place syncs both ways
 
 ### And around all that
