@@ -72,6 +72,8 @@ app.get('/', page('listen.html'));
 app.get('/admin', page('index.html'));
 app.get('/ha', page('ha.html'));
 app.get('/accounts', page('accounts.html'));
+// The player on its own: one book, one play/pause, nothing to scroll (§8).
+app.get('/player', page('player.html'));
 app.get('/listen.html', (req, res) => res.redirect('/'));
 app.get('/index.html', (req, res) => res.redirect('/admin'));
 app.use(express.static(PUBLIC, { index: false }));

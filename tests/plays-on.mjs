@@ -594,9 +594,9 @@ async function run() {
     // to be that page and not the admin one — Sign out is only on this header.
     await goto(`${BASE}/`, '/');
     await pickedUp();
-    // the bar's cover is the play button on a phone, so this is also the check
-    // that it still works as one
-    await click('#pCover');
+    // The bar's own button, not the cover: on a phone the cover is the way to
+    // `/player`, which is checked at the end of this section.
+    await click('#pPlay');
     // Waiting for the clock to move, not for `paused` to turn false. `play()`
     // clears `paused` on the spot and the `play` event — which is what redraws
     // the glyph — is a task behind it, so a wait on `paused` lets the glyph be
@@ -698,7 +698,11 @@ async function run() {
       new Set(Object.values(labels.widths)).size, 1);
     check('and the clock has a width of its own rather than the time’s',
       labels.short >= 30, true);
-    check('and the cover says the same, being the same button', phone.glyph, '⏸');
+    // And the cover is no longer a third one. The owner counted three play/pause
+    // buttons on one phone screen — the card's, the bar's, and the cover's —
+    // and he was right. On a phone the cover is the way to the player's own
+    // page instead, and says so rather than wearing a ⏸ that does not pause.
+    check('the cover is not a third play/pause on a phone', phone.glyph, '⤢');
     // ✕ was parked mid-bar beside the chapter pulldown.
     check('✕ is at the top right of the bar',
       [phone.bar.right - phone.close.right < 20, Math.abs(phone.close.top - phone.cover.top) < 6],
@@ -712,6 +716,137 @@ async function run() {
     check('the download says what it is', /Download/.test(phone.getSays), true);
     check('and it is on the same row as the clock, not on one of its own',
       Math.abs(phone.get.top - phone.seek.top) > 10 && phone.get.top < phone.seek.top, true);
+
+    // 7. `/player`: the player and nothing else.
+    //
+    // The owner sent a video of the listening page on his phone — a column to
+    // scroll past, with the book he was listening to somewhere in it, and
+    // three buttons that all start and stop the same book. This is the answer:
+    // one screen, one book, one play/pause, nothing to scroll.
+    //
+    // Reached by tapping the cover in the bar, which is what makes it a way
+    // there rather than a third play/pause. It is a page of its own, so the
+    // book is carried across and picked up — the same carry that already moves
+    // a book between `/`, `/admin` and `/ha`.
+    const wasPlaying = (await snap()).title;
+    await click('#pCover');
+    await atPage('/player');
+    await pickedUp();
+
+    const onPlayer = await evaluate(`(() => {
+      const box = (s) => {
+        const e = document.querySelector(s);
+        if (!e) return null;
+        const r = e.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height), bottom: Math.round(r.bottom) };
+      };
+      const doc = document.documentElement;
+      return {
+        title: (document.querySelector('#pTitle') || {}).textContent || '',
+        author: (document.querySelector('#pAuthor') || {}).textContent || '',
+        chapter: (document.querySelector('#pTrack') || {}).textContent || '',
+        play: box('#pPlay'), prev: box('#pPrev'), next: box('#pNext'),
+        cover: box('#pCover'), seek: box('#seek'),
+        // what is NOT here, which is half of what was asked for
+        howManyPlayButtons: document.querySelectorAll(
+          '#pPlay, .card .actions button, .tile .tplay, #books .cover').length,
+        hasVolume: !!document.querySelector('#vol'),
+        speeds: [...document.querySelectorAll('#pSpeed option')].map((o) => o.value),
+        back10: !!document.querySelector('#pBack10'), fwd10: !!document.querySelector('#pFwd10'),
+        hasChapterList: !!document.querySelector('#trackSelect'),
+        scrollsDown: doc.scrollHeight > doc.clientHeight + 1,
+        scrollsSideways: doc.scrollWidth > doc.clientWidth + 1,
+        within: box('#now').bottom <= innerHeight + 1,
+      };
+    })()`);
+
+    check('the player page carries the book that was playing', onPlayer.title, wasPlaying);
+    check('and says who wrote it and which chapter this is',
+      [onPlayer.author.length > 0, /\d+\/\d+/.test(onPlayer.chapter)], [true, true]);
+    check('there is exactly one play/pause on it, and it is a thumb’s worth',
+      [onPlayer.howManyPlayButtons, onPlayer.play.w >= 60, onPlayer.play.h >= 60],
+      [1, true, true]);
+    check('with a chapter back and a chapter on beside it',
+      [!!onPlayer.prev, !!onPlayer.next], [true, true]);
+
+    // Ten seconds back and ten on — the length of the sentence you just missed.
+    // Through the *book*, not the file: ten back from a moment into a chapter
+    // is the end of the one before, and a reader who meant "say that again"
+    // does not care where the file boundary fell.
+    // In the *second* chapter, which is the whole point of the next three
+    // checks: in the first one the position in the book and the position in the
+    // file are the same number, so a skip that forgot about the chapters before
+    // it would land in exactly the right place and look correct.
+    await click('#pNext');
+    await sleep(600);
+    // Paused, or the clock moves under the measurement and every number below
+    // is the skip plus however long the step took.
+    await evaluate(`document.querySelector('#audio').pause()`);
+    await sleep(200);
+    // Read off the clock the page shows, which is the position in the *book* —
+    // `audio.currentTime` is the position in the file, and the two differ by
+    // every chapter before this one. It is also what the reader is looking at,
+    // so a skip that moves the audio and not the clock is still a bug.
+    const where = () => evaluate(`(() => {
+      const said = document.querySelector('#pAt').textContent.split(':').map(Number);
+      const at = said.reduce((n, part) => n * 60 + part, 0);
+      return { at, paused: document.querySelector('#audio').paused };
+    })()`);
+    const was = await where();
+    await click('#pFwd10');
+    await sleep(500);
+    const on = await where();
+    await click('#pBack10');
+    await sleep(500);
+    const back = await where();
+    check('ten seconds on really moves ten seconds on',
+      Math.abs((on.at - was.at) - 10) < 1.5, true);
+    check('and ten back comes back to where it was',
+      Math.abs(back.at - was.at) < 1.5, true);
+    check('and neither starts a paused book playing',
+      [on.paused, back.paused], [true, true]);
+
+    // And over the edge of a chapter, which is the path the two above never
+    // take: inside one chapter a skip only moves `currentTime`, and it is
+    // crossing into another that loads a new file and has to decide whether to
+    // play it. A reader who paused and then pressed ⟲10 has not asked for the
+    // book to start again.
+    await evaluate(`(() => {
+      const a = document.querySelector('#audio');
+      a.currentTime = 2;
+      a.pause();
+    })()`);
+    await sleep(300);
+    const chapterWas = await evaluate(`document.querySelector('#pTrack').textContent`);
+    await click('#pBack10');
+    await sleep(700);
+    const over = await evaluate(`(() => ({
+      chapter: document.querySelector('#pTrack').textContent,
+      paused: document.querySelector('#audio').paused,
+    }))()`);
+    check('ten back near the start of a chapter steps into the one before',
+      [over.chapter !== chapterWas, /^1\//.test(over.chapter)], [true, true]);
+    check('and that does not start it playing either', over.paused, true);
+    check('and nothing to scroll, either way',
+      [onPlayer.scrollsDown, onPlayer.scrollsSideways, onPlayer.within], [false, false, true]);
+    // The two the owner did not ask for: a phone has volume buttons on its side,
+    // and the chapter list is a page away.
+    check('and none of what was left off it',
+      [onPlayer.hasVolume, onPlayer.hasChapterList], [false, false]);
+    check('the cover is the biggest thing on it, which is the point',
+      onPlayer.cover.h > onPlayer.play.h * 2, true);
+    check('and the ten-second steps are both there',
+      [onPlayer.back10, onPlayer.fwd10], [true, true]);
+    // 1.0 to 2.0 in tenths, and nothing below 1: a book read slower than it was
+    // recorded is a book read wrong.
+    check('how fast it is read is a pulldown of eleven, 1.0 to 2.0',
+      [onPlayer.speeds.length, onPlayer.speeds[0], onPlayer.speeds.at(-1)], [11, '1.0', '2.0']);
+
+    // and the way back
+    await click('#back');
+    await atPage('/');
+    check('and the way back to the shelves carries the book with it',
+      (await reallyPlaying()).title, wasPlaying);
 
     await send('Emulation.clearDeviceMetricsOverride');
 

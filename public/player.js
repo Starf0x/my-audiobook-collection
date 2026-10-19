@@ -7,8 +7,18 @@
 //
 // This file is loaded after the page's own script and leans on what that
 // declares: $, api, post, toast, and a `state` object with user, book and
-// track. The markup it drives is <footer id="player">, the same on every page.
+// track. The markup it drives is <footer id="player">, the same on every page
+// — except `/player`, which is the player and nothing else and carries only
+// some of the controls.
+//
+// Hence `maybe`: a page is allowed not to have a control. `/player` shows the
+// cover, the chapter, the seek line and one play/pause, and has no volume
+// slider, no chapter pulldown, no download and nothing to close — a phone has
+// buttons on its side for the volume, and the rest is a page away. Reaching
+// straight for those and finding `null` is a page that dies at load with the
+// rest of the player unbuilt, which is worse than a page with fewer buttons.
 const audio = $('#audio');
+const maybe = (sel, fn) => { const el = $(sel); if (el) fn(el); return el; };
 
 window.playBook = async function (id, carried) {
   // The same book again: the button that started it is the one that stops it —
@@ -34,16 +44,17 @@ window.playBook = async function (id, carried) {
     }
   }
   state.book = book;
-  $('#player').hidden = false;
+  // the bar, on the pages that have one. /player *is* the player and has none.
+  maybe('#player', (el) => { el.hidden = false; });
   $('#pCover').src = `/api/cover/${id}?v=${book.coverV || 0}`;
   // every file of this book in one archive, which is what a download of an
   // audiobook means; the name comes from the server, so it is the book's
-  $('#pGet').href = `/api/download/${id}`;
+  maybe('#pGet', (el) => { el.href = `/api/download/${id}`; });
   $('#pTitle').textContent = book.title;
   // who wrote it, under the title: the player is where somebody listens for
   // hours, and the title alone does not say where the book came from
   $('#pAuthor').textContent = book.author || '';
-  $('#trackSelect').innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join('');
+  maybe('#trackSelect', (el) => { el.innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join(''); });
   // a saved track index can outlive the files it pointed at
   const said = carried ? carried.track : (book.progress ? book.progress.track_idx : 0);
   const at = Math.max(0, Math.min(said, book.tracks.length - 1));
@@ -56,8 +67,9 @@ function playTrack(idx, position = 0, andPlay = true) {
   const t = state.book.tracks[idx];
   if (!t) return;
   state.track = idx;
-  $('#trackSelect').value = idx;
+  maybe('#trackSelect', (el) => { el.value = idx; });
   $('#pTrack').textContent = `${idx + 1}/${state.book.tracks.length} · ${t.title}`;
+  drawSteps();
   audio.src = `/api/stream/${t.id}`;
   audio.onloadedmetadata = () => { if (position) audio.currentTime = position; };
   if (andPlay) audio.play().catch(() => {});
@@ -100,10 +112,25 @@ function markPlaying() {
   });
 }
 
-$('#pCover').onclick = () => {
-  if (!state.book) return;
-  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
-};
+// The cover in the bar. On a wide screen it is a third way to start and stop
+// the book, which is useful there and is how every other cover in the app
+// behaves. On a phone it is the **way to the player**: The owner counted three
+// play/pause buttons on one screen — the card's, the bar's, and this — and he
+// was right that it is too many. One of them had to become something else, and
+// the cover is the one that already looks like a thing you tap to see the book
+// rather than a thing you tap to stop it.
+//
+// Asked of the window's width at the moment of the tap, not of a flag worked
+// out at load: a phone that is turned on its side is a wider screen, and the
+// breakpoint is the stylesheet's own.
+const narrow = () => window.matchMedia('(max-width: 720px)').matches;
+maybe('#pCover', (el) => {
+  el.onclick = () => {
+    if (!state.book) return;
+    if (narrow()) { location.href = '/player'; return; }
+    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+  };
+});
 
 // Nothing is being listened to any more, so the bar has nothing to say and goes.
 // The place is written down first — putting the player away is not losing where
@@ -116,11 +143,11 @@ function closePlayer() {
   saveProgress();
   audio.pause();
   state.book = null;
-  $('#player').hidden = true;
+  maybe('#player', (el) => { el.hidden = true; });
   sessionStorage.removeItem(CARRY);
   markPlaying();
 }
-$('#pClose').onclick = closePlayer;
+maybe('#pClose', (el) => { el.onclick = closePlayer; });
 
 // --- the transport ------------------------------------------------------
 // A browser's own audio controls cannot be recoloured: the timeline lives in a
@@ -227,15 +254,20 @@ $('#pPlay').onclick = () => {
 const drawPlay = () => {
   const playing = !audio.paused;
   const word = playing ? 'Pause' : (audio.currentTime > 0 ? 'Resume' : 'Play');
-  $('#pPlay').textContent = `${playing ? '⏸' : '▶'} ${word}`;
+  // The word in a span of its own, so a screen can leave it out. The bar needs
+  // it — a lone ⏸ in a row of controls has to be recognised — and `/player`
+  // does not: there the button is round, in the middle, and the only thing on
+  // the screen that could be pressed.
+  $('#pPlay').innerHTML = `<span class="glyph">${playing ? '⏸' : '▶'}</span><span class="word">${word}</span>`;
   $('#pPlay').classList.toggle('playing', !audio.paused);
-  // And the bar's own cover, which is the same button and the only one of the
-  // two a phone is shown: the glyph says what a tap will do, the way every
-  // other cover in the app does.
-  const cover = $('#pCover').parentElement;
+  // And the bar's own cover. On a wide screen it is the same button, and the
+  // glyph says what a tap will do, the way every other cover in the app does.
+  // On a phone it is the way to `/player`, so it says *that* instead — a ⏸ on
+  // something that does not pause is worse than no glyph at all.
+  const cover = $('#pCover')?.parentElement;
   if (cover && cover.classList.contains('cover')) {
-    cover.dataset.glyph = audio.paused ? '▶' : '⏸';
-    cover.classList.toggle('playing', !audio.paused);
+    cover.dataset.glyph = narrow() ? '⤢' : (audio.paused ? '▶' : '⏸');
+    cover.classList.toggle('playing', narrow() ? false : !audio.paused);
   }
 };
 audio.addEventListener('play', drawPlay);
@@ -244,21 +276,56 @@ audio.addEventListener('ended', drawPlay);
 
 // volume, kept per browser: the one thing the native controls did that a page
 // cannot get back by itself
+// --- how fast it is read --------------------------------------------------
+//
+// Kept per browser like the volume, because it is a thing about the listener
+// and not about the book: somebody who reads at 1.4 reads everything at 1.4.
+// It has to be set again on every track, because `playbackRate` belongs to the
+// element's current source and a new `src` puts it back to 1 — which is why a
+// book used to drop back to normal speed at every chapter.
+//
+// 1.0 to 2.0 in tenths. Nothing below 1: a book read slower than it was
+// recorded is a book read wrong, and nobody has ever asked for it.
+const SPEED = 'speed';
+const SPEEDS = Array.from({ length: 11 }, (_, i) => (1 + i / 10).toFixed(1));
+const speedWanted = () => {
+  const said = Number(localStorage[SPEED]);
+  return SPEEDS.includes(said.toFixed(1)) ? said : 1;
+};
+const applySpeed = () => { audio.playbackRate = speedWanted(); };
+maybe('#pSpeed', (el) => {
+  el.innerHTML = SPEEDS.map((s) => `<option value="${s}">${s}×</option>`).join('');
+  el.value = speedWanted().toFixed(1);
+  el.onchange = () => {
+    localStorage[SPEED] = el.value;
+    applySpeed();
+    toast(`Reading at ${el.value}× speed.`);
+  };
+});
+// A new source starts at 1, so this runs on every one rather than once.
+audio.addEventListener('loadedmetadata', applySpeed);
+audio.addEventListener('play', applySpeed);
+applySpeed();
+
 const VOL = 'volume';
+// The volume is kept per browser whether or not the page draws a slider for it:
+// `/player` has none, and a book opened there still plays at the volume the
+// reader last chose somewhere else.
 audio.volume = Math.min(1, Math.max(0, Number(localStorage[VOL] ?? 1)));
-$('#vol').value = String(Math.round(audio.volume * 100));
-paint($('#vol'), audio.volume);
+maybe('#vol', (el) => { el.value = String(Math.round(audio.volume * 100)); paint(el, audio.volume); });
 const drawVol = () => {
-  $('#pVolBtn').textContent = audio.muted || !audio.volume ? '🔇' : '🔊';
-  paint($('#vol'), audio.muted ? 0 : audio.volume);
+  maybe('#pVolBtn', (el) => { el.textContent = audio.muted || !audio.volume ? '🔇' : '🔊'; });
+  maybe('#vol', (el) => paint(el, audio.muted ? 0 : audio.volume));
 };
-$('#vol').oninput = () => {
-  audio.muted = false;
-  audio.volume = Number($('#vol').value) / 100;
-  localStorage[VOL] = String(audio.volume);
-  drawVol();
-};
-$('#pVolBtn').onclick = () => { audio.muted = !audio.muted; drawVol(); };
+maybe('#vol', (el) => {
+  el.oninput = () => {
+    audio.muted = false;
+    audio.volume = Number(el.value) / 100;
+    localStorage[VOL] = String(audio.volume);
+    drawVol();
+  };
+});
+maybe('#pVolBtn', (el) => { el.onclick = () => { audio.muted = !audio.muted; drawVol(); }; });
 drawVol();
 drawPlay();
 drawTime();
@@ -267,7 +334,49 @@ audio.addEventListener('play', markPlaying);
 audio.addEventListener('pause', markPlaying);
 audio.addEventListener('ended', markPlaying);
 
-$('#trackSelect').onchange = (e) => playTrack(Number(e.target.value));
+maybe('#trackSelect', (el) => { el.onchange = (e) => playTrack(Number(e.target.value)); });
+
+// A chapter back and a chapter on, for the page that has no pulldown. Back from
+// the first and on from the last do nothing rather than wrapping round: a book
+// is read in one direction, and landing on chapter 35 from chapter 1 is never
+// what somebody meant. Whether it plays afterwards is what it was doing before.
+const step = (by) => {
+  if (!state.book) return;
+  const to = state.track + by;
+  if (to < 0 || to >= state.book.tracks.length) return;
+  playTrack(to, 0, !audio.paused);
+};
+maybe('#pPrev', (el) => { el.onclick = () => step(-1); });
+maybe('#pNext', (el) => { el.onclick = () => step(1); });
+
+// Ten seconds back and ten on — the length of the sentence you just missed,
+// which is what these are always for.
+//
+// Through the *book*, not the file: ten seconds back from a minute into chapter
+// eight is the end of chapter seven, and a reader who meant "say that again"
+// does not care where the file boundary fell. The same walk `seekTo` does when
+// the bar is dragged, so the two cannot disagree about where a second is.
+const nudge = (by) => {
+  if (!state.book) return;
+  const book = bookTime();
+  if (!book) {
+    audio.currentTime = Math.max(0, (audio.currentTime || 0) + by);
+    return;
+  }
+  const target = Math.max(0, Math.min(book.behind + (audio.currentTime || 0) + by, book.total - 0.5));
+  const { idx, offset } = trackAt(target, book.tracks);
+  if (idx === state.track) { audio.currentTime = offset; drawTime(); return; }
+  playTrack(idx, offset, !audio.paused);
+};
+maybe('#pBack10', (el) => { el.onclick = () => nudge(-10); });
+maybe('#pFwd10', (el) => { el.onclick = () => nudge(10); });
+
+// and they go dim at the ends, so the page says where it is in the book
+const drawSteps = () => {
+  const n = state.book ? state.book.tracks.length : 0;
+  maybe('#pPrev', (el) => { el.disabled = !n || state.track <= 0; });
+  maybe('#pNext', (el) => { el.disabled = !n || state.track >= n - 1; });
+};
 // The last track running out is the end of the book: it has been listened to, and
 // the tick has to say so — the counts, the shelves and the Listened section all
 // read the tick. Any other track just leads into the next one.

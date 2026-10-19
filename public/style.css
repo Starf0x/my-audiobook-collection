@@ -151,7 +151,11 @@ footer .meta span { color: var(--dim); font-size: 12px; }
 /* The transport is ours (see the note in app.js), so the line that says how far
    into a track you are is yellow like the one on the shelves, and the whole thing
    sits in the app's own dark instead of the browser's light grey slab. */
-footer audio { display: none; }
+/* The engine is never seen: the transport is the app's own, because a
+   browser's controls cannot be recoloured. Not scoped to the footer — /player
+   carries the same <audio> and no footer, and there it drew itself as a grey
+   slab across the screen. */
+audio { display: none; }
 /* Glyph and word together, so the one control the bar exists for is the one
    thing in it that does not have to be recognised.
 
@@ -164,6 +168,8 @@ footer audio { display: none; }
    a different system font is worth and why this is sized in `em` rather than
    trusted to one machine's metrics. Nothing the button says may move anything.
    `nowrap` for the same reason, over two lines instead of one. */
+/* glyph and word, with a gap between them */
+footer #pPlay .glyph { margin-right: 6px; }
 footer #pPlay {
   font-size: 14px; line-height: 1; padding: 7px 12px; white-space: nowrap;
   display: inline-flex; align-items: center; justify-content: center;
@@ -193,25 +199,29 @@ footer #pVolBtn { padding: 7px 9px; font-size: 14px; line-height: 1; }
 footer #pClose { padding: 7px 9px; font-size: 14px; line-height: 1; color: var(--dim); }
 footer #pClose:hover { color: var(--text); }
 
-/* one look for both sliders: yellow up to --played, the track beyond it */
-footer input[type="range"] {
+/* One look for every slider the app draws: yellow up to --played, the track
+   beyond it. Scoped to .rangey rather than to footer — /player has the same
+   seek line and no footer, and a rule that names the container is a rule that
+   stops working the moment the control is used somewhere else. The two pages
+   with a bar put .rangey on it; the player page puts it on its own screen. */
+.rangey input[type="range"] {
   --played: 0%;
   -webkit-appearance: none; appearance: none;
   height: 18px; padding: 0; border: 0; background: transparent; cursor: pointer;
 }
-footer input[type="range"]::-webkit-slider-runnable-track {
+.rangey input[type="range"]::-webkit-slider-runnable-track {
   height: 6px; border-radius: 999px;
   background: linear-gradient(90deg, #ffb628 0%, #ffe066 var(--played), #2c3342 var(--played), #2c3342 100%);
 }
-footer input[type="range"]::-webkit-slider-thumb {
+.rangey input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   width: 14px; height: 14px; margin-top: -4px; border-radius: 50%;
   background: #ffd452; border: 1px solid #8a6410;
 }
-footer input[type="range"]:focus-visible { outline: 2px solid var(--accent2); outline-offset: 3px; }
-footer input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: #2c3342; }
-footer input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: #ffb628; }
-footer input[type="range"]::-moz-range-thumb {
+.rangey input[type="range"]:focus-visible { outline: 2px solid var(--accent2); outline-offset: 3px; }
+.rangey input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: #2c3342; }
+.rangey input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: #ffb628; }
+.rangey input[type="range"]::-moz-range-thumb {
   width: 13px; height: 13px; border-radius: 50%; background: #ffd452; border: 1px solid #8a6410;
 }
 
@@ -611,6 +621,11 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
      are the ones with words on them and the ones you press on purpose. The
      `auto` margin takes the rest of the line, which is also what pushes the
      measurements below onto their own. */
+  /* The speed is on the player's own page on a phone, where there is room
+     for it and where somebody listening is actually looking. Two of them, one
+     in a bar already short of width, is the clutter this whole section is
+     about. */
+  footer #pSpeed { display: none; }
   footer #pGet { order: 6; }
   footer #pAt { order: 7; }
   footer #pOf { order: 8; }
@@ -995,3 +1010,101 @@ main.page section:first-of-type h3 { margin-top: 14px; }
 .account .sub.level { color: var(--text); }
 .account .sub.playing { color: var(--accent2); }
 .account .sub .badge { margin-right: 4px; }
+
+/* --- /player: the player and nothing else --------------------------------
+
+   One screen, one book, and nothing to scroll. The listening page shows a
+   shelf and a bar at once, which on a phone is a column to scroll past and
+   three buttons that all start and stop the same book. This is the other
+   thing: what is playing, large enough for a thumb.
+
+   `100dvh` with `overflow: hidden` on the body is the whole of "no scrolling".
+   The cover is the only part that gives: `min-height: 0` on a flex child is
+   what lets it shrink instead of pushing the transport off the bottom, which
+   is the default nobody expects. */
+body.now-playing { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+/* The library's `main > *` gives every column its own scrolling, a dividing
+   border and a tail of padding. This main is not that main: those rules put a
+   border down the right of each block, 24px under it, and — because a box with
+   `overflow-y: auto` also computes `overflow-x` as auto — a horizontal
+   scrollbar across the bottom of the seek line, which is what the grey bar
+   under the clock was. Undone here rather than narrowed there: the three
+   columns are what that rule is for, and it is right for them. */
+#now > * { overflow: visible; border-right: 0; padding-bottom: 0; }
+#now {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center;
+  gap: 18px; padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
+  max-width: 560px; margin: 0 auto; width: 100%;
+}
+.now-top { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.now-top #whoAmI { font-size: 12px; color: var(--dim); }
+
+/* The cover takes what is left and no more. `min-height: 0` lets it shrink on a
+   short screen; `object-fit: contain` keeps a tall cover tall rather than
+   cropping somebody's artwork to fit a square. */
+.now-cover { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; width: 100%; }
+.now-cover img {
+  max-height: 100%; max-width: 100%; border-radius: 12px; object-fit: contain;
+  box-shadow: 0 24px 60px -30px #000;
+}
+
+.now-what { width: 100%; text-align: center; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.now-what strong { font-size: 19px; line-height: 1.25; }
+.now-what .by { color: var(--dim); font-size: 14px; }
+/* the chapter, which is the longest line here and the one most likely to be a
+   sentence: two lines at most, and an ellipsis after that */
+.now-what .chapter {
+  color: var(--accent2); font-size: 13px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.now-seek { width: 100%; }
+.now-seek #seek { width: 100%; }
+.now-clock { display: flex; justify-content: space-between; margin-top: 2px; }
+
+.now-transport { display: flex; align-items: center; justify-content: center; gap: 22px; width: 100%; }
+/* A thumb's worth of button, and round, because it is the one control on the
+   screen that is pressed over and over. */
+.now-transport #pPlay {
+  width: 76px; height: 76px; border-radius: 50%; font-size: 26px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.now-transport .ghost {
+  width: 52px; height: 52px; border-radius: 50%; font-size: 18px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+/* dim at the ends of the book, so the screen says where it is */
+.now-transport .ghost:disabled { opacity: .3; }
+
+.now-empty { margin: auto; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.now-empty p { color: var(--dim); }
+
+/* On the player page the button is round and in the middle of the screen:
+   there is nothing there to tell it apart from, so the glyph is the whole of
+   it. The word stays in the markup for the bar, which does need it. */
+.now-transport #pPlay .word { display: none; }
+.now-transport #pPlay .glyph { margin: 0; }
+
+/* How fast it is read, under the transport. A pulldown rather than a row of
+   eleven buttons: eleven is too many to put on a phone, and the one in use is
+   the only one worth showing. */
+.now-speed {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em;
+}
+.now-speed select { font-size: 15px; padding: 6px 10px; min-height: 40px; }
+
+/* Ten seconds back and ten on. The arc with the number inside it is the shape
+   every player uses for this, so it needs no label: the glyph is the circle
+   and the "10" sits in the middle of it. */
+.now-transport .skip { position: relative; }
+.now-transport .skip .arc { font-size: 26px; line-height: 1; }
+.now-transport .skip .secs {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; letter-spacing: 0; padding-top: 2px;
+}
+/* five controls on a 375px row: the chapter steps give up the width, being the
+   two pressed least */
+.now-transport { gap: 12px; }
+.now-transport #pPrev, .now-transport #pNext { width: 44px; height: 44px; font-size: 16px; }
+.now-transport .skip { width: 52px; height: 52px; }

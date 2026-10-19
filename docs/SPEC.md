@@ -109,7 +109,7 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1855 | Express app: every route, and nothing else |
+| `server/index.js` | 1857 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
 | `server/db.js` | 245 | schema, migrations, settings, library list |
 | `server/admin.js` | 191 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
@@ -146,17 +146,19 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `public/accounts.html` | 47 | the accounts page: who may listen, and what each of them has done |
 | `public/accounts.js` | 267 | its behaviour — the statistics, the two ticks, and the administrator's own row |
 | `public/day.js` | 25 | which day it is, in degrees: the turn every page paints with |
-| `public/player.js` | 462 | the player, and carrying the book from one page to the next |
+| `public/player.js` | 571 | the player, and carrying the book from one page to the next |
 | `public/ha.html` | 109 | the Home Assistant page |
 | `public/ha.js` | 185 | its behaviour |
 | `public/browse.js` | 522 | browsing the collection: what both pages do the same way, in one copy |
-| `public/index.html` | 470 | the admin page: columns, dialogs |
+| `public/index.html` | 473 | the admin page: columns, dialogs |
 | `public/app.js` | 1853 | the admin page's spine: the columns, browsing, import, the scan, settings |
 | `public/maint.js` | 584 | the maintenance column, and the moving and deleting it leads to |
 | `public/edit.js` | 368 | the edit dialog, the cover pasted into it, and the metadata lookup behind it |
-| `public/listen.html` | 180 | the listening page |
+| `public/listen.html` | 183 | the listening page |
+| `public/player.html` | 81 | /player: the player and nothing else |
+| `public/playerpage.js` | 59 | what that page needs before player.js is loaded over it |
 | `public/shelf.js` | 335 | the listening page’s behaviour |
-| `public/style.css` | 997 | the whole look, every page, phone included |
+| `public/style.css` | 1110 | the whole look, every page, phone included |
 
 Static files are served from `public/` by `express.static`, with
 `{ index: false }` so the routes below decide what `/` is:
@@ -2630,6 +2632,64 @@ No framework, no build. `$` is `querySelector`, `api()` throws the server's
 `error` message, `toast()` shows it. `esc()` escapes `& < > "` — folder names and
 Google descriptions land in markup.
 
+### 8.0 `/player`: the player and nothing else
+
+The owner sent a video of the listening page on his phone: a column to scroll past,
+the book he was actually listening to somewhere in it, and **three** play/pause
+buttons on one screen — the card's, the bar's, and the bar's cover. So there is
+a screen that is only the player: the cover large, the title, the author, which
+chapter of how many, the seek line with the clock, and **one** play/pause with a
+chapter step either side of it and a ten-second step inside those. Nothing to
+scroll: `100dvh`, `overflow: hidden`, and the cover is the only part that gives.
+
+It is a **page of its own**, asked for as one, and that has a cost worth naming:
+a new document throws the `<audio>` away. The book is carried across and picked
+up — the same carry that already moves a book between `/`, `/admin` and `/ha` —
+so there is a moment of silence while it loads, and a browser that has decided
+this site may not make a sound by itself will leave it paused with the ▶
+waiting. A layer over the shelves would not have had either, and would not have
+been a page.
+
+**The way in is the cover in the bar**, on a phone. That is also how the third
+button went: on a narrow screen the cover opens the player instead of toggling
+it, and says `⤢` rather than wearing a `⏸` that does not pause. On a wide screen
+it still toggles, because there the bar is not cramped and `/player` is not
+offered. Asked of `matchMedia` at the moment of the tap, not of a flag worked
+out at load — a phone turned on its side is a wider screen.
+
+What is **not** on it: the chapter pulldown, the download and the volume. A
+phone has volume buttons on its side, and the other two are a page away. That is
+what `maybe(sel, fn)` in `player.js` is for — a page is allowed not to have a
+control, and reaching for one and finding `null` would be a page that dies at
+load with the rest of the player unbuilt.
+
+**How fast it is read** is a pulldown of eleven: 1.0 to 2.0 in tenths, nothing
+below 1, kept per browser like the volume because it is a thing about the
+listener rather than about the book. The part that breaks quietly is that
+`playbackRate` belongs to the element's *current* source, so a new `src` puts it
+back to 1 — a book set to 1.4 would drop to normal at every chapter. It is set
+again on every `loadedmetadata`. The bar carries the same pulldown on a wide
+screen, where there is room; on a phone it is here instead.
+
+**Ten seconds back and ten on** move through the *book*, not the file: ten back
+from a moment into chapter eight is the end of chapter seven, and a reader who
+meant "say that again" does not care where the file boundary fell. The same walk
+`seekTo` does when the bar is dragged, so the two cannot disagree about where a
+second is. Crossing a boundary loads a new file, and whether it plays afterwards
+is **what it was doing before** — somebody who paused and pressed ⟲10 has not
+asked for the book to start again.
+
+Three rules written for the library reached this page and had to be undone, all
+the same shape — a selector that names a container rather than the thing it
+styles. `footer input[type="range"]` left the seek line in the browser's default
+blue, and is `.rangey input[...]` now, a class the bar and this page both carry.
+`footer audio { display: none }` let the engine draw itself as a grey slab, and
+is `audio { display: none }`. And `main > *`, which gives each of the library's
+three columns its own scrolling, a dividing border and a tail of padding, put a
+**horizontal scrollbar** across the bottom of the seek line — a box with
+`overflow-y: auto` computes `overflow-x` as auto too. Undone on `#now` rather
+than narrowed there: the three columns are what that rule is for.
+
 **One copy of the browsing half.** The listening page and the admin page are
 different jobs — one plays books and changes nothing, the other files and tags
 and deletes — but they show the same shelves, tiles, search, *Listened* section
@@ -3585,7 +3645,7 @@ quietly on an empty library:
 | In the repository | |
 | --- | --- |
 | `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
-| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 38 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
+| `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 53 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
 **A failing suite says why again at the end.** `run-all` streams each suite's
@@ -3763,6 +3823,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.14.0 | **the player has a page of its own.** the owner sent a video of the listening page on a phone: a column to scroll past, the book he was listening to somewhere in it, and three play/pause buttons on one screen. `/player` is the other thing — the cover large, the title, the author, the chapter, the seek line, and **one** play/pause with a chapter step either side and a **ten-second** step inside those. Nothing to scroll. The cover in the bar is the way there on a phone, which is also how the third button went: there it opens the player and says ⤢ rather than wearing a ⏸ that does not pause. **How fast it is read** is a pulldown of eleven, 1.0 to 2.0 in tenths, kept per browser and set again on every source — `playbackRate` belongs to the current one, so a book at 1.4 used to drop to normal at every chapter. Three rules written for the library had to be undone here, all the same shape: a selector naming a container rather than the thing it styles — the seek line in the browser's blue, the `<audio>` drawn as a grey slab, and `main > *` putting a horizontal scrollbar across the seek line |
 | 2.13.8 | every request carries **⧉ Copy**, putting `author - title` on the clipboard: the first thing done with a request is to go and look for the book online, and retyping what somebody already typed is the kind of work a button removes. The same class and the same delegated handler as the copy buttons in *Series to complete*, so there is one copy button in this app rather than two that drift. On settled requests as well — a turned-down one is often turned down because it could not be found, and the next place to look is somewhere else |
 | 2.13.0 | **you can ask for a book the collection has not got.** A button beside your own name in the header, an author and a title, and the administrator is told on Discord with enough to go and find it. When the collection next has that book the request answers itself: it becomes the asker's **favourite** and they are told the next time they open the app, once. Matching is normalised — case, accents, punctuation, a leading article — and then **exact**, on the author *and* the title, because a fuzzy distance makes *Dune* match *June* and titles are not unique. What that misses, the administrator **ties by hand**, which is half the design rather than a fallback: an automatic match that silently never happens is worse than none, because nothing says so. Asking twice is one request; a request can be turned down with a reason the asker is shown; and each person's row on the accounts page says what they have asked for and what became of it. The suite found a real one on its first run — the duplicate check ran its query with the parameter left off |
 | 2.12.96 | **the page opens with the book you are in the middle of, as a card.** the owner, pointing at a screenshot: the home page led with a *tile* — a cover, a title and a sliver of progress — so the thing he had come back for was the thing with the least said about it. The first of *Continue listening* is a card now, the one the rest of the app draws a book as, and the shelf under it keeps the others without repeating it. `cardFor` is lifted out of `drawBooks` rather than copied, so a card on the home page cannot drift from every other card. And the marker that tells a returning page the shelves are on screen counts the **card** as well as the shelf — it looked only for the shelf, and a reader with one book on the go has none, so coming back stopped refreshing for exactly the reader it was written for |
