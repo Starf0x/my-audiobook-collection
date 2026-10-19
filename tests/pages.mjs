@@ -1193,6 +1193,48 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   }
 }
 
+// --- the genre in the player ---------------------------------------------------
+// The owner missed it beside the author, in the bar and on `/player`, and wanted it
+// to be a way there. On a page with the columns it opens the genre at once; on
+// one without, it is written down and picked up once the shelves have loaded.
+{
+  const PLAYING = {
+    id: 4, title: 'A Book', author: 'An Author', genre: 'Fantasy', coverV: 0, progress: null,
+    tracks: [{ id: 41, idx: 0, title: 'One', duration: 600 }],
+  };
+  for (const page of ['index.html', 'listen.html']) {
+    // eslint-disable-next-line no-await-in-loop -- two pages, one after the other
+    const { window, document } = await open(page, { '/api/books': PLAYING });
+    window.eval("state.user = 'tester'");
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await window.playBook(4);
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    const g = document.querySelector('#pGenre');
+    check(`${page}: the bar says the genre beside the author`,
+      [g?.textContent, g?.hidden, document.querySelector('#pAuthor')?.textContent],
+      ['Fantasy', false, 'An Author']);
+    let opened = null;
+    window.selectGenre = (name) => { opened = name; };
+    g?.click();
+    check('and pressing it opens that genre, here and now', opened, 'Fantasy');
+
+    // asked for from `/player`, where there are no columns to open it in
+    opened = null;
+    window.sessionStorage.openGenre = 'Fantasy';
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await window.eval('openGenreAsked()');
+    check('a genre asked for on another page is opened once the shelves are here, and only once',
+      [opened, window.sessionStorage.openGenre], ['Fantasy', undefined]);
+  }
+  // and a book with no genre says nothing, rather than a dot and an empty link
+  const { window, document } = await open('listen.html', { '/api/books': { ...PLAYING, genre: '' } });
+  window.eval("state.user = 'tester'");
+  await window.playBook(4);
+  await settle();
+  check('a book with no genre shows none', document.querySelector('#pGenre')?.hidden, true);
+}
+
 // --- coming back after listening somewhere else ---------------------------
 // A place is kept on the server, so listening on a phone moves it for every
 // page — and nothing here ever read it again. A desktop left open showed where

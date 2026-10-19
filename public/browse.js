@@ -244,6 +244,20 @@ function authorHead(genre, author, count) {
   wireCardLinks();
 }
 
+// A genre asked for on a page that has no columns — the genre in the player on
+// `/player` or `/ha` — arrives here, written down by `goToGenre` in `player.js`.
+// Read once and forgotten, so a reload does not open it again.
+async function openGenreAsked() {
+  let genre = '';
+  try {
+    genre = sessionStorage.openGenre || '';
+    sessionStorage.removeItem('openGenre');
+  } catch { /* a private window: nothing was kept */ }
+  if (!genre) return;
+  const li = [...document.querySelectorAll('#genres li[data-name]')].find((l) => l.dataset.name === genre);
+  await selectGenre(genre, li);
+}
+
 // Hung on after each draw, the way the cover handlers are. One pass over the
 // three kinds, so a card drawn by either page's `drawBooks` behaves the same.
 function wireCardLinks() {

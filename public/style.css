@@ -337,6 +337,15 @@ dialog input, dialog textarea { width: 100%; font: inherit; color: var(--text); 
   /* the phone's thumb-sized minimum for buttons made this one line two lines tall */
   min-height: 0; vertical-align: top; }
 .card .by-author:hover, .tile .by-author:hover { color: var(--accent2); filter: none; text-decoration: underline; }
+/* the genre beside the author in the player, on the bar and on /player: a word,
+   not a button, and a way into the genre. The thumb-sized minimum the phone
+   gives buttons would make this one line two. */
+.genre-link {
+  background: none; border: 0; padding: 0; margin: 0 0 0 6px; min-height: 0;
+  font: inherit; color: var(--accent2); cursor: pointer; vertical-align: baseline;
+}
+.genre-link::before { content: '·'; color: var(--dim); margin-right: 6px; }
+.genre-link:hover { color: #fff; filter: none; text-decoration: underline; }
 /* the head over an author's books: the genre in it is a way there */
 .series-head.where button.linkish {
   background: none; border: 0; padding: 0; margin: 0; font: inherit; letter-spacing: inherit;

@@ -60,6 +60,12 @@ window.playBook = async function (id, carried) {
   // who wrote it, under the title: the player is where somebody listens for
   // hours, and the title alone does not say where the book came from
   $('#pAuthor').textContent = book.author || '';
+  maybe('#pGenre', (el) => {
+    el.textContent = book.genre || '';
+    el.dataset.genre = book.genre || '';
+    el.title = book.genre ? `Everything in ${book.genre}` : '';
+    el.hidden = !book.genre;
+  });
   maybe('#trackSelect', (el) => { el.innerHTML = book.tracks.map((t, i) => `<option value="${i}">${i + 1}. ${esc(t.title)}</option>`).join(''); });
   // a saved track index can outlive the files it pointed at
   const said = carried ? carried.track : (book.progress ? book.progress.track_idx : 0);
@@ -237,6 +243,26 @@ const drawLeft = (at, total) => {
   maybe('#pLeft', (el) => { el.textContent = says; });
   $('#pOf').title = says ? `${says} · the book is ${clock(total)} long` : '';
 };
+
+// The genre beside the author, and a way into it. On a page with the library's
+// columns it opens the genre there and then. `/player` and `/ha` have none, so
+// it is written down and the shelves open on it — `openGenreAsked` in
+// `browse.js` reads it once they have loaded. The book is carried across the
+// way every move between pages carries it.
+const goToGenre = (genre) => {
+  if (!genre) return;
+  if (typeof window.selectGenre === 'function' && document.querySelector('#genres')) {
+    const li = [...document.querySelectorAll('#genres li[data-name]')].find((l) => l.dataset.name === genre);
+    window.selectGenre(genre, li);
+    return;
+  }
+  try { sessionStorage.openGenre = genre; } catch { /* nowhere to keep it: the shelves open as they are */ }
+  location.href = '/';
+};
+maybe('#pGenre', (el) => {
+  // the bar itself is a way to `/player` on a phone, and this is not that
+  el.onclick = (e) => { e.stopPropagation(); goToGenre(el.dataset.genre); };
+});
 
 let dragging = false;
 const drawTime = () => {

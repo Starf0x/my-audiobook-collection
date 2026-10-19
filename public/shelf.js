@@ -333,4 +333,6 @@ window.begin = async () => {
   await loadGenres();
   await loadStats();
   await loadHome();
+  // after the shelves, so it is the genre that ends up on screen
+  await openGenreAsked();
 };
