@@ -109,9 +109,9 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `server/index.js` | 1857 | Express app: every route, and nothing else |
+| `server/index.js` | 1861 | Express app: every route, and nothing else |
 | `server/user.js` | 97 | who the process writes as: `PUID`, `PGID`, `UMASK` |
-| `server/db.js` | 245 | schema, migrations, settings, library list |
+| `server/db.js` | 256 | schema, migrations, settings, library list |
 | `server/admin.js` | 191 | who the administrator is — the container's or one made at the gate — sessions, and `requireAdmin` |
 | `server/scan.js` | 650 | walking the library, reading tags, filing books |
 | `server/id3.js` | 35 | how far into a file the audio really starts, when a tag meant for an MP3 is in front of it |
@@ -132,14 +132,14 @@ built-ins: `node:sqlite`, `node:crypto`, `node:worker_threads`, `node:fs`.
 | `server/levels.js` | 46 | the ten levels, what a count of finished books is called, and what the top one unlocks |
 | `server/updates.js` | 114 | whether a newer version is out, and asking for it without being able to install it |
 | `server/finished.js` | 67 | what "finished" means: the three senses of the word, and the one every count asks |
-| `server/listeners.js` | 369 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
+| `server/listeners.js` | 380 | accounts: asking for one, deciding on it, signing in, and the seven-day session |
 | `server/guessing.js` | 40 | what a wrong password costs the address that gave it |
 | `server/notify.js` | 152 | telling Discord: the things worth saying, and cleaning what a person wrote |
 | `server/requests.js` | 179 | books somebody has asked for: the matching, the answering, and who is told |
 | `server/safepath.js` | 78 | where a path from outside is allowed to point: covers, import sources, filing sources |
 | `server/skipped.js` | 188 | filing a folder a scan walked past: what it holds, where it belongs, and moving it there |
 | `server/convert.js` | 355 | .m4b and .ogg to MP3, a chapter to a track, keeping what it came from |
-| `server/ha.js` | 467 | Home Assistant, both directions: what it may read, and what this app writes into it |
+| `server/ha.js` | 539 | Home Assistant, both directions: what it may read, and what this app writes into it |
 | `server/wikidata.js` | 297 | which volumes a series has, asked of Wikidata |
 | `server/abs.js` | 696 | the Audiobookshelf face, so Music Assistant can be pointed at this app |
 | `public/account.js` | 240 | signing in and the hearts, on both pages, one copy |
@@ -773,7 +773,7 @@ and an empty genre is a fair question with an empty answer.
 | `POST /api/ha/test` | admin | ask Home Assistant who it is, with the saved token |
 | `GET /api/ha/players` | admin | every `media_player.*` HA knows, by friendly name |
 | `GET /api/ha/entities` | admin | what a push would write, without writing it |
-| `POST /api/ha/push` | admin | write all six sensors into HA now |
+| `POST /api/ha/push` | admin | write every sensor into HA now: the six about the collection, and one per listener |
 | `POST /api/ha/play` | admin **or** `HA_TOKEN` | play a book on one of HA's players; no `bookId` means the one being listened to |
 | `GET /api/ha?user=` | token | the whole state: totals, hours, continue queue, new books |
 | `GET /api/ha/book/:id.m3u?from=` | token | a book as an `#EXTM3U` playlist, from a track on |
@@ -1636,9 +1636,34 @@ back.
 * `haPing()` → `GET /` and `GET /config`: which Home Assistant, which version.
 * `haPlayers()` → `GET /states`, filtered to `media_player.` and sorted by the
   friendly name someone gave the device.
-* `haEntities(req, version)` builds six `[entity, state, attributes]` rows from
-  `haState` — the sensors listed in the README — with `friendly_name`, `icon`,
-  `unit_of_measurement` and `attribution` so they look native in HA.
+* `haEntities(req, version)` builds the six collection sensors from `haState` —
+  the ones listed in the README — **plus one per listener**, with
+  `friendly_name`, `icon`, `unit_of_measurement` and `attribution` so they look
+  native in HA.
+
+**A sensor each, because a household is not one account.** The six above are
+about the collection and about one chosen listener; `sensor.audiobook_<name>`
+is about a person. Its **state is the book they are in the middle of** — the
+title, so a dashboard card can show it without digging into attributes — with
+the chapter, how far through, hours in and left, when they began it, and the
+playlist to carry on from. Somebody with nothing on the go says `nothing`
+rather than borrowing the newest book in the house.
+
+**A finished book stays in the list**, marked read, with **how long that person
+took over it**. That is from the day they first opened it to the day they
+finished: not hours of audio, which is a fact about the book, and not time since
+they last touched it, which is a fact about nothing. The app knew neither —
+`progress.updated` has always been the *last* touch — so `progress.started` is
+written on the first place kept in a book and never touched again, and carried
+into `completions` when the book is finished, because a progress row does not
+survive un-ticking a book and a completion is meant to. A book begun before any
+of that was written down **says nothing** rather than guessing: a made-up start
+date on a dashboard is worse than a blank one.
+
+An entity id has to be a slug and a listener's name is whatever they typed, so
+two names that slug the same would write over each other's sensor. The second
+gets its position appended — ugly, and better than one of them silently not
+existing.
 * `haPush()` writes them with `POST /states/<entity>`, one request each, and keeps
   `lastPush` (when, how many, the error) for the page to show.
 * `haPlay(req, {player, bookId, from, seek})` calls
@@ -3823,6 +3848,7 @@ to insert order and looks broken when the app is right.
 | 2.12.8 | *Series to complete* answers the question it is named after: which series are short, and which books are missing. Each missing volume was drawn as the full card it would be, cover and all, so a series with eleven holes was eleven covers tall and a reader scrolled past pictures of books that do not exist to learn that three were wanted. It is a line now — number, title where one is known, a copy button, and ↗ to Wikipedia where there is a title to look up. The Wikidata link belongs to the series, so it is said once on its head rather than once per hole, and `/api/drawn-cover`, which nothing else asked, is gone with the cards |
 | 2.12.16 | **the update says it is there, and says when it is done.** A newer version was news you had to go to Settings to hear, so there is a red dot on the icon and an *Install the update* entry in the pulldown, which goes again the moment there is nothing to install. And the update never told anybody it had finished: the page waited for the app to *answer*, which it does for the next half minute because nothing has stopped yet — so it either reloaded straight back into the old version or ran out of polls in silence with *Updating…* still on screen. It watches the **version** now, which changes exactly when the new code runs, and leaves the news for the page it reloads into. `install/lxc-install.sh` is gone with the creator before it: two ways to install onto a Proxmox machine is what had the wrong one run twice, and the unprivileged-container warning it carried moved into the one that stays |
 | 2.12.24 | the helper script opens with **the app's own drawing** instead of the words *Community Scripts*. Headers live in the engine's repository, generated from the script repos, so an app from outside never has one there: the lookup 404s on every run and the banner fell back to those two words and the app's name. `_CS_FALLBACK_HEADER` is the seam for that. The heredoc is quoted and the read keeps an empty `IFS`, because the art holds a backtick that would otherwise start a command substitution and a leading space that `read` would otherwise strip — `packaging` checks both, the only other way to find out being to install |
+| 2.14.8 | **Home Assistant gets a sensor per listener**: which book that person is in the middle of as the state, with the chapter, how far through, and when they began it. And a finished book **stays** in the list, marked read, with **how long they took over it** — from the day they opened it to the day they finished, which the app knew neither end of. `progress.started` is written on the first place kept in a book and carried into `completions` when it is finished, because a progress row does not survive un-ticking and a completion is meant to. A book begun before any of that was written down says nothing rather than guessing |
 | 2.14.0 | **the player has a page of its own.** the owner sent a video of the listening page on a phone: a column to scroll past, the book he was listening to somewhere in it, and three play/pause buttons on one screen. `/player` is the other thing — the cover large, the title, the author, the chapter, the seek line, and **one** play/pause with a chapter step either side and a **ten-second** step inside those. Nothing to scroll. The cover in the bar is the way there on a phone, which is also how the third button went: there it opens the player and says ⤢ rather than wearing a ⏸ that does not pause. **How fast it is read** is a pulldown of eleven, 1.0 to 2.0 in tenths, kept per browser and set again on every source — `playbackRate` belongs to the current one, so a book at 1.4 used to drop to normal at every chapter. Three rules written for the library had to be undone here, all the same shape: a selector naming a container rather than the thing it styles — the seek line in the browser's blue, the `<audio>` drawn as a grey slab, and `main > *` putting a horizontal scrollbar across the seek line |
 | 2.13.8 | every request carries **⧉ Copy**, putting `author - title` on the clipboard: the first thing done with a request is to go and look for the book online, and retyping what somebody already typed is the kind of work a button removes. The same class and the same delegated handler as the copy buttons in *Series to complete*, so there is one copy button in this app rather than two that drift. On settled requests as well — a turned-down one is often turned down because it could not be found, and the next place to look is somewhere else |
 | 2.13.0 | **you can ask for a book the collection has not got.** A button beside your own name in the header, an author and a title, and the administrator is told on Discord with enough to go and find it. When the collection next has that book the request answers itself: it becomes the asker's **favourite** and they are told the next time they open the app, once. Matching is normalised — case, accents, punctuation, a leading article — and then **exact**, on the author *and* the title, because a fuzzy distance makes *Dune* match *June* and titles are not unique. What that misses, the administrator **ties by hand**, which is half the design rather than a fallback: an automatic match that silently never happens is worse than none, because nothing says so. Asking twice is one request; a request can be turned down with a reason the asker is shown; and each person's row on the accounts page says what they have asked for and what became of it. The suite found a real one on its first run — the duplicate check ran its query with the parameter left off |

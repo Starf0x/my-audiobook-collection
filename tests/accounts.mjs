@@ -593,5 +593,65 @@ check('guessing starts costing after a handful of tries', refused > 0, true);
   // observable — but it is not pretended that this suite covers it.
 }
 
+// --- what Home Assistant is told about each person ------------------------
+// The sensors were about the collection and about one chosen listener. The owner
+// asked to see, per person, which book they have on the go and how far in they
+// are — and that a finished book **stays** in the list, marked read, with how
+// long they took over it.
+//
+// "How long" is from the day they first opened it to the day they finished. Not
+// hours of audio, which is a fact about the book; not time since they last
+// touched it, which is a fact about nothing. The app had neither: `updated` was
+// the *last* touch, so `progress.started` is new, and it is carried into
+// `completions` because a progress row does not survive un-ticking a book.
+{
+  const { haEntities } = await import('../server/ha.js');
+  const req = { headers: { host: '127.0.0.1' }, protocol: 'http', query: {} };
+
+  db.prepare("INSERT OR REPLACE INTO users (name, state, pass, salt) VALUES ('Ada', 'approved', '', '')").run();
+  db.prepare("INSERT OR REPLACE INTO users (name, state, pass, salt) VALUES ('Bo', 'approved', '', '')").run();
+  // Ada is a third of the way into one book and finished another a fortnight
+  // after starting it. Bo has nothing on the go at all.
+  db.prepare(`INSERT OR REPLACE INTO progress (user, book_id, track_idx, position, updated, started, done)
+    VALUES ('Ada', 3, 0, 20, '2026-10-19 10:00:00', '2026-10-01 09:00:00', 0)`).run();
+  db.prepare(`INSERT OR REPLACE INTO completions (user, book_id, title, at, started)
+    VALUES ('Ada', 4, 'A Later Book', '2026-10-15T12:00:00.000Z', '2026-10-01 09:00:00')`).run();
+  // and one finished before the app wrote down when a book was begun
+  db.prepare(`INSERT OR REPLACE INTO completions (user, book_id, title, at, started)
+    VALUES ('Ada', 5, 'An Undated Book', '2026-09-01T12:00:00.000Z', '')`).run();
+
+  const sensors = Object.fromEntries(haEntities(req, '9.9.9').map(([id, state, a]) => [id, { state, ...a }]));
+  const ada = sensors['sensor.audiobook_ada'];
+  const bo = sensors['sensor.audiobook_bo'];
+
+  check('each listener gets a sensor of their own', [!!ada, !!bo], [true, true]);
+  check('and its state is the book they are in the middle of',
+    [ada.state, ada.author, ada.listener], ['A Book', 'An Author', 'Ada']);
+  check('with how far in they are',
+    [ada.chapter, ada.chapters, typeof ada.percent], [1, 1, 'number']);
+  check('and when they began it, which is not when they last heard it',
+    [ada.started, ada.last_heard], ['2026-10-01 09:00:00', '2026-10-19 10:00:00']);
+  check('somebody with nothing on the go says so rather than borrowing a book',
+    [bo.state, bo.book_id], ['nothing', undefined]);
+
+  // The half the owner asked for that is easy to get wrong: a finished book is not
+  // dropped from the overview, it is kept and marked.
+  // `?.` throughout: a missing book here is the fault being looked for, and a
+  // check that throws dies with a stack trace where the next person wants the
+  // name of what broke.
+  const read = Object.fromEntries((ada.finished || []).map((b) => [b.title, b]));
+  check('a finished book stays in the list, marked as read',
+    [(ada.finished || []).length, read['A Later Book']?.listened], [2, true]);
+  check('with how long that person took over it',
+    [read['A Later Book']?.days, read['A Later Book']?.took], [14, '14 days']);
+  // Fourteen days, not "the book is nine hours long" and not "they last touched
+  // it on Tuesday".
+  check('and a book begun before the app wrote that down says nothing rather than guessing',
+    [read['An Undated Book']?.listened, read['An Undated Book']?.days],
+    [true, undefined]);
+  check('and one person’s reading does not appear on another’s sensor',
+    (bo.finished || []).length, 0);
+}
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
