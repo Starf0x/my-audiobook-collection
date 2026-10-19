@@ -2728,6 +2728,17 @@ back to 1 — a book set to 1.4 would drop to normal at every chapter. It is set
 again on every `loadedmetadata`. The bar carries the same pulldown on a wide
 screen, where there is room; on a phone it is here instead.
 
+**What is left follows the speed; the length does not** (2.14.40). Beside the
+pulldown, wherever it is — between the two clocks here, next to it in the bar
+on a wide screen — is how long is left *at that speed*: `7m left at 1.5×`, and
+plain `10m left` at 1.0. The clock on the right stays the length of the book,
+which is a fact about the recording; the owner chose that over shortening every
+length in the app, because a book is the same book whoever reads it fast. It is
+worked out from `playbackRate`, not from the setting, and redrawn on
+`ratechange`: a paused book gets no `timeupdate`, so without it a new speed
+changed nothing on screen until the book was played. On a phone the bar's
+length carries it as a tooltip too.
+
 **Ten seconds back and ten on** move through the *book*, not the file: ten back
 from a moment into chapter eight is the end of chapter seven, and a reader who
 meant "say that again" does not care where the file boundary fell. The same walk

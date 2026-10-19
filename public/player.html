@@ -41,7 +41,9 @@
   <div class="now-seek">
     <input id="seek" type="range" min="0" max="1000" value="0" step="1"
       aria-label="Position in the book">
-    <div class="now-clock"><span id="pAt" class="tick">0:00</span><span id="pOf" class="tick">0:00</span></div>
+    <!-- where you are, how long is left at the speed it is read, and how long
+         the book is: only the middle one changes with the speed -->
+    <div class="now-clock"><span id="pAt" class="tick">0:00</span><span id="pLeft" class="left"></span><span id="pOf" class="tick">0:00</span></div>
   </div>
 
   <div class="now-transport">
