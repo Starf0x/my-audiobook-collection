@@ -29,6 +29,7 @@ const PORTABLE = [
   'levels',
   'book-bar',
   'to-player',
+  'series-tags',
   'ogg-lengths',
   'sub-series',
   'moving',

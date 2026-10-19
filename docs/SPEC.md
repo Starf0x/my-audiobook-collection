@@ -897,6 +897,21 @@ files:
 3. the **files** (`seriesFromTags`): the movement name `MVNM`, the grouping frame
    `TIT1`, or a `TXXX` frame described `series`/`album series` — whichever is set
    and differs from album and title. `movementIndex` gives the number.
+   music-metadata names that frame `TXXX:series` and hands over the string; it
+   was looked for as a bare `TXXX` until 2.14.80, and never read.
+
+**Digits alone are not a series** (`seriesName`, 2.14.80): not from the files,
+not from a lookup's last-resort fallback, and not kept from before by a scan.
+The owner's card read *Series · 123* with no number and no explanation.
+
+**Taking a series off** is its own word. An empty `series` in a pick means
+"nothing to say" — a lookup with its series unticked sends one — so the edit
+dialog sends `clearSeries` when the series it showed is emptied. The dialog shows
+the series the card shows, the tags' included; a series from the tags alone
+moves nothing when left as it is. Cleared and saved with the tags written, the
+grouping frame is removed and the SERIES text emptied, so the next scan does not
+read it back. Saved without writing the tags, the files still say it, and a scan
+will.
 
 Volume splitting, applied to folder names *and* tag-derived names (a tag often
 names the volume, so `The Dark Tower V` must become book 5 of *The Dark Tower*
@@ -3751,7 +3766,7 @@ quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 53 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
@@ -3795,6 +3810,7 @@ Server suites:
 | `series-apply` | applying it names the series without moving the book, shows it under its genre, goes into the grouping frame with its number, survives the next scan either way, and never takes a number that belongs to a folder series |
 | `series-ui` | the dialog offers it ticked, sends nothing when unticked, applies it when ticked, and shows no line when there is none |
 | `rescan-series` | a library scanned by an older version picks up its series on a rescan, without folders changing |
+| `series-tags` | the series real tagged MP3s say: digits alone are none, a name with a number is both, a SERIES text frame is read, a number kept from before is let go; an empty series from a lookup leaves it, `clearSeries` takes it off the book and out of the files, and a scan afterwards does not read it back |
 | `series-online` | choosing the right Wikidata entry and refusing to guess: the novel series taken over the album, the film and the game of the same name; a shelf whose books match none of them told it is probably a different series; a name that is a book and not a series; a name Wikidata never heard of; an endpoint that will not answer reported rather than read as 'complete'; one name asked of Wikidata once but judged for each shelf on its own |
 | `covers-zip` | the duplicates archive after the second zip writer here was dropped for the streaming one: every loose cover in, the loose copies gone, the size it reported matching the file, and **Windows' own Expand-Archive** unpacking all three byte for byte — an archive is either readable by the tools people have or it is rubbish, and nothing in the app can tell the difference |
 | `abs-contract` | the Audiobookshelf face against what Music Assistant will parse: every required field of every model `aioaudiobookshelf` reads — login, user, permissions, server settings, library, folder, item, book, metadata, track, audio file, chapter, progress, series, author, narrator — plus the enums it refuses anything else for, the Engine.IO handshake its client opens at setup and will not start without, the doubled slash it sends, a token in the query for the audio and none without, a position from MA landing on the right track, finishing there ticking the book here, and every address answering 404 when MA_TOKEN is unset |

@@ -186,6 +186,15 @@ const ROMAN = {
   xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20,
 };
 
+// Whether something can be a series' name. Digits alone cannot: "123" is a
+// number some tagger or catalogue put where a name goes, and shown as a series
+// it is a heading nobody can explain. The same rule a lookup already applies to
+// Google's words ("a number is not a name"), here for what the files say.
+export const seriesName = (name) => {
+  const s = String(name || '').trim();
+  return s && !/^[\d\s.#-]+$/.test(s) ? s : '';
+};
+
 const splitVolume = (raw) => {
   const name = (raw || '').trim();
   const m = VOLUME.exec(name);
@@ -201,13 +210,19 @@ const splitVolume = (raw) => {
 // in the movement name, others in the grouping or a SERIES text frame.
 const seriesFromTags = (tags) => {
   const c = tags.common || {};
+  // music-metadata names a TXXX frame by its description — `TXXX:series` — and
+  // hands over the text itself. This looked for a bare `TXXX` with the text
+  // inside, a shape the reader never produces, so a SERIES frame was never read.
   const txxx = (tags.native?.['ID3v2.4'] || tags.native?.['ID3v2.3'] || [])
-    .find((f) => f.id === 'TXXX' && /^(series|album series)$/i.test(f.value?.description || ''));
-  const said = [c.movement, c.grouping, txxx?.value?.text]
+    .find((f) => /^TXXX:(series|album series)$/i.test(f.id || ''));
+  const said = [c.movement, c.grouping, typeof txxx?.value === 'string' ? txxx.value : txxx?.value?.text]
     .map((v) => (v || '').trim())
     .find((v) => v && v !== c.album && v !== c.title) || '';
   // some taggers put the volume there rather than the series: "The Dark Tower V"
   const v = splitVolume(said);
+  // and a number on its own is not a name: a frame holding "123" made a book
+  // read as Series · 123, with nothing to say where it came from (2.14.80)
+  if (!seriesName(v.name)) return { name: '', no: 0 };
   return { name: v.name, no: Number(c.movementIndex?.no) || v.no };
 };
 
@@ -297,7 +312,8 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
       // the files first, then what the folders suggest, then what the book already
       // says: a series filled in from a lookup without writing the files must not
       // be blanked by the next scan either
-      told.tagSeries || (guess ? guess.name : '') || existing.tag_series,
+      // — and a number kept from before that rule is not kept again
+      told.tagSeries || (guess ? guess.name : '') || seriesName(existing.tag_series),
       told.seriesNo || (guess ? guess.no : 0) || existing.series_no,
       told.narrator || existing.narrator, told.year || existing.year,
       told.description || existing.description,
