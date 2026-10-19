@@ -7,7 +7,7 @@ import url from 'node:url';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR, googleCountry, GOOGLE_COUNTRY_KEY } from './db.js';
 import { countsAsRead, keptOne, readCount } from './finished.js';
-import { newestRelease, howInstalled, askForUpdate, lastUpdate, waiting as updateWaiting, newer } from './updates.js';
+import { newestRelease, howInstalled, askForUpdate, lastUpdate, waiting as updateWaiting, newer, updateProgress } from './updates.js';
 import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
 import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries,
   GOOGLE_COUNTRIES } from './google.js';
@@ -673,6 +673,17 @@ app.post('/api/update', requireAdmin, (req, res) => {
     return res.status(400).json({ error: e.message });
   }
 });
+
+// Where the update has got to, for the bar. Asked every couple of seconds while
+// one runs; for two of its steps the app is down and this does not answer, and
+// the page says so rather than reading that as the update failing. `asked` is
+// whether root's side has picked the request up yet — the file is gone once it
+// has.
+app.get('/api/update/progress', requireAdmin, (req, res) => res.json({
+  running: VERSION,
+  progress: updateProgress(),
+  asked: updateWaiting(),
+}));
 
 app.get('/api/backups', requireAdmin, (req, res) => res.json({
   folder: path.join(DATA_DIR, 'backups'), keep: BACKUPS_KEPT, items: listBackups(),
