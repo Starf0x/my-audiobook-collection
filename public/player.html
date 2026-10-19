@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Audiobook Collection</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+<script src="day.js"></script>
+</head>
+<!-- The player, and nothing else.
+
+     One screen, one book, one play/pause, and nothing to scroll. The listening
+     page shows a shelf and a bar at once, which on a phone is a column of
+     things to scroll past and three buttons that all start and stop the same
+     book. This is the other thing: what is playing, large enough to use with a
+     thumb, and a way back.
+
+     It is a page of its own at `/player` rather than a layer over the shelves,
+     which has a cost worth naming: a new document throws the <audio> away, so
+     the book is written down on the way out and picked up here — the same
+     carry that already moves a book between `/`, `/admin` and `/ha`. There is a
+     moment of silence while it loads, and a browser that has decided this site
+     may not make a sound by itself will leave it paused, with the ▶ waiting. -->
+<body class="now-playing">
+
+<main id="now" class="rangey">
+  <div class="now-top">
+    <button id="back" class="ghost" title="Back to the shelves">‹ Shelves</button>
+    <div id="whoAmI" title="Signed in as"></div>
+  </div>
+
+  <div class="now-cover"><img id="pCover" alt=""></div>
+
+  <div class="now-what">
+    <strong id="pTitle"></strong>
+    <span id="pAuthor" class="by"></span>
+    <span id="pTrack" class="chapter"></span>
+  </div>
+
+  <div class="now-seek">
+    <input id="seek" type="range" min="0" max="1000" value="0" step="1"
+      aria-label="Position in the book">
+    <div class="now-clock"><span id="pAt" class="tick">0:00</span><span id="pOf" class="tick">0:00</span></div>
+  </div>
+
+  <div class="now-transport">
+    <button id="pPrev" class="ghost" title="The chapter before this one">⏮</button>
+    <!-- Ten seconds, which is the length of the sentence you just missed. They
+         move through the *book*, not the file, so one near the start of a
+         chapter steps back into the end of the one before. -->
+    <button id="pBack10" class="ghost skip" title="Ten seconds back">
+      <span class="arc">↺</span><span class="secs">10</span></button>
+    <button id="pPlay" title="Play or pause">▶</button>
+    <button id="pFwd10" class="ghost skip" title="Ten seconds on">
+      <span class="arc">↻</span><span class="secs">10</span></button>
+    <button id="pNext" class="ghost" title="The next chapter">⏭</button>
+  </div>
+
+  <!-- How fast it is read. Kept per browser, like the volume, because it is a
+       thing about the listener and not about the book. -->
+  <label class="now-speed">Speed
+    <select id="pSpeed" title="How fast the book is read"></select>
+  </label>
+
+  <!-- the engine; the transport above is ours, because a browser's own controls
+       cannot be recoloured -->
+  <audio id="audio" preload="metadata"></audio>
+</main>
+
+<div id="empty" class="now-empty" hidden>
+  <p>Nothing is playing.</p>
+  <button id="toShelves">Go to the shelves</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="playerpage.js"></script>
+<script src="player.js"></script>
+</body>
+</html>

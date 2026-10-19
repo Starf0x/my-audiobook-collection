@@ -125,6 +125,14 @@ async function open(page, replies = {}, before = null) {
   };
 
   // what jsdom has not got, and these pages use
+  // jsdom has no `matchMedia`, and the player asks it whether this is a phone
+  // — the cover is the way to `/player` there and play/pause everywhere else.
+  // Answered "not a phone" by default; a check that is about the phone sets it.
+  window.matchMedia = (query) => ({
+    matches: !!window.__phone, media: query, onchange: null,
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
+    dispatchEvent: () => false,
+  });
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   window.Element.prototype.scrollIntoView = function () {};
@@ -216,6 +224,13 @@ for (const [page, own] of [['index.html', 'app.js'], ['listen.html', 'shelf.js']
   };
   const [one, two] = [bar(a.document), bar(b.document)];
   check('the player bar is the same on both pages, control for control', one, two);
+  // How fast it is read: eleven steps, 1.0 to 2.0, and nothing below 1 — a
+  // book read slower than it was recorded is a book read wrong.
+  check('and the speed offers 1.0 to 2.0 in tenths, on both',
+    [[...a.document.querySelectorAll('#pSpeed option')].map((o) => o.value),
+      [...b.document.querySelectorAll('#pSpeed option')].map((o) => o.value)],
+    [['1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9', '2.0'],
+      ['1.0', '1.1', '1.2', '1.3', '1.4', '1.5', '1.6', '1.7', '1.8', '1.9', '2.0']]);
   check('the cover is wrapped so it can say what a tap will do',
     [one.wrapped, two.wrapped], [true, true]);
   check('and the download says what it is, not only an arrow',
@@ -1226,6 +1241,53 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     await settle();
     check('but twice in a moment is still one return', window.eval('window.askedAgain || 0'), 1);
   }
+}
+
+// --- how fast the book is read ---------------------------------------------
+// Kept per browser like the volume, because it is a thing about the listener
+// and not about the book. The part that breaks quietly: `playbackRate` belongs
+// to the element's *current* source, so a new `src` puts it back to 1 — a book
+// set to 1.4 would drop to normal at every chapter, and the reader would be
+// left wondering whether they had imagined setting it.
+{
+  const BOOK = {
+    id: 9, title: 'A Book', author: 'An Author', coverV: 0,
+    tracks: [{ id: 91, idx: 0, title: 'One', duration: 600 },
+      { id: 92, idx: 1, title: 'Two', duration: 600 }],
+    progress: null,
+  };
+  const page = await open('listen.html', { '/api/books': BOOK });
+  await settle();
+  const { window } = page;
+  const audio = page.document.querySelector('#audio');
+
+  window.eval("document.querySelector('#pSpeed').value = '1.4';");
+  window.eval("document.querySelector('#pSpeed').dispatchEvent(new Event('change'));");
+  await settle();
+  check('choosing a speed sets it, and writes it down for next time',
+    [audio.playbackRate, window.localStorage.getItem('speed')], [1.4, '1.4']);
+
+  // A chapter change is a new source. jsdom fires no media events of its own,
+  // so the one the app listens for is sent here — what is being checked is
+  // that the app listens for it at all, which is the whole of the fix.
+  window.eval('state.book = ' + JSON.stringify(BOOK) + '; playTrack(1, 0, false);');
+  audio.playbackRate = 1;
+  audio.dispatchEvent(new window.Event('loadedmetadata'));
+  await settle();
+  check('and a new chapter does not quietly put it back to normal',
+    audio.playbackRate, 1.4);
+
+  // Nothing below 1, and nothing a page could be talked into by a stale value.
+  // Seeded through the hook, before the scripts run: each `open` builds its own
+  // window with its own `localStorage`, so setting it on the page above left
+  // this one empty and the check passed for having nothing to read rather than
+  // for refusing what it read.
+  const other = await open('listen.html', { '/api/books': BOOK },
+    (w) => w.localStorage.setItem('speed', '0.5'));
+  await settle();
+  check('a speed the app does not offer is ignored rather than honoured',
+    [other.document.querySelector('#audio').playbackRate,
+      other.window.localStorage.getItem('speed')], [1, '0.5']);
 }
 
 // --- the administrator's pane of what has been asked for -------------------
