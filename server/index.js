@@ -1725,8 +1725,12 @@ app.post('/api/progress', (req, res) => {
   if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
     return res.status(404).json({ error: 'No such book' });
   }
-  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, via)
-      VALUES (?, ?, ?, ?, datetime('now'), ?)
+  // `started` on the insert only: the first place kept in a book is when this
+  // listener began it, and every place after that is them getting on with it.
+  // The UPDATE deliberately leaves it alone — touching it would make 'how long
+  // did they take' mean 'how long since they last picked it up'.
+  db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, via, started)
+      VALUES (?, ?, ?, ?, datetime('now'), ?, datetime('now'))
     ON CONFLICT(user, book_id) DO UPDATE SET track_idx = excluded.track_idx,
       position = excluded.position, updated = excluded.updated, via = excluded.via`)
     .run(user, bookId, trackIdx, position, cameFrom(req));

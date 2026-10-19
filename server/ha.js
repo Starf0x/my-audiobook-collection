@@ -119,7 +119,7 @@ export function haState(req, version = '', who = null) {
     }),
   });
 
-  const keptGoing = db.prepare(`${BOOK}, p.track_idx, p.position, p.done, p.updated
+  const keptGoing = db.prepare(`${BOOK}, p.track_idx, p.position, p.done, p.updated, p.started
       FROM progress p JOIN books b ON b.id = p.book_id
       WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
       ORDER BY p.updated DESC LIMIT 12`).all(user);
@@ -155,6 +155,8 @@ export function haState(req, version = '', who = null) {
         percent: b.duration ? Math.round((into / b.duration) * 100) : 0,
         listened: !!b.done,
         updated: b.updated,
+        // when they began it, which is not when they last touched it
+        started: b.started || '',
         ...link(b, b.track_idx),
       };
     }),
@@ -293,6 +295,58 @@ export async function haPlayers() {
 // The entities this app keeps in HA. Written straight into the state machine, so
 // they appear the moment the first push lands. HA forgets states written this way
 // when it restarts, which is why the push repeats on a timer.
+// --- what each person is in the middle of, and what they have finished -----
+//
+// The sensors above are about the collection and about one chosen listener.
+// This is about everybody: who is reading what, how far in they are, and what
+// they have already been through. Asked for so a dashboard can show the
+// household rather than one account.
+//
+// A finished book **stays** in the list, marked as read, with how long that
+// person took over it. "How long" is from the day they first opened it to the
+// day they finished — not hours of audio, which is a fact about the book, and
+// not time since they last touched it, which is a fact about nothing. For a
+// book begun before the app started writing that down there is no answer, and
+// the field is left out rather than guessed at.
+//
+// An entity id has to be a slug, and a listener's name is whatever they typed.
+// Two names that slug the same would otherwise write over each other's sensor,
+// so a repeat gets its position appended — ugly, and better than one of them
+// silently not existing.
+const slug = (name) => String(name || '').toLowerCase().normalize('NFKD')
+  .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'listener';
+
+const DAY = 86400000;
+const tookThem = (started, at) => {
+  if (!started || !at) return null;
+  const from = new Date(started.includes('T') ? started : `${started.replace(' ', 'T')}Z`);
+  const to = new Date(at);
+  if (Number.isNaN(from) || Number.isNaN(to)) return null;
+  const days = Math.max(0, Math.round((to - from) / DAY));
+  return { started, finished: at, days, took: days === 0 ? 'the same day' : days === 1 ? '1 day' : `${days} days` };
+};
+
+export function everybody(req) {
+  const users = db.prepare('SELECT name FROM users ORDER BY name').all().map((u) => u.name);
+  const seen = new Map();
+  return users.map((name, i) => {
+    const s = haState(req, '', name);
+    // The one they are in the middle of: the newest row that is not finished.
+    const reading = s.continue.find((b) => !b.listened) || null;
+    const finished = db.prepare(`SELECT c.book_id, c.title, c.at, c.started, b.author
+        FROM completions c LEFT JOIN books b ON b.id = c.book_id
+        WHERE c.user = ? ORDER BY c.at DESC LIMIT 25`).all(name)
+      .map((c) => ({
+        id: c.book_id, title: c.title, author: c.author || '',
+        listened: true, finished_at: c.at, ...(tookThem(c.started, c.at) || {}),
+      }));
+    const key = slug(name);
+    const id = seen.has(key) ? `${key}_${i}` : key;
+    seen.set(key, true);
+    return { name, id, reading, finished, hours_listened: s.hours.listened, listened_books: s.listened_books };
+  });
+}
+
 export function haEntities(req, version) {
   const asked = { headers: req.headers, protocol: req.protocol, query: { user: haSettings().listener } };
   const s = haState(asked, version);
@@ -328,6 +382,24 @@ export function haEntities(req, version) {
       ...(next ? { book_id: next.id, ...short(next), hours_left: next.left_hours } : {}),
       queue: s.continue.filter((b) => !b.listened).map(short),
     })],
+    // One per listener: what that person is in the middle of is the state, so a
+    // dashboard card can show it without digging into attributes, and what they
+    // have finished hangs off it — kept, marked read, with how long they took.
+    ...everybody(asked).map((p) => [`sensor.audiobook_${p.id}`,
+      p.reading ? p.reading.title : 'nothing', attrs({
+        friendly_name: `Audiobook · ${p.name}`, icon: 'mdi:account-music',
+        listener: p.name,
+        ...(p.reading ? {
+          book_id: p.reading.id, author: p.reading.author,
+          chapter: p.reading.track, chapters: p.reading.tracks,
+          percent: p.reading.percent,
+          hours_in: p.reading.into_hours, hours_left: p.reading.left_hours,
+          started: p.reading.started || undefined, last_heard: p.reading.updated,
+          playlist: p.reading.continueFrom,
+        } : {}),
+        listened_books: p.listened_books, hours_listened: p.hours_listened,
+        finished: p.finished,
+      })]),
   ];
 }
 

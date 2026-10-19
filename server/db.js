@@ -159,6 +159,17 @@ try { db.exec("ALTER TABLE progress ADD COLUMN via TEXT NOT NULL DEFAULT ''"); }
 // puts it in the title — so it is the owner's to state, and unstated is the
 // honest default. 0 is "nobody has said", not "abridged".
 try { db.exec('ALTER TABLE books ADD COLUMN unabridged INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
+// When this listener first opened this book, so "how long did they take over
+// it" can be answered. `updated` has always been the *last* time they touched
+// it, which says nothing about how long the book took.
+//
+// Empty on every row that already existed, and it stays empty: there is no
+// honest way to work out when somebody started a book they finished last March,
+// and a guessed date on a dashboard is worse than a blank one.
+try { db.exec("ALTER TABLE progress ADD COLUMN started TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
+// Carried here when the book is finished, because a progress row does not
+// survive un-ticking a book and a completion is meant to.
+try { db.exec("ALTER TABLE completions ADD COLUMN started TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
 
 // A listener became an account in 2.7.0. Every name that was already there is
 // approved — locking the household out of its own listening history to add a

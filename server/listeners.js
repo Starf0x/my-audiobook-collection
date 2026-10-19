@@ -272,8 +272,14 @@ export function finishedABook(user, bookId) {
   const already = db.prepare('SELECT 1 FROM completions WHERE user = ? AND book_id = ?')
     .get(who, Number(bookId));
   if (already) return false;
-  db.prepare('INSERT INTO completions (user, book_id, title, at) VALUES (?, ?, ?, ?)')
-    .run(who, Number(bookId), book?.title || '', new Date().toISOString());
+  // When they began it, carried over from the progress row: that row does not
+  // survive un-ticking the book and a completion is meant to. Empty for a book
+  // begun before the app started writing it down, and left empty — a guessed
+  // start date on a dashboard is worse than a blank one.
+  const began = db.prepare('SELECT started FROM progress WHERE user = ? AND book_id = ?')
+    .get(who, Number(bookId));
+  db.prepare('INSERT INTO completions (user, book_id, title, at, started) VALUES (?, ?, ?, ?, ?)')
+    .run(who, Number(bookId), book?.title || '', new Date().toISOString(), began?.started || '');
   return true;
 }
 
