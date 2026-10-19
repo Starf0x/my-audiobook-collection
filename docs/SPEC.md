@@ -2049,6 +2049,13 @@ eleven holes was eleven covers tall, and a reader scrolled past pictures of book
 that do not exist to find out that three were missing. The drawn cover for a book
 that is not in the library had no other caller, so that route is gone with it.
 
+**The series' name is the way to it** (2.14.72), on both kinds of head — a hole
+in your own numbering and what Wikidata found. Pressing it opens the genre,
+selects the series under it, marks its author in the authors column, and draws
+its books, with the line saying what is missing above them. It was a separate
+*open in library* on the first kind only, which went to the series and left the
+author unsaid; the name itself is where the owner pressed.
+
 Each line carries a **copy button** and, where the title is known, **↗** to
 Wikipedia in a new tab. They are `<a>` elements styled as links, not buttons that
 navigate, so a middle click opens a tab and the address can be copied. The
