@@ -1079,7 +1079,7 @@ const askForUpdate = (button) => work(button, 'Updating', async () => {
   // answer coming: say what will happen and let the page find out by watching.
   say('<strong>Updating…</strong> the app stops for a moment. '
     + 'This page reloads when it is back on the new version.');
-  waitForItBack(was);
+  waitForItBack(was, r.at);
   return 'Asked. It restarts on its own.';
 }, false);
 
@@ -1109,13 +1109,29 @@ const version = () => fetch('/api/stats')
 // four minutes in silence, leaving "Updating…" on the screen for ever with
 // nothing to say whether it had worked. The version is the one honest signal:
 // it changes exactly when the new code is running.
-function waitForItBack(was) {
+//
+// And a bar while it waits, with the step the updater is on (2.14.96). It used
+// to say "Updating…" in the line in Settings and nothing else — and pressed from
+// the pulldown, Settings is shut, so there was nothing on screen at all while
+// the container worked for minutes. The bar is the one every long job uses, at
+// the foot of the page wherever the reader is. For two of the steps the app is
+// down and cannot be asked; the bar says that, rather than calling it a failure.
+const updateSteps = (p) => (p && p.of ? `Step ${Math.min(p.step, p.of)} of ${p.of}: ${p.doing}` : '');
+function waitForItBack(was, askedAt = '') {
+  const bar = newBar('Updating: waiting for the updater to start');
+  bar.at(2);
   let tries = 0;
+  let last = null;
+  const stop = (ms) => { clearInterval(look); bar.done(ms); };
   const look = setInterval(async () => {
     tries += 1;
-    const now = await version();
+    const r = await fetch('/api/update/progress')
+      .then((x) => (x.ok ? x.json() : null)).catch(() => null);
+    const now = r ? r.running : '';
     if (now && was && now !== was) {
-      clearInterval(look);
+      bar.at(100);
+      bar.say(`Updated to v${now}. Reloading…`);
+      stop(1500);
       // The reload throws this message away with the page, so the news is left
       // where the new page will find it and said there instead.
       try { sessionStorage.setItem('updated-to', now); } catch { /* private window */ }
@@ -1123,10 +1139,43 @@ function waitForItBack(was) {
       setTimeout(() => location.reload(), 1200);
       return;
     }
-    if (tries === 15) say('<strong>Updating…</strong> still working — it fetches the new '
-      + 'version and installs it, which takes a few minutes on a small container.');
-    if (tries > 150) { // five minutes, then stop pretending to watch
-      clearInterval(look);
+    // What the updater has said, if it is about this run and not a past one. As
+    // times, not as text: the script writes local time with an offset and the
+    // app writes UTC, and the two compared as strings are hours apart.
+    const fresh = (q) => q && (q.step === 0 || !askedAt
+      || Date.parse(q.at) >= Date.parse(askedAt) - 2000);
+    if (r && fresh(r.progress)) last = r.progress;
+    const p = last;
+    if (p && p.done) {
+      // finished without the version changing: already the newest, or it failed
+      bar.at(100);
+      if (p.ok) {
+        bar.say(p.said ? `Nothing to install: ${p.said}.` : 'Finished.');
+        say(`<strong class="ok">Nothing to install</strong> — ${esc(p.said || 'already the newest')}.`, true);
+      } else {
+        bar.say(`The update failed: ${p.said || 'see journalctl -u my-audiobook-collection-update'}`, true);
+        say(`<strong class="warn">The update failed:</strong> ${esc(p.said || '')} — <code>journalctl -u `
+          + 'my-audiobook-collection-update</code> in the container says more.', true);
+      }
+      stop(p.ok ? 6000 : 20000);
+      return;
+    }
+    // The request picked up but no step written: an updater installed before
+    // 2.14.96 says nothing while it works. It is working, though, and that much
+    // can be said — the request file is gone the moment it starts.
+    if (r && p && p.step === 0 && r.asked === false) {
+      bar.at(10);
+      bar.say('Updating: the updater is working on it — the bar shows its steps from the next update on');
+    } else if (p && p.of) {
+      bar.at(Math.max(2, Math.round((p.step / p.of) * 100)));
+      bar.say(r ? `Updating: ${updateSteps(p)}`
+        : `Updating: ${updateSteps(p)} — the app is restarting, so this waits for it`);
+    } else if (!r) {
+      bar.say('Updating: the app is restarting, so this waits for it');
+    }
+    if (tries > 300) { // ten minutes, then stop pretending to watch
+      bar.say('It is taking longer than it should. Reload the page to look again.', true);
+      stop(20000);
       say('<strong class="warn">It is taking longer than it should.</strong> The app is still on '
         + `v${esc(was)}. Reload the page to look again; <code>journalctl -u `
         + 'my-audiobook-collection-update</code> in the container says what happened.', true);

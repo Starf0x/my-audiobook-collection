@@ -326,6 +326,23 @@ check('and looks again after starting it, since started is not running',
 check('and leaves word of how it went, because it restarted whoever asked',
   [/update-said\.json/.test(updater), /SAID/.test(live(updater))], [true, true]);
 
+// The bar on the page reads which step the updater is on (2.14.96). Two files
+// write that name and one reads it; spelled differently in one of them, the bar
+// sits on "waiting for the updater to start" for the whole update, saying
+// nothing — which is the fault it was added for.
+check('the updater and the app agree on where the progress is written',
+  [/update-progress\.json/.test(live(updater)), /'update-progress\.json'/.test(updates)], [true, true]);
+check('and each long step is announced before it starts, not after',
+  [before(live(updater), 'step 2 ', 'systemctl stop'), before(live(updater), 'step 4 ', 'npm ci'),
+    before(live(updater), 'step 5 ', 'systemctl start')], [true, true, true]);
+check('and the end is written to it too, so the bar can stop',
+  /"done":true/.test(live(updater)), true);
+// What runs is a copy made at install time. Without refreshing it, a container
+// keeps its first updater for ever, and nothing added to it ever arrives.
+check('and the updater replaces its own installed copy with the new version\'s',
+  before(live(updater), 'checkout --quiet', 'install/update.sh" /usr/local/bin/my-audiobook-collection-update'),
+  true);
+
 // One update, however it is reached: the button, the command in the container
 // and the helper script on the host must not be three different procedures.
 // The steps, not the spelling: the updater runs git with `-C "$APP_DIR"` and

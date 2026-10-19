@@ -974,13 +974,23 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   // the environment, so the environment is what is wound on: `setInterval` runs
   // fast and `setTimeout` only records, which also keeps jsdom from being asked
   // to navigate — it cannot, and it would be a fault in `broke` if it tried.
-  const watching = async (versions) => {
+  // Each poll is one answer from `/api/update/progress` — the version running
+  // and the step the updater is on — or `null`, the app being down mid-update.
+  // `/api/stats` says only the version the page started on.
+  const watching = async (versions, steps = [], askedAt = undefined) => {
     let n = 0;
     const page = await open('index.html', {
-      '/api/update': { running: '2.12.0', newest: '2.12.8', behind: true, how: 'lxc', canInstall: true },
+      // `at` is what POST /api/update answers with: when this run was asked for
+      '/api/update': { running: '2.12.0', newest: '2.12.8', behind: true, how: 'lxc', canInstall: true, at: askedAt },
       // The rest of the shape is what the page's own counters read; the version
       // is the only part this is about.
-      '/api/stats': () => ({ books: 0, files: 0, done: 0, todo: 0, version: versions[Math.min(n++, versions.length - 1)] }),
+      '/api/stats': { books: 0, files: 0, done: 0, todo: 0, version: '2.12.0' },
+      '/api/update/progress': () => {
+        const i = Math.min(n++, versions.length - 1);
+        if (versions[i] === null) return { __status: 502 };
+        const step = steps[Math.min(i, steps.length - 1)] || null;
+        return { running: versions[i], progress: step, asked: step ? step.asked ?? true : true };
+      },
     });
     await settle();
     const w = page.window;
@@ -990,7 +1000,8 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     w.setTimeout = (fn, ms) => { slept.push(ms); return 0; };
     w.eval("document.querySelector('#installUpdate').click()");
     await settle(200);
-    return { d: page.document, slept, broke: page.broke, asked: n };
+    const bar = [...page.document.querySelectorAll('#progress .job .say')].map((s) => s.textContent);
+    return { d: page.document, slept, broke: page.broke, asked: n, bar };
   };
 
   {
@@ -1014,6 +1025,54 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       [false, null, false]);
     check('and it is still being watched, rather than given up on',
       [asked > 3, /Updating/.test(d.querySelector('#updateState').textContent)], [true, true]);
+  }
+
+  // A bar, with the step it is on (2.14.96). The owner: "de update functie moet een
+  // progress laten zien, dit laat niets zien". Pressed from the pulldown,
+  // Settings is shut, and its line was the only thing that said anything.
+  const AT = new Date().toISOString();
+  {
+    const { bar } = await watching(['2.12.0'],
+      [{ at: AT, step: 4, of: 6, doing: 'Installing what v2.12.8 needs', done: false }]);
+    check('while it runs there is a bar, saying which step of how many',
+      bar, ['Updating: Step 4 of 6: Installing what v2.12.8 needs']);
+  }
+  {
+    // the app is down for two of the steps: that is waited through, not failed
+    const { bar } = await watching(['2.12.0', null],
+      [{ at: AT, step: 2, of: 6, doing: 'Stopping the app', done: false }]);
+    check('and while the app is down it says so, and keeps the step it last heard',
+      bar, ['Updating: Step 2 of 6: Stopping the app — the app is restarting, so this waits for it']);
+  }
+  {
+    // and an update that went wrong says so, in the updater's words
+    const { d, bar } = await watching(['2.12.0'],
+      [{ at: AT, step: 6, of: 6, doing: 'finished', done: true, ok: false,
+        said: 'it updated but the service did not stay up' }]);
+    check('one that failed says so on the bar and in Settings, with the reason',
+      [bar, /failed/.test(d.querySelector('#updateState').textContent)],
+      [['The update failed: it updated but the service did not stay up'], true]);
+  }
+  {
+    // The updater writes local time with an offset (`date -Iseconds`), the app
+    // writes UTC. The same instant reads two hours apart as text, so the page
+    // compares times. A "finished" from an hour before this run is a past run's
+    // and must not end this one; this run's own step, written as +02:00, counts.
+    const asked = new Date(Date.UTC(2026, 9, 19, 11, 0, 0));
+    const local = (d) => new Date(d.getTime() + 2 * 3600e3).toISOString().slice(0, 19) + '+02:00';
+    const before = await watching(['2.12.0'], [{ at: local(new Date(asked.getTime() - 3600e3)),
+      step: 6, of: 6, doing: 'finished', done: true, ok: false, said: 'last week' }], asked.toISOString());
+    const during = await watching(['2.12.0'], [{ at: local(new Date(asked.getTime() + 5000)),
+      step: 3, of: 6, doing: 'Fetching v2.12.8', done: false }], asked.toISOString());
+    // An updater from before 2.14.96 writes no steps; once it has picked the
+    // request up, the bar says it is working rather than "waiting to start".
+    const old = await watching(['2.12.0'], [{ at: asked.toISOString(), step: 0, of: 6,
+      doing: 'Waiting for the updater to start', done: false, asked: false }], asked.toISOString());
+    check('an older updater that says nothing is still said to be working, once it has started',
+      old.bar, ['Updating: the updater is working on it — the bar shows its steps from the next update on']);
+    check('a past run\'s ending is not this one\'s, and this run\'s step counts, across time zones',
+      [before.bar, during.bar],
+      [['Updating: waiting for the updater to start'], ['Updating: Step 3 of 6: Fetching v2.12.8']]);
   }
 }
 

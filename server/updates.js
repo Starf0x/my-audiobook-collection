@@ -33,6 +33,11 @@ const UNIT = 'my-audiobook-collection.service';
 // app is certain to own.
 export const ASK = path.join(DATA_DIR, 'update-wanted');
 export const SAID = path.join(DATA_DIR, 'update-said.json');
+// And which step the updater is on, for the bar on the page (2.14.96). The
+// updater writes it before each step and once at the end; the app writes the
+// first one itself, so a page that asked has something to show before root's
+// side has even noticed.
+export const PROGRESS = path.join(DATA_DIR, 'update-progress.json');
 
 // "2.11.64" against "2.9.80": by number, part by part, because a string compare
 // puts 2.9.80 above 2.11.64 and would offer an update backwards.
@@ -107,8 +112,25 @@ export function lastUpdate() {
 // it worked by the app coming back on a new version.
 export function askForUpdate() {
   if (howInstalled() !== 'lxc') throw new Error('This copy cannot update itself; see Settings for how it is done here.');
-  fs.writeFileSync(ASK, new Date().toISOString());
-  return { asked: true };
+  const at = new Date().toISOString();
+  // Step 0, written over whatever the last run left: the bar starts here and not
+  // at "finished" from last week.
+  fs.writeFileSync(PROGRESS, JSON.stringify({
+    at, step: 0, of: 6, doing: 'Waiting for the updater to start', done: false,
+  }));
+  fs.writeFileSync(ASK, at);
+  return { asked: true, at };
+}
+
+// Where the updater has got to, or null when it has never said. Read as it is:
+// what is in it is the updater's, written by a script, and a half-written file
+// mid-step reads as nothing rather than as a fault.
+export function updateProgress() {
+  try {
+    return JSON.parse(fs.readFileSync(PROGRESS, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 export const waiting = () => fs.existsSync(ASK);
