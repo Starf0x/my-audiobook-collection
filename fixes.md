@@ -750,6 +750,21 @@ back to back: both pass, nothing left behind.
 a hand-over. And killing what you spawned is not killing what it started: on
 Windows, find the tree by something it carries, not by the pid you have.
 
+### Play on a phone was written, and left switched off (2.14.16)
+
+`/player` came in 2.14.0 with the cover in the bar as its only way in, so the owner
+pressed Play on his phone and stayed on the shelf. The hand-over that fixes it
+was written in full — the carry, `playing: true`, the guard on `pagehide` — and
+then sat uncommitted behind `const goesToPlayer = () => false && narrow() …`,
+with nothing anywhere saying why it was off.
+
+**Fixed** by taking the `false &&` out, and by `tests/to-player.mjs`, which runs
+both functions out of `player.js` and goes red with the switch put back.
+
+**Rule:** a feature switched off in code is a decision, and a decision with no
+reason written beside it is lost the moment the session ends. Either finish it,
+or say in the line itself why it is off and what would turn it on.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
