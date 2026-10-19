@@ -84,7 +84,37 @@ async function load() {
     $('#haPlayer').value = c.player;
   }
   await loadQueue();
+  await loadSensors();
 }
+
+// --- the sensors, ready to copy ------------------------------------------------
+// Every entity this app writes into Home Assistant, by the id a dashboard card or
+// an automation names it by, with its own copy button and one for the lot — one
+// id to a line, which is what a card's `entities:` list takes. Asked of the same
+// route as "Show what will be sent", so the list is the one that is sent: a
+// sensor per listener comes and goes with the listeners.
+async function loadSensors() {
+  const rows = await api('/api/ha/entities').catch(() => null);
+  if (!rows) {
+    $('#haSensors').innerHTML = '<li class="hint">The list could not be read.</li>';
+    return;
+  }
+  $('#haSensors').innerHTML = rows.map((r) => `<li>
+      <code class="mono">${esc(r.entity)}</code>
+      <span class="hint">${esc(r.attributes.friendly_name || '')}</span>
+      <button class="ghost copy-one" data-copy="${esc(r.entity)}" title="Copy ${esc(r.entity)}">⧉</button>
+    </li>`).join('') || '<li class="hint">Nothing to send yet.</li>';
+  $('#haCopyAll').hidden = !rows.length;
+  $('#haCopyAll').dataset.copy = rows.map((r) => r.entity).join('\n');
+}
+
+const copied = async (text, what) => toast((await toClipboard(text)) ? `Copied ${what}.` : 'The browser would not copy that.');
+$('#haSensors').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-copy]');
+  if (b) copied(b.dataset.copy, b.dataset.copy);
+});
+$('#haCopyAll').onclick = () => copied($('#haCopyAll').dataset.copy || '',
+  `${($('#haCopyAll').dataset.copy || '').split('\n').filter(Boolean).length} sensors`);
 
 const save = (body) => post('/api/ha/config', body).then((c) => { state.config = c; return c; });
 

@@ -751,6 +751,16 @@ button.playing {
 
 /* the folder report in Settings */
 table.cmp td.mono { font-family: ui-monospace, monospace; font-size: 11.5px; word-break: break-all; }
+/* the Home Assistant page's list of sensors: the id to copy, what HA calls it,
+   and the button, one line each */
+.sensors-head { margin-top: 18px; }
+.sensors-head label { margin: 0; }
+.sensor-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.sensor-list li { display: flex; align-items: center; gap: 10px; padding: 5px 0;
+  border-bottom: 1px solid var(--line); min-width: 0; }
+.sensor-list code { font-family: ui-monospace, monospace; font-size: 12.5px; word-break: break-all; }
+.sensor-list .hint { flex: 1; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sensor-list .copy-one { padding: 2px 8px; min-height: 0; flex: 0 0 auto; }
 table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
 #permsOut { margin-top: 10px; }
 

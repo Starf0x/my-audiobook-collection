@@ -64,6 +64,14 @@
       <button id="haPreview" class="ghost">Show what will be sent</button>
     </div>
     <div id="haEntities"></div>
+    <!-- Every sensor this app writes, by the id a card or an automation names
+         it by: ready to copy rather than to be read off and retyped. -->
+    <div class="row sensors-head">
+      <label>The sensors</label>
+      <div class="spacer"></div>
+      <button id="haCopyAll" class="ghost" hidden>⧉ Copy all</button>
+    </div>
+    <ul id="haSensors" class="sensor-list"><li class="hint">Counting…</li></ul>
   </section>
 
   <section class="box">
@@ -103,6 +111,8 @@
 </footer>
 
 <div id="toast"></div>
+<!-- the clipboard, for the list of sensors; shared with the admin page -->
+<script src="copy.js"></script>
 <script src="ha.js"></script>
 <!-- after the page's own script: the player leans on what that declares -->
 <script src="player.js"></script>

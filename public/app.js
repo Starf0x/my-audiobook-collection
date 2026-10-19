@@ -1573,30 +1573,8 @@ async function fileWork(url, body, label) {
   return { ok: !failure, r, bar: p.bar };
 }
 
-// The copy button beside every field. `navigator.clipboard` only exists in a
-// secure context, and this app is normally reached over plain http on a LAN, so
-// the old way is the one that actually runs: a textarea inside the dialog,
-// because a modal dialog makes the rest of the document inert.
-async function toClipboard(text) {
-  try {
-    if (window.isSecureContext && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch { /* fall through */ }
-  const box = document.createElement('textarea');
-  box.value = text;
-  box.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
-  // Inside whichever dialog is open, because a modal one makes the rest of the
-  // document inert and a textarea in the body could not be selected. With none
-  // open — a copy button on a card, say — the body is where it has to go, since
-  // a closed dialog is not rendered and nothing in it can be selected either.
-  (document.querySelector('dialog[open]') || document.body).append(box);
-  box.select();
-  const ok = document.execCommand('copy');
-  box.remove();
-  return ok;
-}
+// The copy button beside every field goes through `toClipboard`, which is in
+// `copy.js` since the Home Assistant page needed it as well.
 
 // --- settings ----------------------------------------------------------
 let libs = [];

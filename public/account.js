@@ -230,11 +230,18 @@ $('#gcGo').onclick = async () => {
   return started();
 };
 
-(async () => {
+// Not before every script on the page has run. This started as soon as this file
+// did, and its first answers can come back while a later script — `player.js`,
+// loaded last — is still being fetched: `begin` then drew the home shelves and
+// called `markPlaying`, which did not exist yet, and the page stopped half
+// drawn. `plays-on` caught it once in a run of many (2.14.88).
+const startThePage = async () => {
   // `/api/admin` answers while unclaimed; almost nothing else does.
   const how = await api('/api/admin').catch(() => ({}));
   if (how.unclaimed) return showGate('claim');
   const me = await whoAmI();
   if (me.signedIn) return started();
   return showGate('in');
-})();
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startThePage, { once: true });
+else startThePage();
