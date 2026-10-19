@@ -214,6 +214,30 @@ const trackAt = (seconds, tracks) => {
   return { idx, offset: left };
 };
 
+// How long is left, in the time it will actually take. The length of the book
+// beside it stays the length of the book — that is a fact about the recording —
+// but what is left is a question about the listener, and somebody reading at
+// 1.5× has two thirds of it to sit through. Asked of `playbackRate` rather than
+// of the setting, so it says what the engine is really doing.
+//
+// Shown beside wherever the speed is chosen: on `/player` a line of its own
+// between the two clocks, and in the bar on a wide screen next to the speed
+// pulldown. A phone's bar has neither — the speed lives on `/player` there —
+// so the length carries it as a tooltip as well.
+const howLong = (s) => {
+  const m = Math.round(s / 60);
+  if (m < 1) return 'under a minute';
+  return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
+};
+const drawLeft = (at, total) => {
+  const rate = audio.playbackRate > 0 ? audio.playbackRate : 1;
+  const left = isFinite(total) && total > 0 ? Math.max(0, total - at) / rate : NaN;
+  const says = !isFinite(left) ? ''
+    : `${howLong(left)} left${Math.abs(rate - 1) > 0.001 ? ` at ${rate.toFixed(1)}×` : ''}`;
+  maybe('#pLeft', (el) => { el.textContent = says; });
+  $('#pOf').title = says ? `${says} · the book is ${clock(total)} long` : '';
+};
+
 let dragging = false;
 const drawTime = () => {
   const book = bookTime();
@@ -221,6 +245,7 @@ const drawTime = () => {
   const at = book ? book.behind + (audio.currentTime || 0) : audio.currentTime;
   $('#pAt').textContent = clock(at);
   $('#pOf').textContent = isFinite(total) ? clock(total) : '—';
+  drawLeft(at, total);
   if (dragging) return;
   const f = isFinite(total) && total > 0 ? at / total : 0;
   $('#seek').value = String(Math.round(f * 1000));
@@ -230,6 +255,9 @@ audio.addEventListener('timeupdate', drawTime);
 audio.addEventListener('durationchange', drawTime);
 audio.addEventListener('loadedmetadata', drawTime);
 audio.addEventListener('emptied', drawTime);
+// a new speed changes what is left at once, not at the next timeupdate — which
+// never comes while the book is paused
+audio.addEventListener('ratechange', drawTime);
 
 // Dragging the bar now means a place in the book, so it may land in another
 // file: walk the tracks until the seconds left fit inside one, and load it at

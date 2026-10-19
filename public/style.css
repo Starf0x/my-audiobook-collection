@@ -186,6 +186,7 @@ footer #pPlay.playing { background: var(--accent); border-color: transparent; }
    measured on one machine. `tabular-nums` is the other half, or the width
    changes with the digits. */
 footer .tick { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 5.5ch; text-align: center; }
+footer .left { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 footer #seek { flex: 1; min-width: 120px; }
 footer #vol { width: 96px; flex: 0 0 auto; }
 /* the mute and the slider as one thing, which is what they are to a reader */
@@ -629,7 +630,7 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
      for it and where somebody listening is actually looking. Two of them, one
      in a bar already short of width, is the clutter this whole section is
      about. */
-  footer #pSpeed { display: none; }
+  footer #pSpeed, footer #pLeft { display: none; }
   footer #pGet { order: 6; }
   footer #pAt { order: 7; }
   footer #pOf { order: 8; }
@@ -1064,7 +1065,8 @@ body.now-playing { height: 100dvh; overflow: hidden; display: flex; flex-directi
 
 .now-seek { width: 100%; }
 .now-seek #seek { width: 100%; }
-.now-clock { display: flex; justify-content: space-between; margin-top: 2px; }
+.now-clock { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 2px; }
+.now-clock .left { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; text-align: center; }
 
 .now-transport { display: flex; align-items: center; justify-content: center; gap: 22px; width: 100%; }
 /* A thumb's worth of button, and round, because it is the one control on the

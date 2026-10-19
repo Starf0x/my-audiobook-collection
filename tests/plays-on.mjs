@@ -584,6 +584,18 @@ async function run() {
     })()`);
     check('a long chapter name does not widen the page on a desktop either',
       [wide.sideways, wide.selectWidth <= 240], [false, true]);
+    // On a wide screen the speed is chosen in the bar, so what is left at that
+    // speed is shown beside it — on screen, asked of its box and not its text,
+    // since a hidden span answers `textContent` just as happily.
+    const barLeft = await evaluate(`(() => {
+      const el = document.querySelector('footer #pLeft');
+      if (!el) return { missing: true };
+      const r = el.getBoundingClientRect();
+      return { says: el.textContent, w: Math.round(r.width),
+        shown: getComputedStyle(el).display !== 'none' };
+    })()`);
+    check('on a desktop the bar says how long is left, beside the speed',
+      [barLeft.shown, barLeft.w > 0, /^\S.* left/.test(barLeft.says || '')], [true, true, true]);
 
     // Pressing Play on a desktop stays on the shelf, which is the half of the
     // next section that has to be asked at this width. `/player` is the phone's
@@ -802,6 +814,10 @@ async function run() {
     await click('#back');
     await atPage('/');
     await pickedUp();
+    // the shelf is drawn when `/api/home` answers, which can be after the player
+    // has picked the book up — the same race as the desktop press above, and it
+    // broke a whole run once
+    await waitFor(`document.querySelector(${JSON.stringify(press)})`, 'the card to press again');
 
     // A press that stops a book is not a press that starts one, and carrying
     // somebody off to the player page to put a book down would be an odd thing
@@ -939,6 +955,49 @@ async function run() {
     // recorded is a book read wrong.
     check('how fast it is read is a pulldown of eleven, 1.0 to 2.0',
       [onPlayer.speeds.length, onPlayer.speeds[0], onPlayer.speeds.at(-1)], [11, '1.0', '2.0']);
+
+    // What is left follows the speed; how long the book is does not. The owner
+    // asked for the first and chose to keep the second. Asked of a paused book,
+    // so no timeupdate comes along to redraw it: the speed itself has to.
+    // The minutes are worked out here from the two clocks the page shows, so
+    // the check asks "is it the book's remainder over the speed", not "is it
+    // some number".
+    //
+    // Two evaluates with the wait between them in here, not one async function:
+    // `evaluate` does not await a promise, so an async one hands back `{}` — and
+    // `{}.minutes === {}.want` is true, which is how the first draft of these
+    // passed with nothing on the page at all.
+    const atSpeed = async (speed) => {
+      await evaluate(`(() => {
+        const sel = document.querySelector('#pSpeed');
+        sel.value = '${speed}';
+        sel.dispatchEvent(new Event('change'));
+      })()`);
+      await sleep(300);
+      return evaluate(`(() => {
+      const secs = (t) => t.split(':').map(Number).reduce((n, p) => n * 60 + p, 0);
+      const at = secs(document.querySelector('#pAt').textContent);
+      const total = secs(document.querySelector('#pOf').textContent);
+      const says = (document.querySelector('#pLeft') || {}).textContent || '';
+      const m = says.match(/^(?:(\\d+)h )?(\\d+)m left/);
+      return { says, total, rate: document.querySelector('#audio').playbackRate,
+        minutes: m ? Number(m[1] || 0) * 60 + Number(m[2]) : null,
+        want: Math.round((total - at) / ${speed} / 60) };
+    })()`);
+    };
+    const normal = await atSpeed('1.0');
+    const fast = await atSpeed('2.0');
+    // `typeof … 'number'` first: without it an empty answer matches itself
+    check('the player page says how long is left',
+      [typeof normal.want, typeof normal.minutes, normal.minutes === normal.want, /×/.test(normal.says)],
+      ['number', 'number', true, false]);
+    check('and at 2× it is half of that, and says at what speed',
+      [fast.rate, typeof fast.minutes, fast.minutes === fast.want, / at 2\.0×$/.test(fast.says)],
+      [2, 'number', true, true]);
+    check('while the length of the book stays the length of the book',
+      [typeof fast.total, fast.total > 0, fast.total], ['number', true, normal.total]);
+    // back to normal, which is what everything after this expects
+    await atSpeed('1.0');
 
     // and the way back
     await click('#back');

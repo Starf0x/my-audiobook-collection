@@ -783,6 +783,22 @@ heart and the check goes red.
 the check for it is one that scrolls something *positioned* under it. Plain text
 going under proves nothing: it would go under with no `z-index` at all.
 
+### An async evaluate came back `{}`, and `{}` agreed with itself (2.14.40)
+
+Writing the checks for "what is left follows the speed", I put the whole step
+in one `evaluate` of an `async` function: set the pulldown, wait, read the
+clocks. `evaluate` in `plays-on` does not await a promise, so it handed back
+`{}`. The first check compared `normal.minutes === normal.want` — `undefined`
+with `undefined` — and passed with nothing on the page at all. Only the second
+caught it, because it also asked for `rate: 2` and got nothing.
+
+**Fixed** by setting in one `evaluate`, waiting in Node, reading in another;
+and every check there now asks `typeof … === 'number'` before comparing.
+
+**Rule:** in this suite, an `evaluate` takes a synchronous function. And a check
+that compares two values read from the same answer must first prove the answer
+has them: two missing fields are equal.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
