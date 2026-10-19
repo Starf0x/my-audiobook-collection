@@ -256,8 +256,14 @@ const aWeek = (req) => {
 
 app.get('/api/account/me', (req, res) => {
   const listener = listenerOf(req);
+  // Who this is, the administrator included. The admin signs in with an `admin`
+  // cookie and no listener session, so `listener` is empty for them — and the
+  // level was worked out from it: The owner had finished ten books, every one
+  // recorded under his name, and the header said "10 to Rookie Level" (2.14.64).
+  // The download rule below always asked the right name; the level did not.
+  const who = listener || (isAdmin(req) ? adminName() : '');
   res.json({
-    name: listener || (isAdmin(req) ? adminName() : ''),
+    name: who,
     admin: isAdmin(req),
     // Always, since 2.12.0. Kept on the wire because both pages read it, and
     // because "is anything locked here" is a fair question for a client to ask
@@ -266,10 +272,10 @@ app.get('/api/account/me', (req, res) => {
     signedIn: !!listener || isAdmin(req),
     // what the page needs to draw the badge beside a name and to know whether to
     // offer a download at all — the server refuses it either way
-    level: levelOf(listener ? finishedCount(listener) : 0),
+    level: levelOf(who ? finishedCount(who) : 0),
     // the same rule the download route applies, and from the same place: the
     // page offering a button the server then refuses is how this was reported
-    mayDownload: mayTakeABook(listener || (isAdmin(req) ? adminName() : ''), isAdmin(req)),
+    mayDownload: mayTakeABook(who, isAdmin(req)),
   });
 });
 

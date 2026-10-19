@@ -242,5 +242,19 @@ check('a hundred finished books is the top level', levelOf(finishedCount('Ann'))
 check('which opens downloading on its own', (await get('/api/download/5', ann.cookies)).status, 200);
 check('and the page says so', (await get('/api/account/me', ann.cookies)).body.level.icon, LEVELS[0].icon);
 
+// --- the administrator has a level too ---------------------------------------
+// The owner finished ten books in the web player and the header said "10 to Rookie
+// Level". Every one was recorded under his name; the header asked about the
+// listener session, which an administrator signed in with the `admin` cookie
+// does not have, and so worked the level out for nobody. Ann above has a
+// listener session, which is why none of the checks before this one could see it.
+const before = (await get('/api/account/me', admin.cookies)).body;
+check('the administrator starts with no level, under their own name',
+  [before.name, before.admin, before.level.finished], ['morgan', true, 0]);
+for (let i = 0; i < 10; i++) many.run('morgan', 2000 + i, `Book ${i}`, new Date().toISOString());
+const after = (await get('/api/account/me', admin.cookies)).body.level;
+check('and ten finished books make the administrator a Rookie, in the header too',
+  [after.finished, after.name], [10, 'Rookie Level']);
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);

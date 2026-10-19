@@ -2540,6 +2540,19 @@ as the app having failed to draw something rather than as the answer. The
 Accounts page says the same thing at more length, `No level yet · 10 book(s) to
 Rookie Level`, because that page is read rather than glanced at.
 
+**The administrator has a level too** (2.14.64). The header's level came from
+the listener session, which an administrator signed in with the `admin` cookie
+does not have, so it was worked out for the empty name: The owner had ten books
+finished and read `10 to Rookie Level`. `/api/account/me` now decides who is
+asking once — the listener, or the administrator by name — and the name, the
+level and the download rule all use that.
+
+**And a book played out through Music Assistant counts** (2.14.64). A session's
+syncs, its close and a session kept offline are playback; when one leaves the
+place at the end of the last track, that is a completion, as in the browser. A
+progress PATCH is not asked: "mark as finished" arrives there as `isFinished`
+with the place moved to the end, and that is a statement, like a tick.
+
 **The count is its own record, and that is the point.** `completions` is written
 when a book runs out and never rewritten: clearing your place in a book,
 unticking it or starting it again says what somebody is listening to *now* and
