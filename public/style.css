@@ -87,8 +87,12 @@ button.ghost { background: var(--panel2); font-weight: 500; }
 main { flex: 1; display: grid; grid-template-columns: 230px 260px 1fr; min-height: 0; }
 main > * { overflow-y: auto; border-right: 1px solid var(--line); padding-bottom: 24px; }
 #books { border-right: none; }
+/* z-index, because a sticky head with none is painted in page order: plain text
+   scrolled under it, but everything positioned that comes after it — a card's
+   cover, the heart on it, a tile — slid over the top of it. Above the heart (2),
+   below the menus and dialogs (40 and up). */
 .col-title {
-  position: sticky; top: 0; padding: 12px 16px 8px;
+  position: sticky; top: 0; z-index: 10; padding: 12px 16px 8px;
   background: rgba(14, 16, 20, .82); backdrop-filter: blur(8px);
   font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
 }

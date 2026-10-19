@@ -683,6 +683,34 @@ async function run() {
       phone.head.right - phone.signOut.right < 20, true);
     check('and it is above the app’s own name, not beside it',
       phone.signOut.top < phone.brand.top, true);
+    // The owner's screenshot: the column's sticky head ("‹ Back  Books  Home") had
+    // the text of a card scroll under it, and the card's cover and its heart
+    // slide over it. A sticky element with no z-index is painted in page order,
+    // and everything positioned after it — the cover, the heart, a tile — comes
+    // later. Asked of pixels, not markup: scroll the heart under the head and
+    // ask the browser what it would hit there. The shelf is padded out so it
+    // can scroll at all; the padding goes again before anything else is asked.
+    const under = await evaluate(`(() => {
+      const col = document.querySelector('#books');
+      const head = col.querySelector('.col-title');
+      const heart = col.querySelector('.heart');
+      if (!head || !heart) return { missing: !head ? 'head' : 'heart' };
+      const pad = document.createElement('div');
+      pad.style.height = '2000px';
+      col.appendChild(pad);
+      col.scrollTop = 0;
+      const h = head.getBoundingClientRect();
+      const was = heart.getBoundingClientRect();
+      col.scrollTop = (was.top + was.height / 2) - (h.top + h.height / 2);
+      const at = heart.getBoundingClientRect();
+      const hit = document.elementFromPoint(at.left + at.width / 2, h.top + h.height / 2);
+      const result = { under: at.top < h.bottom && at.bottom > h.top, onTop: !!hit && head.contains(hit) };
+      pad.remove();
+      col.scrollTop = 0;
+      return result;
+    })()`);
+    check('a cover scrolled under the column head goes behind it, heart and all',
+      [under.under, under.onTop], [true, true]);
     // The bar keeps its own play/pause, and it says what it does rather than
     // leaving a glyph in a box to be recognised. It was taken out once, on the
     // grounds that the cover beside it is the same button — but the cover is

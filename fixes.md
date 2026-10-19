@@ -765,6 +765,24 @@ both functions out of `player.js` and goes red with the switch put back.
 reason written beside it is lost the moment the session ends. Either finish it,
 or say in the line itself why it is off and what would turn it on.
 
+### The cover slid over the column head the text went under (2.14.32)
+
+The owner's screenshot on a phone: scrolling the shelf, a card's description went
+neatly under the sticky head ("‹ Back  Books  Home"), and the card's cover and
+its heart went straight over it. `.col-title` was `position: sticky` with no
+`z-index`, so it was painted in page order. Unpositioned text is painted below
+it; the cover (`position: relative`), the heart (`z-index: 2`) and every tile
+come later in the page and were painted on top.
+
+**Fixed** with `z-index: 10` on `.col-title` — above the heart, below the menus
+(40) and dialogs (60). `plays-on` scrolls the heart under the head and asks
+`elementFromPoint` what is there; with the `z-index` taken out it answers the
+heart and the check goes red.
+
+**Rule:** a sticky or fixed element gets a `z-index` the day it is written, and
+the check for it is one that scrolls something *positioned* under it. Plain text
+going under proves nothing: it would go under with no `z-index` at all.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
