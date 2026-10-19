@@ -704,7 +704,15 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
 // nobody scrolls, to answer *which books am I missing?*. The series keeps the
 // heading; what is missing from it is a list of lines.
 {
-  const { window, document } = await open('index.html');
+  const asked = [];
+  const { window, document } = await open('index.html', {
+    '/api/authors': [{ name: 'Brandon Sanderson', books: 2 }, { name: 'Stephen King', books: 5 }],
+    '/api/books': (url) => {
+      asked.push(url);
+      return { books: [{ id: 9, title: 'The Way of Kings', author: 'Brandon Sanderson', genre: 'Fantasy',
+        series: 'The Stormlight Archive', series_no: 1, duration: 60, tracks: 1 }], series: [] };
+    },
+  });
   await settle();
 
   // Two shapes feed this pane. A hole in the collection's own numbering knows a
@@ -735,8 +743,17 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('and the series is what carries the heading',
     [...document.querySelectorAll('#books .series-head')].map((h) => h.textContent.replace(/\s+/g, ' ').trim())
       .filter((t) => t.startsWith('Series')),
-    ['Series · The Dark Tower ⧉ copy open in library',
+    ['Series · The Dark Tower ⧉ copy',
       'Series · The Stormlight Archive ⧉ copy']);
+
+  // The series' name is the way to it, in both kinds of head: the genre, the
+  // series selected under it, the author marked beside it, and its books.
+  // The owner asked for it; it was an "open in library" on the first kind only.
+  check('the name of every series short of something is a way to it',
+    [...document.querySelectorAll('#books .series-head .open-series')]
+      .map((b) => [b.textContent, b.dataset.genre, b.dataset.series, b.dataset.author]),
+    [['The Dark Tower', 'Fantasy', 'The Dark Tower', 'Stephen King'],
+      ['The Stormlight Archive', 'Fantasy', 'The Stormlight Archive', 'Brandon Sanderson']]);
 
   const lines = (series) => [...document.querySelectorAll('#books .missing-vols')]
     .map((ul) => [...ul.querySelectorAll('.missing-vol')].map((li) => [
@@ -758,6 +775,19 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       .map((ul) => ul.querySelectorAll('a[href*="wikipedia"]').length), [0, 2]);
   check('and the Wikidata entry is named once for the series, not once per volume',
     document.querySelectorAll('#books a[href*="wikidata"]').length, 1);
+
+  // and pressing one goes there: wired, not merely drawn
+  [...document.querySelectorAll('#books .series-head .open-series')]
+    .find((b) => b.dataset.series === 'The Stormlight Archive')?.click();
+  await settle(150);
+  check('pressing a series name opens that series, in its genre',
+    [window.eval('state.genre'), window.eval('state.series'),
+      asked.some((u) => /series=The%20Stormlight%20Archive/.test(u))],
+    ['Fantasy', 'The Stormlight Archive', true]);
+  check('with its author marked beside it, and its books on screen',
+    [[...document.querySelectorAll('#authors li.active')].map((l) => l.dataset.name),
+      [...document.querySelectorAll('#books .card h3')].map((h) => h.textContent.replace(/[♫\s]+/g, ' ').trim())],
+    [['Brandon Sanderson'], ['The Way of Kings']]);
 }
 
 // --- is there a newer version --------------------------------------------

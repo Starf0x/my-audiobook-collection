@@ -474,8 +474,14 @@ table.cmp td.better { color: #7ee2a8; font-weight: 600; }
 }
 .missing-vol:hover .linkish { opacity: .8; }
 .missing-vol .linkish:hover { opacity: 1; color: #fff; filter: none; }
-.series-head .copy-search,
-.series-head .open-series { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+.series-head .copy-search { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+/* the series' own name, and the way to it: it reads as the heading it is part
+   of, and says it can be pressed only when it is pointed at */
+.series-head .open-series {
+  background: none; border: 0; padding: 0; margin: 0; min-height: 0; font: inherit;
+  letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer;
+}
+.series-head .open-series:hover { color: #fff; filter: none; text-decoration: underline; }
 
 /* while a job runs: its own button is disabled, and so is anything that would
    start a second one. Playing and marking listened stay available. */

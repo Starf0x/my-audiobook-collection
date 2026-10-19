@@ -1244,9 +1244,17 @@ const missingLine = ({ name, author, no, title }) => {
   </li>`;
 };
 
+// The series' name in the head is the way to it: the genre opened, the series
+// selected under it, the author marked beside it, and its books. It was a
+// separate "open in library" on the holes in your own numbering and nothing at
+// all on what Wikidata found, and the owner wanted the name itself to go there.
+const seriesLink = (s) => `<button class="open-series linkish" data-genre="${esc(s.genre || '')}"
+    data-series="${esc(s.name)}" data-author="${esc(s.author || '')}"
+    title="${esc(s.name)}${s.author ? ` by ${esc(s.author)}` : ''}, in the library">${esc(s.name)}</button>`;
+
 // One series, headed the way the library heads a series, with its own copy
 // button: what you paste into a shop or a search is the series, not one volume.
-const missingSeries = (r) => `<div class="series-head">Series · ${esc(r.name)}
+const missingSeries = (r) => `<div class="series-head">Series · ${seriesLink(r)}
     <button class="copy-search linkish" data-copy-text="${esc([r.author, r.name].filter(Boolean).join(' - '))}"
       title="Copy “author - series” to search for it">⧉ copy</button></div>
   <div class="series-gap missing">${r.missing.length} of ${r.volumes.length} volume(s) not here${r.byTitle
@@ -1258,11 +1266,9 @@ const missingSeries = (r) => `<div class="series-head">Series · ${esc(r.name)}
 // The same, for a hole in the collection's own numbering. There is no title to
 // show — nothing here knows what book 9 is called — so the number is the name,
 // and the series head carries the sentence that qualifies the whole group.
-const ownGapSeries = (g) => `<div class="series-head">Series · ${esc(g.name)}
+const ownGapSeries = (g) => `<div class="series-head">Series · ${seriesLink(g)}
     <button class="copy-search linkish" data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}"
-      title="Copy “author - series” to search for it">⧉ copy</button>
-    <button class="open-series linkish" data-genre="${esc(g.genre)}"
-      data-series="${esc(g.name)}">open in library</button></div>
+      title="Copy “author - series” to search for it">⧉ copy</button></div>
   <div class="series-gap missing">${esc(g.says)}${g.unnumbered
   ? ` ${g.unnumbered} book(s) here carry no volume number, so one of these may be among them.`
   : ''}</div>
@@ -1437,10 +1443,16 @@ $('#books').addEventListener('click', async (e) => {
   const open = e.target.closest('.open-series');
   if (open) {
     document.body.classList.remove('maintenance');
+    $('#seriesList').classList.remove('active');
     // unfold the genre first, or the series it lands on is the one row in the
     // column that cannot be seen
     showSeriesOf(open.dataset.genre, true);
-    return void selectSeries(open.dataset.genre, open.dataset.series, null);
+    await selectSeries(open.dataset.genre, open.dataset.series, null);
+    // and whose it is, marked in the authors column the series view fills —
+    // the series is what is selected, so this is said, not browsed to
+    const who = [...document.querySelectorAll('#authors li')].find((l) => l.dataset.name === open.dataset.author);
+    if (who) who.classList.add('active');
+    return;
   }
   const button = e.target.closest('.copy-search');
   if (!button) return;
