@@ -244,11 +244,30 @@ async function readMeta(files, bookPath) {
     }
     const c = tags.common || {}, f = tags.format || {};
     meta.duration += f.duration || 0;
-    meta.tracks.push({ title: c.title || path.basename(file, path.extname(file)), duration: f.duration || 0 });
+    meta.tracks.push({ tagTitle: c.title || '', duration: f.duration || 0 });
     if (i === 0) Object.assign(meta, firstFileMeta(tags));
   }
   if (!meta.cover) meta.cover = localCover(bookPath);
+  meta.tracks = namedTracks(meta.tracks, files);
   return meta;
+}
+
+// What a track is called. Its title tag only when the tags tell the tracks
+// apart: a book whose every file says the same title is a book whose files carry
+// the *book's* name, or somebody else's — the owner's "Journey to the Center of the
+// Earth" played its thirteen right files under "Jurassic World", a name none of
+// them has on disk (2.14.104). This app's own tag write puts the book title in
+// every file too, so after one of those every track read as the book. Then the
+// file names are what tells them apart, and what the owner sees in his folder.
+export function namedTracks(tracks, files) {
+  const said = tracks.map((t, i) => (t.tagTitle || '').trim()
+    && t.tagTitle.trim() !== path.basename(files[i], path.extname(files[i])) ? t.tagTitle.trim() : '');
+  const distinct = new Set(said.filter(Boolean)).size;
+  const tagsTellApart = said.every(Boolean) && distinct === said.length && said.length > 1;
+  return tracks.map((t, i) => ({
+    ...t,
+    title: tagsTellApart ? said[i] : path.basename(files[i], path.extname(files[i])),
+  }));
 }
 
 // Prepared once and reused. Preparing inside the per-book loop held a native
@@ -272,6 +291,8 @@ const q = {
   idByPath: db.prepare('SELECT id FROM books WHERE path = ?'),
   dropTracks: db.prepare('DELETE FROM tracks WHERE book_id = ?'),
   addTrack: db.prepare('INSERT INTO tracks (book_id, idx, path, title, duration) VALUES (?, ?, ?, ?, ?)'),
+  storedTracks: db.prepare('SELECT id, path, title FROM tracks WHERE book_id = ? ORDER BY idx'),
+  renameTrack: db.prepare('UPDATE tracks SET title = ? WHERE id = ?'),
   allBookPaths: db.prepare('SELECT id, path FROM books'),
   dropBook: db.prepare('DELETE FROM books WHERE id = ?'),
   // Files a scan could not read go on the same list a disk check writes, since
@@ -322,6 +343,12 @@ async function addBook(genre, author, series, bookPath, files = null, force = fa
       // the audio since the last scan
       told.cover || existing.cover || localCover(bookPath),
       existing.id);
+    // The names its tracks were given, judged again by the rule that names them
+    // now — from what is stored, without reading a file. A book scanned before
+    // 2.14.104 kept the one title all its files shared for every track.
+    const stored = q.storedTracks.all(existing.id);
+    namedTracks(stored.map((t) => ({ tagTitle: t.title })), stored.map((t) => t.path))
+      .forEach((t, i) => { if (t.title !== stored[i].title) q.renameTrack.run(t.title, stored[i].id); });
     noteUnreadable(existing.id, files.length,
       told.unreadable ? [{ file: files[0], why: told.unreadable }] : [], true);
     return 1;

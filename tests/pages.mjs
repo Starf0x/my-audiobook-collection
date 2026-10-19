@@ -1500,6 +1500,54 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     await settle();
     check('but twice in a moment is still one return', window.eval('window.askedAgain || 0'), 1);
   }
+
+  // A refresh whose answer comes after the reader has gone somewhere else
+  // (2.14.104). `plays-on` saw it once in four runs: a genre asked for from
+  // `/player` opened, and the shelves a returning focus had asked for were drawn
+  // over it a moment later, columns cleared and all. Here the answer is held
+  // back on purpose, so the order is the bad one every time.
+  for (const page of ['listen.html', 'index.html']) {
+    let release = null;
+    let hold = false;
+    const HOME = { continue: [{ id: 4, title: 'A Book', author: 'An Author', genre: 'Fantasy', tracks: 3, track_idx: 0, duration: 1800, percent: 5 }], recent: [] };
+    // eslint-disable-next-line no-await-in-loop -- two pages, one after the other
+    const { window, document } = await open(page, {
+      '/api/home': () => (hold ? new Promise((r) => { release = () => r(HOME); }) : HOME),
+      '/api/authors': [{ name: 'An Author', books: 1 }],
+    });
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await window.eval('loadHome()');
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    hold = true;
+    const refreshed = window.eval('loadHome({ refresh: true })');
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await window.eval("selectGenre('Fantasy', null)");
+    release();
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await refreshed;
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    check(`${page}: a refresh that answers after a genre was opened leaves the genre on screen`,
+      [document.querySelectorAll('#authors li').length, !!document.querySelector('#books .list .card.carry-on')],
+      [1, false]);
+
+    // and one that answers while the shelves are still there does refresh them
+    hold = false;
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await window.eval('loadHome()');
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await settle();
+    document.querySelector('#books .list .card.carry-on')?.setAttribute('data-old', '1');
+    hold = true;
+    const again = window.eval('loadHome({ refresh: true })');
+    release();
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await again;
+    check('while one that answers with the shelves still there redraws them',
+      [!!document.querySelector('#books .list .card.carry-on'),
+        !!document.querySelector('#books .list .card.carry-on[data-old]')], [true, false]);
+  }
 }
 
 // --- how fast the book is read ---------------------------------------------

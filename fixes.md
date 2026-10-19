@@ -874,6 +874,24 @@ not happen again, which is what any flaky fault also says.
 **Rule:** a script that starts work which calls into later scripts waits for
 `DOMContentLoaded`. Running in order is not the same as having all run.
 
+### A refresh drew the shelves over the view that came after it (2.14.104)
+
+`plays-on` again, one run in four: a genre asked for from `/player` opened on
+the shelves, and was wiped a moment later — columns empty, the home shelves
+back. A returning `focus` asks for the shelves again when they are what is on
+screen. It checked that *before* asking, and `loadHome` emptied the columns
+*before* awaiting; the answer then drew over whatever had arrived in between.
+Two views in flight, and the slower one won.
+
+**Fixed** with a refresh mode: it clears nothing first, and once the answer is
+in it draws only if the shelves are still on screen. `pages` holds the answer
+back on purpose so the bad order happens every time, on both pages, and goes red
+without the second look.
+
+**Rule:** a check made before an `await` is about the world before it. Anything
+that draws after one asks again whether it is still wanted — and clears nothing
+until it knows.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

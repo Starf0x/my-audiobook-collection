@@ -316,8 +316,22 @@ const comingBack = () => {
   // drawn as a card now, so a reader with exactly one book on the go had no
   // shelf at all — and coming back stopped refreshing for the very person it
   // was written for, who had one book and was listening to it on their phone.
-  if ($('#books .list')?.querySelector('[data-shelf="Continue listening"], .card.carry-on')) window.loadHome?.();
+  //
+  // As a refresh, and that matters (2.14.104): the shelves are on screen *now*,
+  // but the answer takes a moment, and in that moment the reader — or the page
+  // itself, opening a genre asked for from `/player` — may have gone somewhere
+  // else. A plain `loadHome` cleared the columns first and drew the shelves over
+  // whatever had arrived meanwhile; `plays-on` caught it once in four runs, the
+  // genre opened and then wiped. A refresh clears nothing and draws only if the
+  // shelves are still what is on screen when the answer comes.
+  if ($('#books .list')?.querySelector('[data-shelf="Continue listening"], .card.carry-on')) {
+    window.loadHome?.({ refresh: true });
+  }
 };
+// Whether the home shelves are what the book column shows.
+function homeOnScreen() {
+  return !!$('#books .list')?.querySelector('[data-shelf], .card.carry-on');
+}
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) wentAway = true; else comingBack();
 });
