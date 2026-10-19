@@ -555,6 +555,30 @@ seconds after starting it**, since a unit that dies in its first second leaves
 because it restarted whoever asked and there is no reply to send; Settings reads
 that, which is how a failed update is heard about at all.
 
+**And a bar while it runs** (2.14.96). The owner pressed Install and saw nothing:
+from the pulldown Settings is shut, and its one line was all that said anything.
+Now the updater writes `update-progress.json` before each of its six steps —
+looking, stopping the app, fetching, `npm ci`, starting, checking it stays up —
+and once at the end with `done`, `ok` and the reason. The app writes step 0
+itself when it asks, so the bar has something to say before root's side has
+noticed. `GET /api/update/progress` hands it over with the running version, and
+the page shows it on the bar every long job uses, at the foot of the page:
+*Step 4 of 6: Installing what v2.14.96 needs*. For two of the steps the app is
+down and does not answer; the bar keeps the last step and says it is waiting
+for the restart, not that it failed. It ends when the version changes (reload),
+or when the file says it finished without one (already the newest, or failed,
+in the updater's words). The script writes local time with an offset and the
+app writes UTC, so "is this from this run" is asked of times, not of text — as
+text, a failure from last week read as this run's.
+
+What runs is the copy of `update.sh` the installer put in `/usr/local/bin`, so
+a container kept the updater it was installed with for ever. The updater now
+replaces that copy with the new version's right after the checkout; `install`
+writes a new file, so the run in progress is not disturbed. The first update
+*to* 2.14.96 is still done by the old updater, which writes no steps: the bar
+says it is working once the request has been picked up, and the steps appear
+from the update after.
+
 `howInstalled()` decides what is offered: a git checkout with the unit beside it
 takes the button, a checkout without it gets the two commands, and an image is
 told to pull a new one — which is the host's job and not something this could do
