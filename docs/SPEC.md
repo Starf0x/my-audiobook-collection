@@ -1980,6 +1980,15 @@ and an author's books open under a head of their own — `Fantasy · Stephen Kin
 on a home tile is a link too, to the same place; it stops its click, because
 the tile's own click starts the book.
 
+**The player says the genre too** (2.14.56), beside the author on one line — in
+the bar and on `/player` — and it is a way there. On a page with the columns
+(`/`, `/admin`) it calls `selectGenre` at once. `/player` and `/ha` have none,
+so `goToGenre` writes it to `sessionStorage.openGenre` and goes to `/`, where
+`openGenreAsked` opens it once the shelves have loaded and forgets it, so a
+reload does not open it again. The book crosses with the carry like any other
+move between pages, and goes on playing. A book with no genre shows nothing —
+no dot and an empty link.
+
 `/api/year` takes four digits or answers with an empty list. An **empty** year
 is the part of that guard which does something: the column is text and an
 undated book holds `''`, so without it `?year=` hands back every undated book in

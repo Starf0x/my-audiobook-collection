@@ -1839,6 +1839,9 @@ window.begin = async () => {
     loadReplaced(), loadBroken(), loadSkipped(), loadConvertible(), loadConverted(),
     loadSeriesCount(), loadAccounts(), loadRequests()]);
   await loadHome();
+  // a genre asked for from the player on another page; after the shelves, so
+  // it is what ends up on screen
+  await openGenreAsked();
   // a scan another browser started is still running: follow it instead of
   // offering a button that would only be refused
   const tagging = await api('/api/tagall/status').catch(() => null);

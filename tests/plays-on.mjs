@@ -470,6 +470,10 @@ async function run() {
     await click('#giGo');
     await waitFor(`document.querySelector('#gate').hidden`, 'the sign-in card to go');
     await waitFor(shows('#genres li', 'Fantasy'), 'the Fantasy genre');
+    // and the home shelves, which `begin` draws *after* the genres: browsing
+    // before they land lets them draw over the author's books, and a whole run
+    // once broke on "gave up waiting for the book card" with the shelf on screen
+    await waitFor(`document.querySelector('#books .list .shelf, #books .list .card')`, 'the home shelves');
 
     // browse to the book and press its Play button — a real click, which is what
     // gives this page the right to make a sound in the first place
@@ -858,6 +862,9 @@ async function run() {
       return {
         title: (document.querySelector('#pTitle') || {}).textContent || '',
         author: (document.querySelector('#pAuthor') || {}).textContent || '',
+        genre: (document.querySelector('#pGenre') || {}).textContent || '',
+        genreW: Math.round((document.querySelector('#pGenre') || { getBoundingClientRect: () => ({ width: 0 }) })
+          .getBoundingClientRect().width),
         chapter: (document.querySelector('#pTrack') || {}).textContent || '',
         play: box('#pPlay'), prev: box('#pPrev'), next: box('#pNext'),
         cover: box('#pCover'), seek: box('#seek'),
@@ -1004,6 +1011,26 @@ async function run() {
     await atPage('/');
     check('and the way back to the shelves carries the book with it',
       (await reallyPlaying()).title, wasPlaying);
+
+    // The genre beside the author, on screen and not only in the markup, and a
+    // way into it. From `/player` there are no columns to open it in, so the
+    // shelves open on it — with the book still going.
+    check('the player page says the genre beside the author, on screen',
+      [onPlayer.genre, onPlayer.genreW > 0], ['Fantasy', true]);
+    await goto(`${BASE}/player`, '/player');
+    await pickedUp();
+    await click('#pGenre');
+    await atPage('/');
+    await waitFor(`[...document.querySelectorAll('#genres li.active')].some((l) => l.dataset.name === 'Fantasy')`,
+      'the genre to be opened');
+    const inGenre = await evaluate(`(() => ({
+      col: document.body.dataset.col,
+      authors: [...document.querySelectorAll('#authors li')].map((l) => l.dataset.name),
+    }))()`);
+    await pickedUp();
+    check('and pressing it there opens that genre on the shelves, the book still playing',
+      [inGenre.col, inGenre.authors.includes('Test Author'), (await reallyPlaying()).title],
+      ['authors', true, wasPlaying]);
 
     await send('Emulation.clearDeviceMetricsOverride');
 
