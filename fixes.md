@@ -819,6 +819,42 @@ administrator goes red with the old line.
 it out once and use that. And a feature about a person is checked as each kind
 of person the app has — here a listener *and* the administrator.
 
+### Series · 123, and no way to take it off (2.14.80)
+
+The owner's "Outlanders 50 - Janus Trap" read *Series · 123*, and emptying the
+series in the dialog changed nothing. Three faults, found together:
+
+* **A number was taken for a name.** A lookup already refused "a number is not
+  a name" for Google's words; the scanner's reading of the files, and the
+  lookup's own last-resort fallback, did not. And a value kept before was kept
+  again by every scan, because the scan falls back to what the book had.
+* **"Empty" meant "keep", with nothing that meant "clear".** The server reads an
+  empty series as "nothing to say" — rightly, since a lookup with its series
+  unticked sends one. But that left no way to say "take it off". Worse, the
+  dialog showed only the folder's series, so a series from the tags opened as an
+  empty field: there was nothing on screen to clear. Even cleared in the
+  database, the next scan read it back out of the files, because the tag write
+  merges and never removed the frame.
+* **The SERIES text frame was never read.** `seriesFromTags` looked for a frame
+  with id `TXXX` and the text inside; music-metadata names it `TXXX:series` and
+  hands over the string. It had matched nothing since the day it was written,
+  and nothing said so.
+
+Where the 123 itself came from was not seen: The owner's files were not looked at,
+and it could be the grouping or movement frame, an earlier lookup, or a folder.
+
+**Fixed** with `seriesName` (digits alone are not a series, from the files or
+from Google, and not kept from before), an explicit `clearSeries` from the dialog
+when a shown series is emptied — the dialog now shows the tags' series too — and
+an emptied grouping and SERIES frame when the tags are written, measured first
+in a probe: node-id3 removes the grouping frame for an empty one.
+`tests/series-tags.mjs` scans real tagged MP3s; five mutations, five reds.
+
+**Rule:** a reader that matches by the shape of a library's output gets one
+test against that library's real output, not against the shape you remember.
+And where "empty" has to mean "leave it", give "remove it" a word of its own —
+otherwise the one thing nobody can do is undo.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

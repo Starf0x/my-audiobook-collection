@@ -466,12 +466,15 @@ async function seriesFor(it, key, trace = {}, deep = false) {
   if (first.seriesId && !seriesNames.has(first.seriesId)) trace.asked.push('series name');
   const canonical = await seriesName(first.seriesId, key);
   Object.assign(trace, { nameStatus: canonical.status, nameFailed: canonical.failed || '' });
-  const named = canonical.name
+  const named = [canonical.name
     // last resort, and the reason it is last: this field is a book title as often
     // as it is a series name
     || (info.shortSeriesBookTitle
       ? seriesIn(info.shortSeriesBookTitle, [VOLUME_ON_THE_END])?.series || info.shortSeriesBookTitle.trim()
-      : '');
+      : '')]
+    // and a number is not a name, wherever it came from: `seriesIn` already
+    // refused one, and the plain fallback beside it took it anyway (2.14.80)
+    .map((n) => (/^[\d\s.#-]*$/.test(n || '') ? '' : n))[0];
   const same = named.toLowerCase() === text.title.toLowerCase();
   const out = { title: text.title, series: same ? '' : named, seriesNo: same || !named ? 0 : no };
   Object.assign(trace, {
@@ -642,7 +645,14 @@ async function apply_(book, pick, writeTags, progress) {
   // keys, and a scan derives them from the folders anyway. Only the tag gets pick.
   // The series is the tag kind, not the folder kind: it names the series without
   // moving the book. Moving it is Edit metadata's Series field, which is a folder.
-  const series = pick.series || book.tag_series || '';
+  //
+  // An empty `series` means "nothing to say": a lookup whose series was
+  // unticked sends one, and that must leave the book's series alone. Taking a
+  // series *off* is `clearSeries`, which only the edit dialog sends, when its
+  // field held one and was emptied. Without it there was no way to remove a
+  // series that lived only in the tags — the owner's "Series · 123" (2.14.80).
+  const clearing = pick.clearSeries === true;
+  const series = clearing ? '' : (pick.series || book.tag_series || '');
   // one number, and the series the book is shown under has first claim on it: a
   // book living in a series folder must not be reordered inside it by a number
   // that belongs to another series entirely
@@ -651,7 +661,7 @@ async function apply_(book, pick, writeTags, progress) {
               tag_series = ?, series_no = ? WHERE id = ?`)
     .run(pick.title || book.title, pick.narrator || book.narrator,
          pick.year || book.year, pick.description || book.description, cover,
-         series, numbers ? (pick.seriesNo || 0) : book.series_no || 0, book.id);
+         series, clearing ? 0 : (numbers ? (pick.seriesNo || 0) : book.series_no || 0), book.id);
 
   if (!writeTags) return { written: 0 };
 
@@ -685,6 +695,14 @@ async function apply_(book, pick, writeTags, progress) {
     };
     // an empty value would write an empty frame, which reads back as "present"
     for (const [k, v] of Object.entries(tags)) if (!v) delete tags[k];
+    // A series taken off comes out of the files too, or the next scan — which
+    // trusts the files — reads it straight back. An empty grouping is how
+    // node-id3 removes that frame (measured: the frame is gone afterwards), and
+    // an empty SERIES text is one the scan skips.
+    if (clearing) {
+      tags.contentGroup = '';
+      tags.userDefinedText = [{ description: 'series', value: '' }];
+    }
     const files = db.prepare('SELECT path FROM tracks WHERE book_id = ? ORDER BY idx').all(book.id)
       .map((t) => t.path).filter((p) => p.toLowerCase().endsWith('.mp3'));
     progress.total = files.length;

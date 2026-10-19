@@ -431,6 +431,44 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     ['From Google', '3']);
 }
 
+// edit.js: a series that lives only in the tags can be seen, and taken off
+//
+// The owner's "Outlanders 50 - Janus Trap" read Series · 123 on its card. The 123
+// was the tag's, not a folder's, so the dialog — which showed the folder's
+// series alone — opened with an empty field, and saving sent an empty series
+// that the server reads as "nothing to say". There was no way to remove it.
+{
+  const sent = [];
+  const { window, document } = await open('index.html', {
+    '/api/books': {
+      id: 11, title: 'Outlanders 50 - Janus Trap', author: 'James Axler', genre: 'Science Fiction',
+      series: '', folderSeries: '', tag_series: '123', series_no: 0,
+      path: '/audiobooks/Science Fiction/James Axler/Outlanders 50 - Janus Trap', tracks: [{ id: 1 }],
+    },
+    '/api/apply': (url, opts) => { sent.push(['apply', JSON.parse(opts.body)]); return { written: 0 }; },
+    '/api/move': (url) => { sent.push(['move', url]); return { ok: true }; },
+  });
+  await window.editMeta(11);
+  await settle();
+  check('the dialog shows the series the card shows, though it lives in the tags only',
+    document.querySelector('#eSeries').value, '123');
+
+  // left as it is, it moves nothing: a tag is not a folder
+  document.querySelector('#saveEdit').click();
+  await settle(150);
+  check('and saving it unchanged neither moves the book nor clears anything',
+    [sent.map(([what]) => what), sent[0]?.[1]?.pick?.clearSeries], [['apply'], undefined]);
+
+  sent.length = 0;
+  await window.editMeta(11);
+  await settle();
+  document.querySelector('#eSeries').value = '';
+  document.querySelector('#saveEdit').click();
+  await settle(150);
+  check('emptied, it asks for the series to come off, and moves nothing',
+    [sent.map(([what]) => what), sent[0]?.[1]?.pick?.clearSeries], [['apply'], true]);
+}
+
 // --- a row on the page of accounts ----------------------------------------
 // Two of these are faults the owner reported on one screen. His own row read "no
 // password yet" beside a name he types a password for every week, and *May

@@ -112,7 +112,13 @@ window.editMeta = async function (id, over, genre) {
   $('#eAuthor').value = v.author || '';
   // a result with no series, or one whose series was unticked, leaves the book
   // where it is filed: an empty field here would move it out of its series folder
-  $('#eSeries').value = (over && over.series) || b.folderSeries || b.series || '';
+  //
+  // The series the card shows, which may live only in the tags: this showed the
+  // folder's alone, so a book reading "Series · 123" opened with an empty field
+  // and there was nothing to clear (2.14.80).
+  const folderSeries = b.folderSeries || b.series || '';
+  const shownSeries = folderSeries || b.tag_series || '';
+  $('#eSeries').value = (over && over.series) || shownSeries;
   // and a result that names no number leaves the one the book already has: an
   // empty field here would take it off on the next save
   $('#eSeriesNo').value = (over && over.seriesNo) || b.series_no || '';
@@ -128,8 +134,10 @@ window.editMeta = async function (id, over, genre) {
   forgetPastedCover();
   showCover(ownCover);
   $('#eCoverUndo').onclick = () => { forgetPastedCover(); showCover(ownCover); };
-  const wasSeries = b.folderSeries || b.series || '';
   const save = async (writeTags) => {
+    const now = $('#eSeries').value.trim();
+    // emptied, where there was one: the series comes off, tags and all
+    const clearSeries = !now && !!shownSeries;
     const pick = {
       ...(over || {}),
       title: $('#eTitle').value.trim(), author: $('#eAuthor').value.trim(),
@@ -139,6 +147,7 @@ window.editMeta = async function (id, over, genre) {
       // number below it has a series to belong to
       series: $('#eSeries').value.trim(),
       seriesNo: Number($('#eSeriesNo').value) || 0,
+      ...(clearSeries ? { clearSeries: true } : {}),
       // only when one was pasted: an absent key leaves the book's own art alone,
       // and an empty string would read as "no cover" on the way through
       ...(pastedCover ? { cover: pastedCover } : {}),
@@ -147,9 +156,14 @@ window.editMeta = async function (id, over, genre) {
     // The series is a folder level, so a change to it has to move the book, or
     // the next scan would read the old folders and undo it. The folder keeps its
     // own name: renaming that is what Move… is for.
-    if ($('#eSeries').value.trim() !== wasSeries) {
+    //
+    // Only the folder moves the book. A series that lives in the tags alone is
+    // not a folder: left as it was it moves nothing, and emptied it is cleared
+    // by `clearSeries` above — a new name typed in still files the book there.
+    const moves = folderSeries ? now !== folderSeries : (!!now && now !== shownSeries);
+    if (moves) {
       const { ok } = await fileWork(`/api/move/${id}`, {
-        genre: b.genre, author: b.author, series: $('#eSeries').value.trim(),
+        genre: b.genre, author: b.author, series: now,
         title: b.path.split(/[\\/]/).pop(),
       }, 'Move');
       if (!ok) return;
