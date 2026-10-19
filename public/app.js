@@ -85,13 +85,19 @@ $('#home').onclick = loadHome;
 // --- landing view ------------------------------------------------------
 
 
-async function loadHome() {
-  loadListened();
-  document.body.classList.remove('maintenance');
-  $('#q').value = '';
-  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
-  $('#authors ul').innerHTML = '';
+// `{ refresh: true }`: coming back to these shelves — `homeOnScreen` in
+// browse.js says why that clears nothing and may end up drawing nothing.
+async function loadHome(opts) {
+  const refresh = !!(opts && opts.refresh === true);
+  if (!refresh) {
+    loadListened();
+    document.body.classList.remove('maintenance');
+    $('#q').value = '';
+    document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+    $('#authors ul').innerHTML = '';
+  }
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
+  if (refresh && !homeOnScreen()) return;
   // The book you are in the middle of, as the card it is everywhere else —
   // cover, series, year, how long, what it is about, and the one button. A tile
   // says the title and a sliver of progress; this is what you actually came

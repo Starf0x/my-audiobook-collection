@@ -25,12 +25,19 @@ $('#toAdmin').onclick = () => location.assign('/admin');
 // --- shelves ------------------------------------------------------------
 
 
-async function loadHome() {
-  loadListened();
-  $('#q').value = '';
-  document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
-  $('#authors ul').innerHTML = '';
+// `{ refresh: true }` is coming back to a page that was showing these shelves:
+// see `homeOnScreen` in browse.js for why that clears nothing first, and draws
+// only if the shelves are still what is on screen when the answer comes.
+async function loadHome(opts) {
+  const refresh = !!(opts && opts.refresh === true);
+  if (!refresh) {
+    loadListened();
+    $('#q').value = '';
+    document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
+    $('#authors ul').innerHTML = '';
+  }
   const d = await api('/api/home?user=' + encodeURIComponent(state.user));
+  if (refresh && !homeOnScreen()) return;
   // The book you are in the middle of, as the card it is everywhere else —
   // cover, series, year, how long, what it is about, and the one button. A
   // tile says the title and a sliver of progress; this is what you actually
