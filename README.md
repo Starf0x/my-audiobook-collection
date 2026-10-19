@@ -315,12 +315,11 @@ check the paths it filled in:
 The last three are optional, and the two variables are masked in the form. Then
 **Apply**, and open the WebUI:
 
-1. The first visit asks who is listening, and asks you to **type** a name. That
-   first page, at the bare address, is the listening one; the page that changes
-   things is at `/admin`, or one press of **Admin**: a
-   browser is only ever offered the names it has used itself, so nobody arriving
-   at the address is handed a list of everyone in the house. On your next visit
-   the same browser offers the name back.
+1. The first visit asks you to **make an administrator** — a name and a password
+   of at least eight characters — unless `ADMIN_PASSWORD` is set on the container,
+   in which case it asks for that. The first page, at the bare address, is the
+   listening one; the page that changes things is at `/admin`, or one press of
+   **Admin**.
 2. **Settings ▾ → Library and maintenance** → add `/audiobooks` as a library folder (*Browse…* picks it from
    the container's own view of the disk) → **Save**.
    If `/audiobooks` also holds folders you do not want scanned, add the genre
@@ -330,8 +329,8 @@ The last three are optional, and the two variables are masked in the form. Then
    pulldown beside it picks which one to scan, or all of them — each option says
    what the button will do: *Scan all libraries*, *Scan /audiobooks/Fantasy*.
 
-Set an admin password before you share the address with anyone: until one is
-set, whoever opens the app may change the collection.
+Nobody else gets in until you let them: a visitor asks for an account and you
+approve it under **Accounts** — see *Who may listen*.
 
 ### Updating
 
@@ -345,13 +344,15 @@ something else.
 top right and the container row gains a version column, the context menu a *Force
 update* entry. Neither is shown in Basic View.
 
-### The two variables
+### The admin and Google variables
 
-`ADMIN_PASSWORD` and `GOOGLE_API_KEY` live here and nowhere else. Neither has a
-field in Settings, so there is no second copy to drift out of step and both
-survive an emptied appdata folder. Leave the password empty for an install that
-nobody has to unlock; fill it in and every browser has to unlock before it can
-change anything.
+`ADMIN_USER`, `ADMIN_PASSWORD` and `GOOGLE_API_KEY` live here and nowhere else.
+None has a field in Settings, so there is no second copy to drift out of step and
+all survive an emptied appdata folder. Leave the password empty and the app asks
+you to make an administrator the first time it is opened, kept hashed in its
+database; fill it in and the container's password wins — which is also the way
+back in if you forget the one made in the app. `ADMIN_USER` is the name that
+administrator goes by.
 
 ### Or with docker compose
 
@@ -414,7 +415,7 @@ right from the host. Privileged is the usual answer for a container that writes
 to a media share, which is why this one defaults to it.
 
 If you would rather keep it unprivileged, map the owning group through instead —
-on the host, container stopped, in `/etc/pve/lxc/120.conf`:
+on the host, container stopped, in `/etc/pve/lxc/<id>.conf`:
 
 ```
 lxc.idmap: u 0 100000 65536
@@ -558,10 +559,10 @@ the app in the header leads back to the shelves from wherever you are.
 The old addresses, `/listen.html` and `/index.html`, still answer with a redirect,
 so an old bookmark or a link you handed out keeps working.
 
-The password is `ADMIN_PASSWORD` on the container, and changing it means changing
-it there and restarting. Until one is set the app behaves as a private install:
-whoever opens it may do anything. Once set, every
-request that changes something is refused unless the browser has unlocked, so
+The password is the one made on the first visit, or `ADMIN_PASSWORD` on the
+container, which wins when it is set — changing that one means changing it there
+and restarting. Every request that changes something is refused unless the
+browser has unlocked, so
 hiding the buttons is not what protects it — the server does. A visitor who types
 the admin address is sent to the listening page.
 
@@ -579,29 +580,25 @@ Everything else follows the screen: the header wraps to two rows with the search
 across the width, a book card puts its cover and text side by side and its buttons
 in a grid under them, dialogs become full-screen sheets that scroll, the player
 keeps cover, title and track on one line with the transport across the
-bottom, and every row and button is at least 40 pixels tall. Fields are set at
+bottom — and pressing Play on a book opens the player page, where the cover is
+large and there is one play/pause, and every row and button is at least 40 pixels tall. Fields are set at
 16px so a phone does not zoom the page when you tap one. A tablet, and a phone on
 its side, still get all three columns — narrower.
 
 The long list of tags a file carries is a paragraph on a phone, so a card there
 says *In MP3: 10 tags* instead; the full list is still what the desktop shows.
 
-## Names, and why one browser is not offered another's
+## Names, and whose place is whose
 
-A listener has no password of their own — the app is meant to be shared inside a
-house, and the single admin password guards everything that *changes* the
-collection. What keeps one person out of another person's place in a book is that
-**a browser is only ever offered the names it has said itself**. The names a
-browser has used are kept in a cookie of its own; the server hands back nothing
-else. So a stranger who opens the listening page sees an empty dialog and a field,
+Every listener is an account with a password of their own (see *Who may listen*),
+and the admin password guards everything that *changes* the collection. What keeps
+one person out of another person's place in a book is that sign-in: the browser
+holds a random token in a cookie, nothing about the person is in it, and only an
+approved account can get one. A stranger who opens the page sees the sign-in card,
 not a list of the household.
 
-Two things follow. A browser two people share is offered both names once both have
-typed theirs, which is what a family tablet needs. And someone who knows an
-existing name exactly can still type it and pick that place up — on a new phone
-that is the *point*, and without a password per listener there is no way to tell
-the two apart. If that matters more than convenience, give each listener their own
-name that others do not know.
+A browser two people share — a family tablet — is signed in as one of them at a
+time: sign out, and the other signs in with their own name and password.
 
 ## Playing, and stopping
 
@@ -1071,7 +1068,9 @@ creating and registering the folder if it is new — and writes that genre into 
 tags.
 
 **A lookup is one request.** The search itself, and that is all: the series is
-read from what the answer already carries. Where a result names none, the line
+read from what the answer already carries — plus, only when that answer names a
+Google series this app has not seen yet, one request for its name, kept for as
+long as the app runs. Where a result names none, the line
 under it says so and *Look harder for the series* asks Google about that edition,
 its ebook and its other records — a handful of requests, spent only when you ask
 for them. That matters twice over: a free key allows a thousand requests a day,
@@ -1086,12 +1085,12 @@ Cloud Console for the project the key belongs to: **Books API** enabled, the key
 restricted to other APIs, and its daily quota not zero. A key from a project with
 no verified billing is answered this way.
 
-**When Google says it is busy.** A lookup is not one request: the search, a probe
-per result, the series name, sometimes the ebook catalogue and a wider search —
-and sending those in a burst is what earns a *503 busy* in the first place. They
-go out one at a time, 150 ms apart. A 503 or a 429 is waited out for as long as
-Google's own `Retry-After` header says, or 1 and 3 seconds for a probe and 10, 20
-and 30 for the search when it says nothing; a header asking for more than a minute
+**When Google says it is busy.** Whatever a lookup sends — the search, and the
+requests *Look harder for the series* adds — goes out one at a time, 150 ms
+apart, since a burst is what earns a *503 busy* in the first place. A 503 or a 429 is waited out for as long as
+Google's own `Retry-After` header says, or — when it says nothing — eight short
+tries rising from 0.7 to 8 seconds for the search (under half a minute in all),
+and four from 0.7 to 3 seconds for any other request; a header asking for more than a minute
 is treated as a refusal, so the dialog tells you instead of hanging. Answers are
 kept for five minutes, so looking the same book up again costs one search, and
 every book of a series shares one lookup of that series' name.
@@ -1197,7 +1196,10 @@ answers often enough with *service temporarily unavailable*. If lookups keep
 saying Google is busy, that setting is the first thing to try: your own country, or
 *let Google decide*, which leaves the parameter off the requests altogether.
 
-So the app asks in this order and stops at the first answer:
+So the app asks in this order and stops at the first answer. An ordinary lookup
+reads the words, any series data the search answer already carried (naming it with
+`series/get` where needed) and the other results; asking `volumes/<id>`, the ebook
+catalogue and the forty records is what *Look harder for the series* adds:
 
 | Step | Costs | What it gets |
 | --- | --- | --- |
@@ -1211,7 +1213,7 @@ So the app asks in this order and stops at the first answer:
 The last three are what make it work in practice. A series found on any edition in
 the list is offered on all of them — matched by title, so a different book that
 happened to match the words lends nothing — and it says where it came from. When no
-edition in the list has one, the ebook catalogue is asked once. Failing that, the
+edition in the list has one, *Look harder* asks the ebook catalogue once. Failing that, the
 lookup widens from five records to forty: Google holds dozens of records per book,
 and the one somebody entered as *A Kiss of Shadows (Merry Gentry Book 1)* names the
 series in its title even when the record Google matched does not. Only records of
@@ -1226,7 +1228,8 @@ and the answer is *Edit metadata* — type the series once and it stays, in the 
 and in the tags.
 
 A book whose title says its series is never asked about again; a book like *A Kiss
-of Shadows* costs two extra requests, and the second of them once per series, not
+of Shadows* costs two extra requests when you press *Look harder*, and the second
+of them once per series, not
 once per book — a shelf of *Merry Gentry* pays for the name a single time. Neither
 request can take the lookup down: an eight-second limit each, and anything that
 fails costs the series and nothing else.
@@ -1379,13 +1382,9 @@ than starting it again on its own, with its place kept.
 
 ## Who may listen
 
-Two things on the container decide it, and they work together: **`ADMIN_USER`**
-and **`ADMIN_PASSWORD`**.
-
-Leave both empty and nothing is locked — the private install this began as.
-
-Set both and the whole app is shut, the listening page included. A visitor sees a
-sign-in card and nothing behind it. They press *I have no account yet* and give:
+The whole app is shut, the listening page included: there is always an
+administrator (see *The first time you open it*), and nobody else gets in without
+an account you have approved. A visitor sees a sign-in card and nothing behind it. They press *I have no account yet* and give:
 
 * the name they want to listen under,
 * a password of their own choosing, at least eight characters,
@@ -1402,8 +1401,8 @@ whether they claim to know you. Each person has two ticks and a delete:
 * **May download** hands somebody whole books before they have earned them.
 * **Delete…** removes the account and everything that was only about that
   person: their place in every book, what they had finished, the books they
-  played to the end, what they downloaded, and their hearts. The books
-  themselves are untouched.
+  played to the end, what they downloaded, their hearts, and any browser still
+  signed in as them. The books themselves are untouched.
 
 Once approved they sign in with the name and password they chose — there is
 nothing for you to send them.
@@ -1413,9 +1412,7 @@ visit pushes it out again, so it is seven days of not listening that ends it.
 
 That page also shows, per person, when they were last here — in days — how many
 books they have started and finished, how many hours that is, and how many they
-have hearted. **Delete** takes everything that was only about them: their place
-in every book, what they had finished, their hearts, and any browser still signed
-in as them. The books are untouched.
+have hearted.
 
 If you had listeners before 2.7.0, they are all approved and carry no password
 yet; the first sign-in with such a name chooses one, and the Accounts page marks

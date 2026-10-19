@@ -585,6 +585,30 @@ async function run() {
     check('a long chapter name does not widen the page on a desktop either',
       [wide.sideways, wide.selectWidth <= 240], [false, true]);
 
+    // Pressing Play on a desktop stays on the shelf, which is the half of the
+    // next section that has to be asked at this width. `/player` is the phone's
+    // answer to a bar with no room in it; a desktop window holds the shelf and
+    // the bar at once, and taking the whole window away to show one book would
+    // be a loss there rather than a gain. Asked of a *paused* book, so this is a
+    // press that starts one — the very press that leaves the page on a phone.
+    await goto(`${BASE}/`, '/');
+    await pickedUp();
+    // the shelf is drawn after `/api/home` answers, which can be after the
+    // player has picked the book up — ask for the card, do not assume it
+    await waitFor(`document.querySelector('.card[data-id]')`, 'the carry-on card');
+    const theBook = await evaluate(`(() => {
+      const c = document.querySelector('.card[data-id]');
+      return c ? c.dataset.id : null;
+    })()`);
+    const press = `.card[data-id="${theBook}"] .actions button`;
+    await click(press);
+    await sleep(500);
+    check('pressing Play on a desktop stays on the shelf',
+      [await evaluate('location.pathname'), (await snap()).paused], ['/', false]);
+    // and back to paused, which is how the phone pass below expects to find it
+    await evaluate(`document.querySelector('#audio').pause()`);
+    await sleep(200);
+
     await send('Emulation.setDeviceMetricsOverride', {
       width: 375, height: 812, deviceScaleFactor: 1, mobile: true,
     });
@@ -724,10 +748,56 @@ async function run() {
     // three buttons that all start and stop the same book. This is the answer:
     // one screen, one book, one play/pause, nothing to scroll.
     //
-    // Reached by tapping the cover in the bar, which is what makes it a way
-    // there rather than a third play/pause. It is a page of its own, so the
-    // book is carried across and picked up — the same carry that already moves
-    // a book between `/`, `/admin` and `/ha`.
+    // Reached by pressing Play on a book, and by tapping the cover in the bar.
+    // It is a page of its own, so the book is carried across and picked up —
+    // the same carry that already moves a book between `/`, `/admin` and `/ha`.
+    //
+    // The press is the one that was missing. `/player` was built and nothing
+    // led to it but the cover, so a reader who pressed Play on a phone stayed
+    // on the shelf with the cramped bar at the bottom — the very thing the page
+    // was built to replace. The owner pressed play on his phone, did not see it,
+    // and that is the whole of the bug.
+    //
+    // From an empty bar first, which is the press that matters most: the first
+    // one of the day, with nothing in hand, taking the way through loading the
+    // book rather than the short cut for the one already there.
+    await click('#pClose');
+    await sleep(300);
+    check('the bar can be put away', (await snap()).hasPlayer, false);
+    await click(press);
+    await atPage('/player');
+    await pickedUp();
+    const pressed = await reallyPlaying();
+    check('pressing Play on a phone opens the player page, playing',
+      [pressed.title.length > 0, pressed.moving], [true, true]);
+
+    await click('#back');
+    await atPage('/');
+    await pickedUp();
+
+    // A press that stops a book is not a press that starts one, and carrying
+    // somebody off to the player page to put a book down would be an odd thing
+    // for a pause to do.
+    await click(press);
+    await sleep(500);
+    const stopped = await snap();
+    check('a press that stops a book stays on the shelf',
+      [await evaluate('location.pathname'), stopped.paused], ['/', true]);
+
+    // and the same press again, now that it starts rather than stops: the short
+    // cut for the book already in hand, which is a second way into `playBook`
+    // and would be a second way to stay on the shelf by mistake.
+    await click(press);
+    await atPage('/player');
+    await pickedUp();
+    const again = await reallyPlaying();
+    check('pressing it again goes there and carries on where it stopped',
+      [again.moving, carriedOn(again, stopped.at)], [true, true]);
+
+    await click('#back');
+    await atPage('/');
+    await pickedUp();
+
     const wasPlaying = (await snap()).title;
     await click('#pCover');
     await atPage('/player');

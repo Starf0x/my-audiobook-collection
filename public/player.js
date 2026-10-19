@@ -27,7 +27,13 @@ window.playBook = async function (id, carried) {
   // A book carried in from the previous page is not a press at all, so it never
   // takes this way out.
   if (!carried && state.book && state.book.id === id && !audio.ended) {
-    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+    // A press that starts a book goes to the player page; a press that stops one
+    // stays where it is. Taking somebody away from the shelf to put a book down
+    // would be an odd thing for a pause to do.
+    if (audio.paused) {
+      if (goesToPlayer() && handOver(id, state.track, audio.currentTime || 0)) return;
+      audio.play().catch(() => {});
+    } else audio.pause();
     return;
   }
   if (!state.user) return toast('Pick a name first.');
@@ -58,6 +64,11 @@ window.playBook = async function (id, carried) {
   // a saved track index can outlive the files it pointed at
   const said = carried ? carried.track : (book.progress ? book.progress.track_idx : 0);
   const at = Math.max(0, Math.min(said, book.tracks.length - 1));
+  // On a phone this is where the press ends: the book is known, its place is
+  // known, and the player page is where it is listened to. A book arriving in a
+  // carry is not a press and is already home.
+  if (!carried && goesToPlayer()
+    && handOver(id, at, book.progress ? book.progress.position : 0)) return;
   // whether a carried book plays again is for the page it arrived on to decide,
   // once it knows whether it was playing when it left the last one
   playTrack(at, carried ? carried.position : (book.progress ? book.progress.position : 0), !carried);
@@ -508,11 +519,42 @@ const CARRY = 'carrying';
 const dropCarry = () => { try { sessionStorage.removeItem(CARRY); } catch { /* private window */ } };
 window.dropCarry = dropCarry;
 
+// Starting a book on a phone *is* going to the player page.
+//
+// `/player` existed but nothing took anybody there except tapping the cover in
+// the bar, which meant a reader who pressed Play on a card stayed on the shelf
+// with the cramped bar at the bottom — the thing the separate page was built to
+// replace. The owner pressed play on his phone and did not see it, which is the
+// whole of the bug.
+//
+// It goes through the carry rather than through the address: the carry is
+// already how a book crosses from one page to the next, and writing it here
+// means `/player` picks the book up by the same route as every other page,
+// playing included. Nothing is started on the page being left, so there is no
+// blip of sound on the way out; `playing: true` is what tells the player page
+// to start it on arrival, and `pickUp` already says so politely if the browser
+// refuses to make a sound for a page it was not clicked into.
+//
+// A tab with no sessionStorage to write would be sent to a player page that
+// could not know what to play, so it says it failed and the caller plays here
+// instead. The page being left must not then overwrite the carry with what it
+// honestly sees — a book sitting paused — hence `handingOver`.
+let handingOver = false;
+const goesToPlayer = () => narrow() && !location.pathname.startsWith('/player');
+const handOver = (id, track, position) => {
+  try {
+    sessionStorage[CARRY] = JSON.stringify({ who: state.user, id, track, position, playing: true });
+  } catch { return false; /* a tab that cannot carry is better off playing here */ }
+  handingOver = true;
+  location.href = '/player';
+  return true;
+};
+
 // pagehide rather than beforeunload: it is the one a phone browser can be
 // relied on to send when the page goes away.
 window.addEventListener('pagehide', () => {
   saveProgress(true);
-  if (!state.book) return;
+  if (handingOver || !state.book) return;
   sessionStorage[CARRY] = JSON.stringify({
     who: state.user,
     id: state.book.id,
