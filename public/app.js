@@ -1348,9 +1348,16 @@ const missingLine = ({ name, author, no, title }) => {
     ? `<a class="linkish" href="https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(title)}"
         target="_blank" rel="noopener" title="Read about ${esc(title)} on Wikipedia, in a new tab">↗</a>`
     : '';
+  // A title and who wrote it, on every line (2.14.128). A hole in the
+  // collection's own numbering knows no title of its own, and said "title
+  // unknown" six times down a series, with the author nowhere on the line. Where
+  // Wikidata knows the series its titles are used (see `drawSeriesPane`); where
+  // nothing does, the line says which book of which series it is — something to
+  // search for, rather than an admission.
   return `<li class="missing-vol">
     <span class="no">${esc(String(no))}</span>
-    <span class="what">${title ? esc(title) : '<em>title unknown</em>'}</span>
+    <span class="what">${title ? esc(title) : `<em>${esc(name)}, book ${esc(String(no))}</em>`}</span>
+    ${author ? `<span class="by">${esc(author)}</span>` : ''}
     <button class="copy-search linkish" data-copy-text="${esc(search)}"
       title="Copy “${esc(search)}” to search for it">⧉</button>${wiki}
   </li>`;
@@ -1378,18 +1385,25 @@ const missingSeries = (r) => `<div class="series-head">Series · ${seriesLink(r)
 // The same, for a hole in the collection's own numbering. There is no title to
 // show — nothing here knows what book 9 is called — so the number is the name,
 // and the series head carries the sentence that qualifies the whole group.
-const ownGapSeries = (g) => `<div class="series-head">Series · ${seriesLink(g)}
+const ownGapSeries = (g, known = {}) => `<div class="series-head">Series · ${seriesLink(g)}
     <button class="copy-search linkish" data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}"
       title="Copy “author - series” to search for it">⧉ copy</button></div>
   <div class="series-gap missing">${esc(g.says)}${g.unnumbered
   ? ` ${g.unnumbered} book(s) here carry no volume number, so one of these may be among them.`
   : ''}</div>
   <ul class="missing-vols">${g.missing
-  .map((no) => missingLine({ name: g.name, author: g.author, no, title: '' })).join('')}</ul>`;
+  .map((no) => missingLine({ name: g.name, author: g.author, no, title: known[no] || '' })).join('')}</ul>`;
 
 // The pane, browsed the way the library is: this author's missing volumes, or
 // everybody's when no author is picked.
 function drawSeriesPane(gaps, online, author = null) {
+  // What Wikidata calls each volume of a series it knows, for the holes in your
+  // own numbering of that same series: it knows titles that the numbers alone
+  // cannot. Matched on genre and name, the way the two lists name a series.
+  const titlesFor = (g) => {
+    const r = (online.series || []).find((s) => s.found && s.genre === g.genre && s.name === g.name);
+    return Object.fromEntries(((r && r.titles) || []).filter((v) => v.no && v.title).map((v) => [v.no, v.title]));
+  };
   const short = (online.series || []).filter((r) => r.found && r.missing && r.missing.length)
     .filter((r) => !author || r.author === author)
     .sort((a, b) => (a.genre || '').localeCompare(b.genre || '')
@@ -1411,7 +1425,7 @@ function drawSeriesPane(gaps, online, author = null) {
   const own = mineGaps.length
     ? `<div class="series-head">Missing between the books you have —
         ${mineGaps.reduce((n, g) => n + g.missing.length, 0)} book(s)</div>`
-      + mineGaps.map(ownGapSeries).join('')
+      + mineGaps.map((g) => ownGapSeries(g, titlesFor(g))).join('')
     : '';
 
   // said even where nothing is missing: "no gaps" and "nothing numbered to

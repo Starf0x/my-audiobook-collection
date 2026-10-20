@@ -2142,9 +2142,11 @@ could not place is listed with its reason, never folded into either.
 **Both halves are drawn the same way**: a series head carrying the sentence and
 its buttons, then **one line per missing volume, one under the other**. The
 local half has no title to put on a line — nothing in the collection knows what
-book 3 of *Wide Gap* is called — so it says *title unknown* beside the number,
-and that line's copy button searches `author - series N` instead of
-`author - title`. The caveat about books with no volume number sits on the series
+book 3 of *Wide Gap* is called. Since 2.14.128 it takes the title from Wikidata
+where Wikidata knows the same series (matched on genre and name), and otherwise
+says *Wide Gap, book 3* rather than *title unknown*; every line, of both halves,
+carries its author. Without a title, that line's copy button searches
+`author - series N` instead of `author - title`. The caveat about books with no volume number sits on the series
 head, where it qualifies the whole group: *your own books in this series run up
 to book 4, with nothing on 3.* The sentence belongs to the series, so it is said
 once there rather than repeated under every hole.
