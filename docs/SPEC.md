@@ -2238,9 +2238,19 @@ query per series.
 `ADMIN_PASSWORD` on the container. A salt is made at startup and the password is
 never stored: `scryptSync(password, bootSalt, 32)` on both sides, compared with
 `timingSafeEqual`. An unlocked browser holds a random 24-byte token in an
-`HttpOnly` cookie; sessions live in memory and are forgotten on restart. There
-is always an administrator — §7.12 — so there is no state in which nothing is
-locked.
+`HttpOnly` cookie. There is always an administrator — §7.12 — so there is no
+state in which nothing is locked.
+
+**Sessions survive a restart** (2.14.120). They lived in memory and were
+forgotten on every restart — and an update is a restart, so the page that asked
+for one was signed out by it, and its bar waited on 401s for ever. They are in
+`admin_sessions` now: the SHA-256 of the token, never the token, with when it
+was made (thirty days, as before) and a fingerprint of the name and password it
+was given under. A restart used to be what ended an old password's sessions;
+the fingerprint says so outright, so a new `ADMIN_PASSWORD` still signs everyone
+out. `restart` stops and starts a real server process to check both. And the
+update bar reads a 401 or 403 as "back, but this page is signed out", says so,
+and stops — it does not wait on it.
 
 **The server refuses, the interface merely hides.** Every route that changes
 anything carries `requireAdmin`; hiding buttons is not what protects it.
@@ -3811,7 +3821,7 @@ quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` `permissions` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` `permissions` `restart` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 53 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 

@@ -1173,8 +1173,23 @@ function waitForItBack(was, askedAt = '') {
   const stop = (ms) => { clearInterval(look); bar.done(ms); };
   const look = setInterval(async () => {
     tries += 1;
+    let refused = false;
     const r = await fetch('/api/update/progress')
-      .then((x) => (x.ok ? x.json() : null)).catch(() => null);
+      .then((x) => {
+        // Answered, but not to this page: the app is up and this page is no
+        // longer signed in. That was taken for "still restarting" and waited on
+        // for ever (2.14.120) — the app answers a 401 the moment it is back.
+        refused = x.status === 401 || x.status === 403;
+        return x.ok ? x.json() : null;
+      }).catch(() => null);
+    if (refused) {
+      bar.at(100);
+      bar.say('The app is back, but this page is no longer signed in. Reload it to sign in and see the version.', true);
+      say('<strong class="warn">The app is back, but this page is no longer signed in.</strong> '
+        + 'Reload it to sign in; the version line says whether the update took.', true);
+      stop(30000);
+      return;
+    }
     const now = r ? r.running : '';
     if (now && was && now !== was) {
       bar.at(100);

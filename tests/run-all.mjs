@@ -31,6 +31,7 @@ const PORTABLE = [
   'to-player',
   'series-tags',
   'permissions',
+  'restart',
   'ogg-lengths',
   'sub-series',
   'moving',

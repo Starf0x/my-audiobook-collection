@@ -147,6 +147,12 @@ check('with nothing on the container, the stored one governs', admin.adminState(
 process.env.ADMIN_USER = 'morgan';
 process.env.ADMIN_PASSWORD = 'the container one';
 check('and with one set, the container does', [admin.adminState(), admin.adminName()], ['env', 'morgan']);
+// A session kept from before the password changed does not open the page any
+// more (2.14.120): sessions are kept across restarts now, and a restart used to
+// be what ended the old password's. So the new one signs in first.
+check('a session from before the password changed no longer opens the admin\'s pages',
+  [401, 403].includes((await get('/api/accounts')).status), true);
+cookie = (await post('/api/account/signin', { name: 'morgan', password: 'the container one' })).cookies;
 check('and the accounts page is told that too, so it says the right thing',
   [(await get('/api/accounts')).body.adminFrom, (await get('/api/accounts')).body.admin],
   ['env', 'morgan']);
