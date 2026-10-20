@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { getSetting, setSetting } from './db.js';
+import { db, getSetting, setSetting } from './db.js';
 
 // One administrator governs everything that changes the collection, and there is
 // always one. Two places it can come from, and the container wins:
@@ -21,7 +21,34 @@ import { getSetting, setSetting } from './db.js';
 // forgotten in-app password: set `ADMIN_PASSWORD`, restart, and the stored one
 // is ignored.
 
-const sessions = new Map(); // token -> when it was made; forgotten on restart
+// The administrator's sessions, kept in the database (2.14.120). They lived in
+// memory and were forgotten on every restart — and an update *is* a restart, so
+// the page that asked for one was signed out by it, every answer after was a
+// 401, and its bar said "the app is restarting" for ever. The owner: "dit duurt
+// oneindig". A listener's session has always been kept; now this one is too.
+//
+// Only a hash of the token is kept, so the database is no key to the page. And
+// with it the password it was given under: a restart used to be what ended the
+// sessions of a password since changed, and now that is said outright — a
+// session from before a new ADMIN_PASSWORD, or a new name, does not open.
+db.exec(`CREATE TABLE IF NOT EXISTS admin_sessions (
+  hash TEXT PRIMARY KEY, made INTEGER NOT NULL, under TEXT NOT NULL)`);
+const hashOf = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+// What the administrator is right now: their name and their password, as one
+// value that changes when either does. Never the password itself.
+const governing = () => crypto.createHash('sha256').update(JSON.stringify([
+  envName() || storedName(), envPassword() ? hashOf(`env:${envPassword()}`) : getSetting(HASH, ''),
+])).digest('hex');
+const sessions = {
+  set: (token) => db.prepare('INSERT OR REPLACE INTO admin_sessions (hash, made, under) VALUES (?, ?, ?)')
+    .run(hashOf(token), Date.now(), governing()),
+  get: (token) => {
+    if (!token) return undefined;
+    const row = db.prepare('SELECT made, under FROM admin_sessions WHERE hash = ?').get(hashOf(token));
+    return row && row.under === governing() ? row.made : undefined;
+  },
+  delete: (token) => db.prepare('DELETE FROM admin_sessions WHERE hash = ?').run(hashOf(token || '')),
+};
 
 // A session is not forever. Nothing here logs anybody out on purpose, so without
 // this a token handed to a browser in March still opened the page in December.

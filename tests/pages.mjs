@@ -1019,6 +1019,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       '/api/update/progress': () => {
         const i = Math.min(n++, versions.length - 1);
         if (versions[i] === null) return { __status: 502 };
+        if (versions[i] === 401) return { __status: 401 };
         const step = steps[Math.min(i, steps.length - 1)] || null;
         return { running: versions[i], progress: step, asked: step ? step.asked ?? true : true };
       },
@@ -1095,6 +1096,12 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       step: 6, of: 6, doing: 'finished', done: true, ok: false, said: 'last week' }], asked.toISOString());
     const during = await watching(['2.12.0'], [{ at: local(new Date(asked.getTime() + 5000)),
       step: 3, of: 6, doing: 'Fetching v2.12.8', done: false }], asked.toISOString());
+    // The app back, answering — but not to this page, which is no longer signed
+    // in. That read as "still restarting" and was waited on for ever (2.14.120).
+    const out = await watching(['2.12.0', null, 401],
+      [{ at: asked.toISOString(), step: 2, of: 6, doing: 'Stopping the app', done: false }], asked.toISOString());
+    check('an app that is back but will not answer this page says so, rather than waiting for ever',
+      out.bar, ['The app is back, but this page is no longer signed in. Reload it to sign in and see the version.']);
     // An updater from before 2.14.96 writes no steps; once it has picked the
     // request up, the bar says it is working rather than "waiting to start".
     const old = await watching(['2.12.0'], [{ at: asked.toISOString(), step: 0, of: 6,

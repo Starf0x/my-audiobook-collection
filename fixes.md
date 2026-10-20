@@ -892,6 +892,30 @@ without the second look.
 that draws after one asks again whether it is still wanted — and clears nothing
 until it knows.
 
+### The update bar waited for ever on the sign-out it caused (2.14.120)
+
+2.14.96 gave the LXC update a bar. The owner's sat on "the app is restarting, so
+this waits for it" for good. An update restarts the app; the administrator's
+sessions lived in memory; so the page that asked was signed out by the very
+thing it was waiting for, every poll after was a 401, and the bar read every
+non-answer as "still down". The poll before it, on `/api/stats`, had the same
+hole — nobody had ever watched an update end.
+
+Every check of that bar fed it answers from a mock: an answering app, a
+missing one, a step. Never "back, but not to you" — the one answer a real
+restart gives.
+
+**Fixed** both ends: the administrator's sessions are kept in the database
+(hashed, with a fingerprint of the password, so a new `ADMIN_PASSWORD` still
+ends them), and the bar reads a 401 or 403 as the app being back and this page
+being signed out. `tests/restart.mjs` stops and starts a real server and asks
+with the cookie from before; with the sessions back in memory it gets the owner's
+401.
+
+**Rule:** a feature that spans a restart is tested across a real one. A mock
+of "the other side" answers the way it was told to; a restart answers the way
+it is.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
