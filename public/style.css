@@ -478,6 +478,21 @@ table.cmp td.better { color: #7ee2a8; font-weight: 600; }
 .missing-vol:hover .linkish { opacity: .8; }
 .missing-vol .linkish:hover { opacity: 1; color: #fff; filter: none; }
 .series-head .copy-search { margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+/* the Goodreads link beside it: the same small size, a link that reads as one */
+.series-head .goodreads {
+  margin-left: 8px; font-size: 11px; text-transform: none; letter-spacing: 0;
+  color: var(--accent2); text-decoration: none;
+}
+.series-head .goodreads:hover { color: #fff; text-decoration: underline; }
+/* A link that has to sit in a row of buttons and look like one of them — the
+   Goodreads search on a request, beside its Copy. An <a> takes none of the
+   button rules, so it says them here. */
+a.button-link {
+  display: inline-flex; align-items: center; font: inherit; font-weight: 500;
+  color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 12px; text-decoration: none; cursor: pointer;
+}
+a.button-link:hover { filter: brightness(1.15); }
 /* the series' own name, and the way to it: it reads as the heading it is part
    of, and says it can be pressed only when it is pointed at */
 .series-head .open-series {
