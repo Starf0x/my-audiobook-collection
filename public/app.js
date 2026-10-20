@@ -979,6 +979,7 @@ const requestRow = (r) => `<div class="fix" data-request="${r.id}">
            (No backticks in this comment — it lives in a template literal.) -->
       <button class="ghost copy-search" data-copy-text="${esc([r.author, r.title].filter(Boolean).join(' - '))}"
         title="Copy “${esc([r.author, r.title].filter(Boolean).join(' - '))}” to search for it">⧉ Copy</button>
+      ${goodreadsLink([r.title, r.author], 'Goodreads ↗', 'ghost button-link')}
       ${r.state === 'open' ? `
       <button class="ghost" data-act="link">It is here now…</button>
       <button class="ghost" data-act="decline">Not this one…</button>` : `
@@ -1342,6 +1343,17 @@ function onlineWords(s) {
 // land on theirs — and where there is no article it shows the search instead of
 // a red link. A volume with no title of its own has nothing to look up, so it
 // gets no link; the series head has one.
+// Goodreads, as a place to look a book up (2.14.136): wherever a book or a
+// series is being looked for — a missing volume, a series short of some, a book
+// somebody asked for. Its own search, not a guessed page: it lands on the book
+// when the words are close, and lists the candidates when they are not. Title
+// before author, which is how its search ranks best.
+const goodreadsLink = (words, label = 'Goodreads', look = 'linkish') => {
+  const q = words.filter(Boolean).join(' ');
+  return q ? `<a class="${look} goodreads" href="https://www.goodreads.com/search?q=${encodeURIComponent(q)}"
+    target="_blank" rel="noopener" title="Look for “${esc(q)}” on Goodreads, in a new tab">${label}</a>` : '';
+};
+
 const missingLine = ({ name, author, no, title }) => {
   const search = [author, title || `${name} ${no}`].filter(Boolean).join(' - ');
   const wiki = title
@@ -1360,6 +1372,7 @@ const missingLine = ({ name, author, no, title }) => {
     ${author ? `<span class="by">${esc(author)}</span>` : ''}
     <button class="copy-search linkish" data-copy-text="${esc(search)}"
       title="Copy “${esc(search)}” to search for it">⧉</button>${wiki}
+    ${goodreadsLink([title || `${name} ${no}`, author])}
   </li>`;
 };
 
@@ -1375,7 +1388,8 @@ const seriesLink = (s) => `<button class="open-series linkish" data-genre="${esc
 // button: what you paste into a shop or a search is the series, not one volume.
 const missingSeries = (r) => `<div class="series-head">Series · ${seriesLink(r)}
     <button class="copy-search linkish" data-copy-text="${esc([r.author, r.name].filter(Boolean).join(' - '))}"
-      title="Copy “author - series” to search for it">⧉ copy</button></div>
+      title="Copy “author - series” to search for it">⧉ copy</button>
+    ${goodreadsLink([r.name, r.author], 'on Goodreads ↗')}</div>
   <div class="series-gap missing">${r.missing.length} of ${r.volumes.length} volume(s) not here${r.byTitle
   ? ' — your books in it carry no numbers, so this was matched by title' : ''}
     <a class="linkish" href="${esc(r.url)}" target="_blank" rel="noopener">on Wikidata ↗</a></div>
@@ -1387,7 +1401,8 @@ const missingSeries = (r) => `<div class="series-head">Series · ${seriesLink(r)
 // and the series head carries the sentence that qualifies the whole group.
 const ownGapSeries = (g, known = {}) => `<div class="series-head">Series · ${seriesLink(g)}
     <button class="copy-search linkish" data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}"
-      title="Copy “author - series” to search for it">⧉ copy</button></div>
+      title="Copy “author - series” to search for it">⧉ copy</button>
+    ${goodreadsLink([g.name, g.author], 'on Goodreads ↗')}</div>
   <div class="series-gap missing">${esc(g.says)}${g.unnumbered
   ? ` ${g.unnumbered} book(s) here carry no volume number, so one of these may be among them.`
   : ''}</div>

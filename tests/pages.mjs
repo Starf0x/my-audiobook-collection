@@ -850,8 +850,8 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('and the series is what carries the heading',
     [...document.querySelectorAll('#books .series-head')].map((h) => h.textContent.replace(/\s+/g, ' ').trim())
       .filter((t) => t.startsWith('Series')),
-    ['Series · The Dark Tower ⧉ copy',
-      'Series · The Stormlight Archive ⧉ copy']);
+    ['Series · The Dark Tower ⧉ copy on Goodreads ↗',
+      'Series · The Stormlight Archive ⧉ copy on Goodreads ↗']);
 
   // The series' name is the way to it, in both kinds of head: the genre, the
   // series selected under it, the author marked beside it, and its books.
@@ -904,6 +904,21 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       .map((ul) => ul.querySelectorAll('a[href*="wikipedia"]').length), [0, 2]);
   check('and the Wikidata entry is named once for the series, not once per volume',
     document.querySelectorAll('#books a[href*="wikidata"]').length, 1);
+  // Goodreads as a place to look (2.14.136): every missing line and every
+  // series head, by its own search, in a new tab — title first, then author.
+  const gr = (a) => decodeURIComponent(new URL(a.href).searchParams.get('q') || '');
+  check('every missing line can be looked for on Goodreads, title and author',
+    [...document.querySelectorAll('#books .missing-vol a.goodreads')].map(gr),
+    ['The Dark Tower 1 Stephen King', 'The Dark Tower 3 Stephen King', 'The Dark Tower 4 Stephen King',
+      'Words of Radiance Brandon Sanderson', 'Rhythm of War Brandon Sanderson']);
+  check('and every series head can, as series and author',
+    [...document.querySelectorAll('#books .series-head a.goodreads')].map(gr),
+    ['The Dark Tower Stephen King', 'The Stormlight Archive Brandon Sanderson']);
+  // the count first: `every` over no links at all is true, and passes for nothing
+  const links = [...document.querySelectorAll('#books a.goodreads')];
+  check('in a new tab, at its own search',
+    [links.length, links.every((a) => a.target === '_blank'
+      && a.rel === 'noopener' && a.href.startsWith('https://www.goodreads.com/search?q='))], [7, true]);
 
   // and pressing one goes there: wired, not merely drawn
   [...document.querySelectorAll('#books .series-head .open-series')]
@@ -1681,6 +1696,9 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('and each carries the words to go and search with',
     rows.map((r) => r.querySelector('.copy-search')?.dataset.copyText),
     ['Robin Hobb - Assassin’s Apprentice', 'Patrick Rothfuss - The Name of the Wind']);
+  check('and each can be looked for on Goodreads, title first',
+    rows.map((r) => decodeURIComponent(new URL(r.querySelector('a.goodreads')?.href || 'http://x').searchParams.get('q') || '')),
+    ['Assassin’s Apprentice Robin Hobb', 'The Name of the Wind Patrick Rothfuss']);
   // The handler is the one on `#books`, which is the point of reusing the
   // class — but a button that is drawn and never reached is the exact fault
   // this app has had before, so it is asked rather than assumed.

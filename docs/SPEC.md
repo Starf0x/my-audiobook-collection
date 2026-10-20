@@ -2146,7 +2146,13 @@ book 3 of *Wide Gap* is called. Since 2.14.128 it takes the title from Wikidata
 where Wikidata knows the same series (matched on genre and name), and otherwise
 says *Wide Gap, book 3* rather than *title unknown*; every line, of both halves,
 carries its author. Without a title, that line's copy button searches
-`author - series N` instead of `author - title`. The caveat about books with no volume number sits on the series
+`author - series N` instead of `author - title`.
+
+**Goodreads is a place to look** (2.14.136): every missing line, every series
+head and every request carries a link to Goodreads' own search, title (or
+series) first and then the author, in a new tab. Its search rather than a
+guessed page, because it lands on the book when the words are close and lists
+the candidates when they are not. The caveat about books with no volume number sits on the series
 head, where it qualifies the whole group: *your own books in this series run up
 to book 4, with nothing on 3.* The sentence belongs to the series, so it is said
 once there rather than repeated under every hole.
