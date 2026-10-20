@@ -864,11 +864,33 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
 
   const lines = (series) => [...document.querySelectorAll('#books .missing-vols')]
     .map((ul) => [...ul.querySelectorAll('.missing-vol')].map((li) => [
-      li.querySelector('.no').textContent, li.querySelector('.what').textContent]))[series];
-  check('a hole in your own numbering lists the numbers, which is all it knows',
-    lines(0), [['1', 'title unknown'], ['3', 'title unknown'], ['4', 'title unknown']]);
+      li.querySelector('.no').textContent, li.querySelector('.what').textContent,
+      li.querySelector('.by')?.textContent || '']))[series];
+  // Not "title unknown" six times down a series with the author nowhere
+  // (2.14.128): which book of which series it is, and who wrote it.
+  check('a hole in your own numbering says which book of which series, and who wrote it',
+    lines(0), [['1', 'The Dark Tower, book 1', 'Stephen King'], ['3', 'The Dark Tower, book 3', 'Stephen King'],
+      ['4', 'The Dark Tower, book 4', 'Stephen King']]);
   check('and one Wikidata knows about lists the titles too',
-    lines(1), [['2', 'Words of Radiance'], ['4', 'Rhythm of War']]);
+    lines(1), [['2', 'Words of Radiance', 'Brandon Sanderson'], ['4', 'Rhythm of War', 'Brandon Sanderson']]);
+
+  // And a hole in your own numbering of a series Wikidata *does* know: its
+  // titles are used there too, where they are known.
+  {
+    const both = JSON.parse(JSON.stringify(online));
+    both.series.push({
+      found: true, genre: 'Fantasy', name: 'The Dark Tower', author: 'Stephen King',
+      label: 'The Dark Tower', url: 'https://www.wikidata.org/wiki/Q2', volumes: [1, 2, 3, 5], missing: [],
+      titles: [{ no: 1, title: 'The Gunslinger' }, { no: 3, title: 'The Waste Lands' }],
+    });
+    window.eval(`drawSeriesBoth(${JSON.stringify(gaps)}, ${JSON.stringify(both)})`);
+    await settle(120);
+    check('a hole in your own numbering takes the title Wikidata knows for it',
+      lines(0), [['1', 'The Gunslinger', 'Stephen King'], ['3', 'The Waste Lands', 'Stephen King'],
+        ['4', 'The Dark Tower, book 4', 'Stephen King']]);
+    window.eval(`drawSeriesBoth(${JSON.stringify(gaps)}, ${JSON.stringify(online)})`);
+    await settle(120);
+  }
 
   // What you do next with a line you cannot play.
   check('every line can be copied, as author - thing',

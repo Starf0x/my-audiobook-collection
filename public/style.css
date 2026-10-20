@@ -459,6 +459,9 @@ table.cmp td.better { color: #7ee2a8; font-weight: 600; }
   font-variant-numeric: tabular-nums; font-weight: 600;
 }
 .missing-vol .what em { color: var(--dim); }
+/* who wrote it, after the title and quieter than it */
+.missing-vol .by { color: var(--dim); font-size: 12.5px; }
+.missing-vol .by::before { content: '· '; }
 /* The two things to do with a line you cannot play: copy it, or go and read
    about it. They sit beside the title rather than out at the right margin —
    `flex: 1` on the title put them an inch of empty row away from the thing they
