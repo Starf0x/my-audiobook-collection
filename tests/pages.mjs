@@ -239,6 +239,37 @@ for (const [page, own] of [['index.html', 'app.js'], ['listen.html', 'shelf.js']
     window.eval('typeof toClipboard'), 'function');
 }
 
+// --- Folder permissions: what to do about each row (2.14.112) ---------------
+// The owner's list showed a library folder that was gone and one made as root. A
+// folder that is there gets Fix, all the way down; one that is gone gets
+// Forget; the database and a sample book folder get neither — the first is the
+// app's own, the second is inside a library that has its own button.
+{
+  const posted = [];
+  const place = (what, p, exists, why = '') => ({ what, path: p, exists, owner: exists ? '0:0' : '', mode: exists ? '755' : '', canWrite: exists, why });
+  const { window, document } = await open('index.html', {
+    '/api/permissions': {
+      writingAs: { uid: 0, gid: 0, umask: '000', asked: { PUID: '1000', PGID: '100' } },
+      places: [place('Database and covers', '/data', true), place('Library', '/audiobooks/Juvenile Fiction', true),
+        place('Library', '/audiobooks/Dystopia', false, 'not there'), place('Import folder', '/import', true),
+        place('A book folder', '/audiobooks/Fantasy/A/B', true)],
+    },
+    '/api/permissions/fix': (url, opts) => { posted.push(['fix', JSON.parse(opts.body).path]); return { path: '/x', folders: 3, files: 2, changed: 5, failed: 0, firstFailures: [], owner: '1000:100', modes: { dir: '777', file: '666' } }; },
+    '/api/permissions/forget': (url, opts) => { posted.push(['forget', JSON.parse(opts.body).path]); return { forgotten: '/audiobooks/Dystopia' }; },
+  });
+  await window.eval("document.querySelector('#checkPerms').onclick()");
+  await settle(80);
+  check('a folder that is there gets Fix, one that is gone gets Forget, the rest neither',
+    [...document.querySelectorAll('#permsOut tr')].slice(1).map((tr) => tr.lastElementChild.textContent.trim()),
+    ['', 'Fix', 'Forget', 'Fix', '']);
+  document.querySelector('[data-forget]').click();
+  await settle(80);
+  document.querySelector('[data-fix]').click();
+  await settle(120);
+  check('and each asks the server for exactly its own folder',
+    posted, [['forget', '/audiobooks/Dystopia'], ['fix', '/audiobooks/Juvenile Fiction']]);
+}
+
 // --- and the player bar is written out twice, so it must stay one bar -------
 // Both pages carry their own copy of that footer. One stylesheet and one
 // `player.js` serve both, so a control added, renamed or rewrapped on one page

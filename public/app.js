@@ -862,6 +862,47 @@ function askConflict(body, clash) {
 
 // --- cover files no book uses any more ---------------------------------
 // Who the app writes as, and what each folder lets it do.
+//
+// And what to do about it, on the row (2.14.112). A library or the import folder
+// that is there gets *Fix*: its owner and modes put right all the way down. A
+// library that is not there any more gets *Forget*, which takes it off the list
+// — it is never taken off by itself, since a share not mounted for a moment
+// would lose every library on it.
+const permAction = (p) => {
+  if (p.what !== 'Library' && p.what !== 'Import folder') return '';
+  if (p.exists) {
+    return `<button class="ghost perm-fix" data-fix="${esc(p.path)}"
+      title="Give everything under this folder to the right owner, with the right modes">Fix</button>`;
+  }
+  return p.what === 'Library' && p.why === 'not there'
+    ? `<button class="ghost perm-forget" data-forget="${esc(p.path)}"
+        title="This folder is gone: take it off the list of libraries">Forget</button>`
+    : '';
+};
+$('#permsOut').addEventListener('click', async (e) => {
+  const fix = e.target.closest('[data-fix]');
+  const forget = e.target.closest('[data-forget]');
+  if (fix) {
+    const where = fix.dataset.fix;
+    if (!confirm(`Put the owner and modes right for everything in\n${where}?\n\nNothing is moved or deleted.`)) return;
+    await work(fix, 'Putting permissions right', async () => {
+      const r = await post('/api/permissions/fix', { path: where }).catch((x) => ({ error: x.message }));
+      if (r.error) return toast(r.error);
+      toast(`${r.changed} of ${r.folders + r.files} put right in ${where}`
+        + (r.owner ? ` — now ${r.owner}, ${r.modes.dir}/${r.modes.file}` : '')
+        + (r.failed ? `. ${r.failed} could not be: ${r.firstFailures[0]}` : '.'));
+      return $('#checkPerms').onclick();
+    }, false);
+  } else if (forget) {
+    const where = forget.dataset.forget;
+    const r = await post('/api/permissions/forget', { path: where }).catch((x) => ({ error: x.message }));
+    if (r.error) return toast(r.error);
+    toast(`${where} is no longer a library.`);
+    await $('#checkPerms').onclick();
+  }
+  return undefined;
+});
+
 $('#checkPerms').onclick = async () => {
   $('#permsOut').innerHTML = '<p class="hint">Looking…</p>';
   let r;
@@ -879,9 +920,10 @@ $('#checkPerms').onclick = async () => {
       <td>${p.exists ? esc(p.owner) + ' · ' + esc(p.mode) : esc(p.why || 'not there')}</td>
       <td class="${p.canWrite ? 'better' : 'worse'}">${p.canWrite ? 'can write' : 'cannot write'
     + (p.why ? ' (' + esc(p.why) + ')' : '')}</td>
+      <td>${permAction(p)}</td>
     </tr>`).join('');
   $('#permsOut').innerHTML = `<p class="hint">${esc(said)}</p>
-    <table class="cmp"><tr><th>What</th><th>Where</th><th>Owner · mode</th><th></th></tr>${rows}</table>`;
+    <table class="cmp"><tr><th>What</th><th>Where</th><th>Owner · mode</th><th></th><th></th></tr>${rows}</table>`;
 };
 
 // Home Assistant has a page of its own: an address, a token and media players are

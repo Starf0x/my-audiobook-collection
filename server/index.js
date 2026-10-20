@@ -37,6 +37,7 @@ import { toolsWhy, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
 import { coverFile } from './safepath.js';
+import { ownerFor, modesFor, fixable, fixTree, forgetLibrary } from './perms.js';
 import { alone } from './onejob.js';
 import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
   loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
@@ -243,6 +244,38 @@ app.get('/api/permissions', requireAdmin, (req, res) => {
   if (book) places.push(look('A book folder', book.path));
   res.json({ writingAs: writingAs(), places });
 });
+
+// Put a library's or the import folder's ownership and modes right, all the way
+// down, and say what it did and what it could not (2.14.112). Only a folder the
+// check above lists, named exactly: this changes ownership on the share.
+app.post('/api/permissions/fix', requireAdmin, wrap(async (req, res) => {
+  const dir = String((req.body || {}).path || '');
+  if (!fixable().includes(dir)) throw Object.assign(new Error('Only a library or the import folder can be put right here.'), { status: 400 });
+  if (!fs.existsSync(dir)) throw Object.assign(new Error(`${dir} is not there.`), { status: 400 });
+  const owner = ownerFor(dir);
+  if (!owner) {
+    throw Object.assign(new Error('There is nobody to hand these to: the app runs as root and PUID and PGID '
+      + 'are not set. Set them on the container to the user that owns the share — 99 and 100 on Unraid.'), { status: 400 });
+  }
+  const modes = modesFor();
+  const said = await fixTree(dir, { owner, modes });
+  res.json({
+    path: dir, ...said,
+    owner: owner.uid === null ? '' : `${owner.uid}:${owner.gid}`, ownerFrom: owner.from,
+    modes: { dir: modes.dir.toString(8), file: modes.file.toString(8) },
+  });
+}));
+
+// And a library folder that is gone, taken off the list. Asked for, never done
+// by itself: a share not mounted for a moment would lose every library on it.
+app.post('/api/permissions/forget', requireAdmin, wrap(async (req, res) => {
+  try {
+    res.json(forgetLibrary(String((req.body || {}).path || ''),
+      (libs) => setSetting('libraries', JSON.stringify(libs))));
+  } catch (e) {
+    throw Object.assign(e, { status: 400 });
+  }
+}));
 
 // --- accounts ------------------------------------------------------------
 // Asking for one, signing in, signing out, and "who am I". These four are the

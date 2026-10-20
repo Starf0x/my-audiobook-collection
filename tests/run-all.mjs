@@ -30,6 +30,7 @@ const PORTABLE = [
   'book-bar',
   'to-player',
   'series-tags',
+  'permissions',
   'ogg-lengths',
   'sub-series',
   'moving',
