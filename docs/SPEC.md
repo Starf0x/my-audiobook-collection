@@ -356,6 +356,17 @@ as the user that owns the shares. `GET /api/permissions` (admin) reports
 book folder: whether it is there, its owner and mode, and whether a file can
 actually be written in it and removed again — measured, not inferred from the mode.
 Settings shows it as a table.
+
+**And what to do about a row** (`perms.js`, 2.14.112). A library or the import
+folder that is there gets **Fix**: `POST /api/permissions/fix` walks it all the
+way down and gives every folder and file to PUID:PGID (or this process when it
+is not root, or the owner of the folder above), with mode 777 or 666 less the
+umask. Only a folder the table lists, named exactly; symlinks are left alone;
+one root-owned file does not stop the walk, and what could not be changed is
+counted and named. One at a time. A library that is gone gets **Forget**:
+`POST /api/permissions/forget` takes it off the list, and refuses a folder that
+is there. Nothing is forgotten by itself — a share not mounted for a moment
+would otherwise lose every library on it.
 | `PORT` | `8523` | HTTP port |
 | `ADMIN_USER` | empty | the administrator's name. Set with the password, it is what shuts the listening page: everybody else needs an account you have approved |
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked and the library needs an account; empty → private install, everyone may do anything |
@@ -769,6 +780,8 @@ and an empty genre is a fair question with an empty answer.
 | `GET /api/scan/status` | — | `{running, done, total, current, books, error, warning, skipped}` |
 | `GET /api/skipped` | admin | what the last scan walked past, and why |
 | `GET /api/permissions` | admin | who the app writes as, and what each folder allows |
+| `POST /api/permissions/fix` | admin | `{path}`: put a library's or the import folder's owner and modes right, all the way down |
+| `POST /api/permissions/forget` | admin | `{path}`: take a library that is gone off the list |
 | `GET /api/stats` | — | `{books, files, done, todo}` |
 | `GET /api/untagged` | admin | the Needs-tags list, split `fixable` / `needsLookup` |
 | `GET /api/home` | — | `{continue, recent}` |
@@ -3798,7 +3811,7 @@ quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` `permissions` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 53 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 
