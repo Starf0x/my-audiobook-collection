@@ -39,6 +39,9 @@ services:
       # Who may show the app inside a frame: only this app, unless you embed it
       # in a Home Assistant dashboard (a webpage card) — then add its address.
       # FRAME_ANCESTORS: "'self' http://192.168.2.200:8123"
+      # Where the folder browser in Settings may look, besides /audiobooks,
+      # /import, /mnt, /media, /srv and the folders already set.
+      # BROWSE_ROOTS: "/data/books,/storage"
       # Start even if it could not become PUID:PGID and is therefore still root.
       # Everything it then creates on your share belongs to root.
       # ALLOW_ROOT: "0"

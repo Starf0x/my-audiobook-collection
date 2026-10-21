@@ -1,5 +1,5 @@
 // First of all: who this process writes as, before any folder is created.
-import { writingAs } from './user.js';
+import './user.js';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,47 +7,41 @@ import url from 'node:url';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR, googleCountry, GOOGLE_COUNTRY_KEY } from './db.js';
 import { countsAsRead, keptOne, readCount } from './finished.js';
-import { newestRelease, howInstalled, askForUpdate, lastUpdate, waiting as updateWaiting, newer, updateProgress } from './updates.js';
 import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
-import { lookup, applyMetadata, writeProgress, anyWriting, lookupProgress, probeSeries,
-  GOOGLE_COUNTRIES } from './google.js';
+import { applyMetadata, anyWriting, GOOGLE_COUNTRIES } from './google.js';
 import { candidates, genreFolders, importBook, compareWithExisting, skipImport, listReplaced,
   deleteReplaced, deleteAllReplaced, fileProgress, importState, lookAgain, clean } from './import.js';
-import { unlock, lock, isAdmin, requireAdmin, tokenOf, unclaimed, claim as claimAdmin, adminName, adminState } from './admin.js';
+import { unlock, lock, isAdmin, requireAdmin, tokenOf, unclaimed, claim as claimAdmin, adminName, adminState,
+  weakContainerPassword, SHORTEST as PASSWORD_FLOOR } from './admin.js';
 import { requestAccount, signIn, signOut, listenerOf, decide, remove, withStats,
-  asName, WEEK, finishedABook, finishedCount, tookABook, downloadsOf, grantDownload, seenAdmin,
+  asName, WEEK, finishedABook, finishedCount, tookABook, grantDownload, seenAdmin,
   find as findListener } from './listeners.js';
-import { levelOf, mayDownload, LEVELS, TOP } from './levels.js';
+import { levelOf, mayDownload, LEVELS } from './levels.js';
 import { askedForAnAccount, signedIn, startedListening, stoppedListening, tookTheBook,
   reachedALevel, askedForABook, saveWebhook, webhookSet, lastSaid } from './notify.js';
 import { askFor, of_, newsFor, markTold, all as allRequests, howManyOpen,
   decline as declineRequest, fill as fillRequest, forget as forgetRequest, tallyFor,
   fillFrom } from './requests.js';
 import { tidyCovers, deleteDuplicates, zipDuplicates, pictureKind } from './covers.js';
-import { scheduleBackups, listBackups, backupNow, KEEP as BACKUPS_KEPT } from './backup.js';
+import { scheduleBackups } from './backup.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
-import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, haSettings, saveHaSettings, haPing, haPlayers,
-  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush, sameSecret, trustProxy } from './ha.js';
+import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
+  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
-import { startTagAll, stopTagAll, tagStatus, settleTagAll, tagAllWorking } from './tagall.js';
-import { moveBook, moveToGenre, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
+import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
+import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
 import { toolsWhy, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
-import { coverFile } from './safepath.js';
-import { ownerFor, modesFor, fixable, fixTree, forgetLibrary } from './perms.js';
+import { coverFile, browseRoots, mayBrowse } from './safepath.js';
 import { alone } from './onejob.js';
-import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
-  loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
-  minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
-  progressOf as absProgress, writeProgressFromWhole as absWriteProgress,
-  socketOpen as absSocketOpen, socketPoll as absSocketPoll, socketSay as absSocketSay,
-  author as absAuthor, seriesWithProgress as absSeries, filteredBooks as absFiltered,
-  playbackSession as absSession, openSession as absOpenSession,
-  syncSession as absSyncSession, closeSession as absCloseSession,
-  syncFromLocal as absSyncFromLocal } from './abs.js';
+import { enabled as absEnabled, listener as absListener } from './abs.js';
+import { mountMusicAssistant } from './routes/music-assistant.js';
+import { mountFolders } from './routes/folders.js';
+import { mountUpdates } from './routes/updates.js';
+import { mountLookup } from './routes/lookup.js';
 
 
 // --- what nothing else caught (2.14.144) ------------------------------------
@@ -264,78 +258,9 @@ app.post('/api/admin/lock', (req, res) => {
   res.json({ admin: false });
 });
 
-// --- what the app can actually do with the folders ----------------------
-// The answer to "why can I not write in my own collection": who this process is,
-// and what each folder lets it do. It writes a file and removes it again rather
-// than reading the mode and guessing.
-const canWrite = (dir) => {
-  const probe = path.join(dir, `.write-test-${process.pid}`);
-  try {
-    fs.writeFileSync(probe, 'x');
-    fs.rmSync(probe);
-    return { canWrite: true, why: '' };
-  } catch (e) {
-    return { canWrite: false, why: e.code || e.message };
-  }
-};
+// Folder permissions, Fix and Forget: server/routes/folders.js
+mountFolders(app, { wrap });
 
-const look = (what, dir) => {
-  const out = { what, path: dir, exists: false, owner: '', mode: '', canWrite: false, why: '' };
-  if (!dir) return { ...out, why: 'not set' };
-  let stat;
-  try {
-    stat = fs.statSync(dir);
-  } catch (e) {
-    return { ...out, why: e.code === 'ENOENT' ? 'not there' : (e.code || e.message) };
-  }
-  out.exists = true;
-  out.owner = `${stat.uid}:${stat.gid}`;
-  out.mode = (stat.mode & 0o777).toString(8).padStart(3, '0');
-  return { ...out, ...canWrite(dir) };
-};
-
-app.get('/api/permissions', requireAdmin, (req, res) => {
-  const places = [look('Database and covers', DATA_DIR)];
-  for (const lib of getLibraries()) places.push(look('Library', lib.path));
-  const importPath = getSetting('importPath');
-  if (importPath) places.push(look('Import folder', importPath));
-  // one book, to show what the collection's own folders look like
-  const book = db.prepare('SELECT path FROM books LIMIT 1').get();
-  if (book) places.push(look('A book folder', book.path));
-  res.json({ writingAs: writingAs(), places });
-});
-
-// Put a library's or the import folder's ownership and modes right, all the way
-// down, and say what it did and what it could not (2.14.112). Only a folder the
-// check above lists, named exactly: this changes ownership on the share.
-app.post('/api/permissions/fix', requireAdmin, wrap(async (req, res) => {
-  const dir = String((req.body || {}).path || '');
-  if (!fixable().includes(dir)) throw Object.assign(new Error('Only a library or the import folder can be put right here.'), { status: 400 });
-  if (!fs.existsSync(dir)) throw Object.assign(new Error(`${dir} is not there.`), { status: 400 });
-  const owner = ownerFor(dir);
-  if (!owner) {
-    throw Object.assign(new Error('There is nobody to hand these to: the app runs as root and PUID and PGID '
-      + 'are not set. Set them on the container to the user that owns the share — 99 and 100 on Unraid.'), { status: 400 });
-  }
-  const modes = modesFor();
-  const said = await fixTree(dir, { owner, modes });
-  res.json({
-    path: dir, ...said,
-    owner: owner.uid === null ? '' : `${owner.uid}:${owner.gid}`, ownerFrom: owner.from,
-    modes: { dir: modes.dir.toString(8), file: modes.file.toString(8) },
-  });
-}));
-
-// And a library folder that is gone, taken off the list. Asked for, never done
-// by itself: a share not mounted for a moment would lose every library on it.
-app.post('/api/permissions/forget', requireAdmin, wrap(async (req, res) => {
-  try {
-    res.json(forgetLibrary(String((req.body || {}).path || ''),
-      (libs) => setSetting('libraries', JSON.stringify(libs))));
-  } catch (e) {
-    throw Object.assign(e, { status: 400 });
-  }
-}));
 
 // --- accounts ------------------------------------------------------------
 // Asking for one, signing in, signing out, and "who am I". These four are the
@@ -411,6 +336,8 @@ app.get('/api/accounts', requireAdmin, (req, res) => res.json({
   // container, or one made at the gate on first run and kept here. Saying the
   // wrong one sends somebody to edit a variable that is not what let them in.
   adminFrom: adminState(),
+  // the container's password, shorter than any other password here may be
+  containerPasswordShort: weakContainerPassword(),
   // what each of them is in the middle of comes from the database; what is
   // playing *right now* is only known here, because only the player says so
   accounts: withStats().map((a) => {
@@ -552,13 +479,28 @@ app.post('/api/settings', requireAdmin, wrap(async (req, res) => {
 }));
 
 // folder picker: list sub-directories of a server path
+// The folder browser in Settings. The top is not `/` but the list of places a
+// collection can be (`browseRoots` in safepath.js); below that, only folders
+// inside one of them, and going up from a root comes back to that list.
 app.get('/api/browse', requireAdmin, (req, res) => {
-  const dir = req.query.path || '/';
-  const entries = fs.readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-    .map((e) => path.resolve(dir, e.name))
-    .sort();
-  res.json({ path: path.resolve(dir), parent: path.dirname(path.resolve(dir)), entries });
+  const roots = browseRoots(getSetting('importPath'));
+  const asked = String(req.query.path || '');
+  if (!asked || asked === '/' || !mayBrowse(asked, roots)) {
+    return res.json({ path: '/', parent: '/', top: true, entries: roots,
+      ...(asked && asked !== '/' ? { refused: asked } : {}) });
+  }
+  const dir = fs.realpathSync(asked);
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => path.join(dir, e.name))
+      .sort();
+  } catch (e) {
+    return res.status(400).json({ error: `Cannot open ${dir}: ${e.code || e.message}` });
+  }
+  const isRoot = roots.includes(dir);
+  return res.json({ path: dir, parent: isRoot ? '/' : path.dirname(dir), entries });
 });
 
 // --- genres ------------------------------------------------------------
@@ -730,58 +672,9 @@ app.post('/api/trash/:id/purge', requireAdmin, wrap(async (req, res) => res.json
 // A backup nobody can see is half a backup: it fails silently and is believed
 // for months. Settings says when the last one was taken and how many are kept,
 // and the button is there for the moment before doing something drastic.
-// --- is there a newer version ---------------------------------------------
-// The line of numbers says which version is answering, which tells you whether
-// this is the new one only if you already knew what the new one was. This is the
-// other half.
-//
-// Asking GitHub is slow and rate-limited, so `newestRelease` caches; `?ask=1` is
-// the button in Settings saying look again now.
-app.get('/api/update', requireAdmin, wrap(async (req, res) => {
-  const seen = await newestRelease({ force: req.query.ask === '1' });
-  const how = howInstalled();
-  res.json({
-    running: VERSION,
-    newest: seen.newest,
-    error: seen.error,
-    behind: !!seen.newest && newer(seen.newest, VERSION),
-    how,
-    // Only an LXC install can take it from here. An image is updated by pulling
-    // a new one, which is the host's job; a plain folder has the same two
-    // commands but nothing root-owned to run them.
-    canInstall: how === 'lxc',
-    asked: updateWaiting(),
-    last: lastUpdate(),
-  });
-}));
+// Versions, updates and backups: server/routes/updates.js
+mountUpdates(app, { VERSION, wrap });
 
-// Asks. It does not update: the app runs as PUID and can neither write in /opt
-// nor restart a unit, so it leaves a file and a root-owned path unit does the
-// work — and restarts this process in the middle of it, which is why the answer
-// goes out first and the page learns it worked by the version changing.
-app.post('/api/update', requireAdmin, (req, res) => {
-  try {
-    return res.json(askForUpdate());
-  } catch (e) {
-    return res.status(400).json({ error: e.message });
-  }
-});
-
-// Where the update has got to, for the bar. Asked every couple of seconds while
-// one runs; for two of its steps the app is down and this does not answer, and
-// the page says so rather than reading that as the update failing. `asked` is
-// whether root's side has picked the request up yet — the file is gone once it
-// has.
-app.get('/api/update/progress', requireAdmin, (req, res) => res.json({
-  running: VERSION,
-  progress: updateProgress(),
-  asked: updateWaiting(),
-}));
-
-app.get('/api/backups', requireAdmin, (req, res) => res.json({
-  folder: path.join(DATA_DIR, 'backups'), keep: BACKUPS_KEPT, items: listBackups(),
-}));
-app.post('/api/backups', requireAdmin, (req, res) => res.json(backupNow()));
 
 // --- books somebody has asked for ----------------------------------------
 // The heart is handed in rather than reached for: `requests.js` decides *that*
@@ -1462,253 +1355,9 @@ app.get('/api/ha/continue.m3u', forHA, (req, res) => {
     .send(list);
 });
 
-// --- Music Assistant, through its Audiobookshelf provider ---------------
-// Why the app answers as Audiobookshelf at all is in abs.js. These are the calls
-// `aioaudiobookshelf` makes; each one hands back the shape that client will
-// parse, and nothing here touches the rest of the app.
-//
-// Off unless MA_TOKEN is set: without it every address below is not there at all,
-// rather than there and refusing, so a default install grows no new surface.
-const forMA = (req, res, next) => {
-  if (!absEnabled()) return res.status(404).end();
-  const who = absListener(req);
-  if (who === null) return res.status(401).json({ error: 'Bad token' });
-  req.listener = who;
-  next();
-};
+// Music Assistant, through its Audiobookshelf provider: server/routes/music-assistant.js
+mountMusicAssistant(app, { VERSION, sendCover });
 
-// Music Assistant asks for a username and a password. The password is MA_TOKEN;
-// the username is which listener this is, so a position it reports lands on the
-// right person — and a name it has not seen before is one this app now knows,
-// exactly as the listening page's own dialog would have added it.
-app.post('/login', (req, res) => {
-  if (!absEnabled()) return res.status(404).end();
-  const name = String((req.body || {}).username || '').trim();
-  if (!sameSecret(String((req.body || {}).password || ''), absToken())) {
-    return res.status(401).json({ error: 'Invalid username or password' });
-  }
-  if (name) db.prepare('INSERT OR IGNORE INTO users (name) VALUES (?)').run(name);
-  res.json(absLogin(name, VERSION));
-});
-
-// the same answer for a client configured with a token instead of a password
-app.post('/api/authorize', forMA, (req, res) => res.json(absLogin(req.listener, VERSION)));
-app.post('/logout', forMA, (req, res) => res.json({}));
-
-// The socket its client opens at setup, before it asks anything else. Engine.IO
-// speaks in plain text bodies rather than JSON, so this one route reads its own.
-app.get('/socket.io/', (req, res) => {
-  if (!absEnabled()) return res.status(404).end();
-  return req.query.sid ? absSocketPoll(req, res) : absSocketOpen(res);
-});
-app.post('/socket.io/', express.text({ type: () => true, limit: '64kb' }), (req, res) => {
-  if (!absEnabled()) return res.status(404).end();
-  return absSocketSay(req, res);
-});
-
-app.get('/api/libraries', forMA, (req, res) => res.json({ libraries: absLibraries() }));
-app.get('/api/libraries/:id', forMA, (req, res) => {
-  const lib = absLibraries()[0];
-  // the provider asks for the library with its filter data in one call
-  if (String(req.query.include || '').includes('filterdata')) {
-    const all = absBooks();
-    return res.json({
-      library: lib,
-      issues: 0,
-      numUserPlaylists: 0,
-      filterdata: {
-        authors: [...new Set(all.map((b) => b.author))].map((n) => ({ id: `au-${Buffer.from(n).toString('base64url')}`, name: n })),
-        genres: [...new Set(all.map((b) => b.genre))],
-        tags: [],
-        series: [...new Set(all.map((b) => b.series).filter(Boolean))]
-          .map((n) => ({ id: `se-${Buffer.from(n).toString('base64url')}`, name: n })),
-        narrators: [...new Set(all.map((b) => b.narrator).filter(Boolean))],
-        languages: [],
-      },
-    });
-  }
-  res.json(lib);
-});
-
-// One page of the collection. The client pages through with limit and page, and
-// asks for the minified shape unless it says otherwise.
-// Every paged listing goes through this, and the reason is worth stating: the
-// client's pager is a `while True` that only stops when a page comes back with
-// no results in it. A listing that ignores `page` and answers with everything
-// each time is an infinite loop inside Music Assistant, not a wrong answer — it
-// spins, and the reader sees a folder that never opens. So a page past the end
-// must be empty, and a request with no limit is still one page of everything
-// followed by nothing.
-const paged = (req, all, shape) => {
-  const limit = Math.max(0, Number(req.query.limit) || 0);
-  const page = Math.max(0, Number(req.query.page) || 0);
-  const from = limit ? page * limit : 0;
-  const slice = limit ? all.slice(from, from + limit) : (page ? [] : all);
-  return { total: all.length, limit, page, results: slice.map(shape) };
-};
-
-app.get('/api/libraries/:id/items', forMA, (req, res) =>
-  res.json(paged(req, absFiltered(req.query.filter), absMinified)));
-
-// Series are the one grouping this app keeps besides the folders, and they are
-// what Music Assistant turns into collapsible collections.
-app.get('/api/libraries/:id/series', forMA, (req, res) => {
-  const all = absBooks().filter((b) => b.series);
-  const names = [...new Set(all.map((b) => b.series))];
-  res.json(paged(req, names, (name) => {
-    const mine = all.filter((b) => b.series === name);
-    return {
-      id: `se-${Buffer.from(name).toString('base64url')}`,
-      name,
-      nameIgnorePrefix: name,
-      libraryItemIds: mine.map((b) => String(b.id)),
-      numBooks: mine.length,
-      addedAt: 0,
-      updatedAt: Date.now(),
-      books: mine.map(absMinified),
-    };
-  }));
-});
-
-app.get('/api/libraries/:id/authors', forMA, (req, res) => {
-  const all = absBooks();
-  const names = [...new Set(all.map((b) => b.author))];
-  res.json({ authors: names.map((name) => ({
-    id: `au-${Buffer.from(name).toString('base64url')}`,
-    name,
-    addedAt: 0,
-    updatedAt: Date.now(),
-    numBooks: all.filter((b) => b.author === name).length,
-  })) });
-});
-
-app.get('/api/libraries/:id/narrators', forMA, (req, res) => {
-  const all = absBooks().filter((b) => b.narrator);
-  const names = [...new Set(all.map((b) => b.narrator))];
-  res.json({ narrators: names.map((name) => ({
-    id: `na-${Buffer.from(name).toString('base64url')}`,
-    name,
-    numBooks: all.filter((b) => b.narrator === name).length,
-  })) });
-});
-
-// This app has no collections, playlists or shelves of Audiobookshelf's kind.
-// An empty answer of the right shape is the honest one: the provider reads it,
-// finds nothing, and moves on — where a 404 would read as a broken server.
-app.get('/api/libraries/:id/collections', forMA, (req, res) => res.json(paged(req, [], (x) => x)));
-app.get('/api/libraries/:id/playlists', forMA, (req, res) => res.json(paged(req, [], (x) => x)));
-app.get('/api/libraries/:id/personalized', forMA, (req, res) => res.json([]));
-
-// Browsing into an author or a series asks for it by id. These are the two the
-// page walks into from the Authors and Series folders, and a 404 here is what a
-// reader sees as a wordless "NotFoundError".
-app.get('/api/authors/:id', forMA, (req, res) => {
-  const a = absAuthor(req.params.id);
-  if (!a) return res.status(404).end();
-  res.json(a);
-});
-
-app.get('/api/series/:id', forMA, (req, res) => {
-  const s = absSeries(req.params.id, req.listener);
-  if (!s) return res.status(404).end();
-  res.json(s);
-});
-
-app.get('/api/items/batch/get', forMA, (req, res) => res.status(404).end());
-app.post('/api/items/batch/get', forMA, (req, res) => {
-  const ids = ((req.body || {}).libraryItemIds || []).map(Number);
-  res.json({ libraryItems: ids.map((id) => absBook(id)).filter(Boolean)
-    .map((b) => absExpanded(b, req)) });
-});
-
-app.get('/api/items/:id', forMA, (req, res) => {
-  const b = absBook(req.params.id);
-  if (!b) return res.status(404).end();
-  res.json(absExpanded(b, req));
-});
-
-// The cover and the audio, at the addresses the item says they are at. Both take
-// the token in the query, because a player fetches them itself and sends no
-// header of ours.
-// Served, not redirected to: a redirect carries neither the token in the query
-// nor a cookie, so Music Assistant followed it into the session gate and got a
-// shelf of blanks. `forMA` has already said who this is.
-app.get('/api/items/:id/cover', forMA, (req, res) => sendCover(req, res, req.params.id));
-
-app.get('/api/items/:id/file/:trackId', forMA, (req, res) => {
-  const track = db.prepare('SELECT path FROM tracks WHERE id = ? AND book_id = ?')
-    .get(Number(req.params.trackId), Number(req.params.id));
-  if (!track || !fs.existsSync(track.path)) return res.status(404).end();
-  res.sendFile(track.path);
-});
-
-// A playback session: this app streams the files straight out, so there is
-// nothing to open or keep. The answer says what it would have been.
-app.post('/api/items/:id/play', forMA, (req, res) => {
-  const b = absBook(req.params.id);
-  if (!b) return res.status(404).end();
-  res.json(absSession(b, req.listener, req, VERSION));
-});
-
-// A session by its id, and what happens to it while a book plays. The first of
-// these is the one that decides whether anything plays at all for a listener
-// signed in with a password: Music Assistant serves each part of the book
-// through an address of its own, and that address looks the session up here
-// before redirecting to the file.
-app.get('/api/session/:id', forMA, (req, res) => {
-  const s = absOpenSession(req.params.id, req, VERSION, req.listener);
-  if (!s) return res.status(404).end();
-  res.json(s);
-});
-
-app.post('/api/session/:id/sync', forMA, (req, res) =>
-  (absSyncSession(req.params.id, req.body, req.listener) ? res.json({}) : res.status(404).end()));
-
-app.post('/api/session/:id/close', forMA, (req, res) =>
-  (absCloseSession(req.params.id, req.body, req.listener) ? res.json({}) : res.json({})));
-
-// Sessions a player kept while it was offline. This app has nothing to reconcile
-// — the position it is told is the position — so they are taken and answered.
-app.post('/api/session/local', forMA, (req, res) => {
-  absSyncFromLocal(req.listener, req.body);
-  res.json({});
-});
-app.post('/api/session/local-all', forMA, (req, res) => {
-  for (const s of ((req.body || {}).sessions || [])) absSyncFromLocal(req.listener, s);
-  res.json({});
-});
-
-app.get('/api/me', forMA, (req, res) => res.json(absUser(req.listener)));
-
-app.get('/api/me/progress/:id', forMA, (req, res) => {
-  const b = absBook(req.params.id);
-  const p = b && absProgress(req.listener, b);
-  if (!p) return res.status(404).end();
-  res.json(p);
-});
-
-// What Music Assistant reports back while someone listens there. It is seconds
-// into the whole book, which this app keeps as a track and a position inside it.
-app.patch('/api/me/progress/:id', forMA, (req, res) => {
-  const b = absBook(req.params.id);
-  if (!b) return res.status(404).end();
-  const said = req.body || {};
-  const seconds = Number(said.currentTime);
-  // The client sends this in three separate calls — isFinished on its own, then
-  // a percentage, then the duration with the seconds — so only the one that
-  // carries `isFinished` may decide the tick. Reading a missing field as false
-  // would let the last of the three rub out a book the first had just finished.
-  const tick = 'isFinished' in said ? said.isFinished === true : undefined;
-  if (Number.isFinite(seconds)) {
-    absWriteProgress(req.listener, b.id, seconds, tick);
-  } else if (tick === true) {
-    absWriteProgress(req.listener, b.id, b.duration || 0, true);
-  } else if (tick === false) {
-    // "not finished", with no position: take the tick off and leave the place
-    absWriteProgress(req.listener, b.id, absProgress(req.listener, b)?.currentTime || 0, false);
-  }
-  res.json(absProgress(req.listener, b) || {});
-});
 
 // --- the Home Assistant page -------------------------------------------
 // This half talks to HA rather than waiting to be asked, so it is the admin's to
@@ -1860,60 +1509,9 @@ app.post('/api/progress', (req, res) => {
   res.json({ ok: true, done: !!(kept && (kept.done || countsAsRead(kept))) });
 });
 
-// --- metadata lookup ---------------------------------------------------
-// What Google says about series, over a stretch of the collection. The key is on
-// this container, so this is the only place the question can actually be asked;
-// the answer is a table to read and to send on. One search per book, plus what a
-// series costs, so it is deliberately a handful of books and not the library.
-app.get('/api/lookup/series-report', requireAdmin, wrap(async (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit) || 15, 1), 40);
-  // the ones with nothing yet first: they are the ones the report is about
-  const books = db.prepare(`SELECT id, title, author, series, tag_series FROM books
-                            ORDER BY (COALESCE(NULLIF(series, ''), NULLIF(tag_series, '')) IS NOT NULL),
-                                     author, title LIMIT ?`).all(limit);
-  res.json({ books: await probeSeries(books) });
-}));
+// Metadata lookup and writing it: server/routes/lookup.js
+mountLookup(app, { wrap, ensureGenre });
 
-// before /api/lookup/:id, which would otherwise swallow "status"
-app.get('/api/lookup/status', (req, res) => res.json({
-  ...lookupProgress,
-  retryIn: Math.max(0, Math.ceil((lookupProgress.retryUntil - Date.now()) / 1000)),
-}));
-
-// a lookup for something not in the library yet, such as a book being imported
-app.get('/api/lookup', requireAdmin, wrap(async (req, res) => {
-  if (!req.query.q) return res.status(400).json({ error: 'Nothing to search for' });
-  res.json(await lookup({ title: '', author: '' }, req.query.q));
-}));
-
-app.get('/api/lookup/:id', requireAdmin, wrap(async (req, res) => {
-  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
-  if (!book) return res.status(404).json({ error: 'Book not found' });
-  // deep: the series hunt, which costs a request per result and two more besides
-  res.json(await lookup(book, req.query.q, null, req.query.deep === '1'));
-}));
-
-// one write per book, so the bar that follows one asks for that book by name
-app.get('/api/apply/status', (req, res) => res.json(writeProgress(req.query.book)));
-
-app.post('/api/apply/:id', requireAdmin, wrap(async (req, res) => {
-  let book = db.prepare('SELECT * FROM books WHERE id = ?').get(Number(req.params.id));
-  if (!book) return res.status(404).json({ error: 'Book not found' });
-  // the whole-collection run is writing these same files: one writer at a time
-  if (req.body.writeTags && tagAllWorking()) {
-    throw new Error('The whole-collection tag write is running. Stop it in Settings first.');
-  }
-  // a genre is a folder, so taking Google's genre files the book there first,
-  // and the tag write below then carries the genre it ended up in
-  let moved = '';
-  if (req.body.genre && req.body.genre !== book.genre) {
-    ensureGenre(req.body.genre);
-    moved = req.body.genre;
-    await moveToGenre(book.id, req.body.genre);
-    book = db.prepare('SELECT * FROM books WHERE id = ?').get(book.id);
-  }
-  res.json({ ...await applyMetadata(book, req.body.pick, !!req.body.writeTags), moved });
-}));
 
 // --- anything thrown that nothing caught --------------------------------
 // Last of all, and it has to be last: Express only treats a four-argument
@@ -1970,4 +1568,10 @@ for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position,
 scheduleHaPush(VERSION);
 
 const port = process.env.PORT || 8523;
-app.listen(port, () => console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR})`));
+app.listen(port, () => {
+  console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR})`);
+  if (weakContainerPassword()) {
+    console.warn(`ADMIN_PASSWORD is shorter than ${PASSWORD_FLOOR} characters — every other password here `
+      + 'must be at least that. Set a longer one on the container and restart.');
+  }
+});

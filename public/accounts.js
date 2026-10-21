@@ -199,6 +199,11 @@ async function load() {
       + `${d.accounts.length} account(s) besides you.`
     : 'The container sets <code>ADMIN_PASSWORD</code> but no <code>ADMIN_USER</code>, so the '
       + 'administrator has no name to show here. Set one and restart.';
+  // said where the administrator looks, not only in a log nobody reads (2.14.152)
+  if (d.containerPasswordShort) {
+    $('#whoRuns').innerHTML += ' <strong class="warn">The <code>ADMIN_PASSWORD</code> on the container is shorter '
+      + 'than 8 characters, the least any other password here may be. Set a longer one and restart.</strong>';
+  }
 
   $('#waiting').hidden = !waiting.length;
   $('#waitingList').innerHTML = waiting.map(row).join('');

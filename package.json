@@ -1,6 +1,6 @@
 {
   "name": "my-audiobook-collection",
-  "version": "2.14.144",
+  "version": "2.14.152",
   "description": "Web based audiobook collection manager",
   "type": "module",
   "main": "server/index.js",
@@ -12,8 +12,8 @@
   },
   "license": "MIT",
   "dependencies": {
-    "express": "^5.1.0",
-    "music-metadata": "^11.16.1",
+    "express": "^5.3.0",
+    "music-metadata": "^12.2.3",
     "node-id3": "^0.2.9"
   },
   "devDependencies": {

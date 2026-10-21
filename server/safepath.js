@@ -43,6 +43,27 @@ export function inside(root, p) {
 // The same, against any of a list of roots.
 export const insideAny = (roots, p) => (roots || []).some((r) => inside(r, p));
 
+// Where the folder browser in Settings may look (2.14.152). It listed any folder
+// on the machine — /etc, /root, every other container's data — to whoever had
+// the admin's session, and what it is for is finding the audiobooks. So: the
+// places a collection is mounted (`/audiobooks` and `/import` in the image, the
+// usual mount points on an LXC), the libraries and import folder already set,
+// and whatever `BROWSE_ROOTS` on the container adds, comma-separated. Only the
+// ones that are there; each by its real path, so a link cannot reach past it.
+const MOUNTS = ['/audiobooks', '/import', '/mnt', '/media', '/srv'];
+export function browseRoots(importPath = '') {
+  const said = String(process.env.BROWSE_ROOTS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const all = [...said, ...MOUNTS, ...libraryRoots(), importPath].filter(Boolean).map(real).filter(Boolean);
+  // a root inside another root adds nothing: browsing the outer one reaches it
+  const unique = [...new Set(all)];
+  return unique.filter((r) => !unique.some((o) => o !== r && r.startsWith(o + path.sep))).sort();
+}
+// Whether a folder is one of those, or inside one.
+export const mayBrowse = (p, roots) => {
+  const here = real(p);
+  return !!here && roots.some((r) => here === r || here.startsWith(r + path.sep));
+};
+
 // Every library folder, resolved. A book's own cover file lives beside its audio,
 // so these are the only folders a `file:` cover may point into.
 export const libraryRoots = () => getLibraries().map((l) => l.path).filter(Boolean);
