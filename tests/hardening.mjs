@@ -90,9 +90,23 @@ try {
     [page.headers.get('x-content-type-options'), page.headers.get('referrer-policy')], ['nosniff', 'same-origin']);
   check('and Express no longer names itself', page.headers.get('x-powered-by'), null);
 
+  // The image's HEALTHCHECK, run exactly as the Dockerfile writes it (2.14.152):
+  // a typo in it would show only as a container Docker calls unhealthy.
+  {
+    const docker = fs.readFileSync(path.join(ROOT, 'Dockerfile'), 'utf8');
+    const said = (docker.match(/HEALTHCHECK[^\n]*\\\n\s*CMD (\[.*\])/) || [])[1];
+    const cmd = said ? JSON.parse(said) : null;
+    const run = (port) => (cmd ? spawnSync(cmd[0] === 'node' ? process.execPath : cmd[0], cmd.slice(1),
+      { env: { ...process.env, PORT: String(port) }, timeout: 10000 }).status : null);
+    check('the image\'s health check passes against a running app, and fails where nothing answers',
+      [!!cmd, run(PORT), run(PORT + 7)], [true, 0, 1]);
+  }
+
   // --- 3. a write from another site ---------------------------------------------
   const signed = await call('POST', '/api/account/signin', { name: 'morgan', password: 'a very good password' });
   const admin = { Cookie: signed.cookies };
+  check('a container password long enough raises nothing on the accounts page',
+    (await call('GET', '/api/accounts', null, admin)).body.containerPasswordShort, false);
   check('a write whose Origin is another host is refused, cookie or not',
     (await call('POST', '/api/backups', null, { ...admin, Origin: 'http://192.168.2.200:9000' })).status, 403);
   check('one from this app\'s own page is done',
@@ -101,6 +115,31 @@ try {
     (await call('POST', '/api/backups', null, admin)).status, 200);
   check('a read is never refused for its Origin',
     (await call('GET', '/api/admin', null, { Origin: 'http://elsewhere.example' })).status, 200);
+
+  // --- the routes that moved out of index.js still answer (2.14.152) -------------
+  // Moved as written into server/routes/, each mounted where its block stood. A
+  // name left behind in index.js would only show when somebody pressed the
+  // button, so each is asked once here — the answers they give with nothing
+  // set up, not a 500 and not a missing route.
+  {
+    // a status, and for a refusal whether it was the route's own: a route that is
+    // not there at all answers 404 too, with Express's HTML instead of JSON
+    const ask = async (how, where, body) => {
+      const r = await call(how, where, body, admin);
+      return r.status < 400 ? r.status : `${r.status}${typeof r.body.error === 'string' ? ' own' : ' none'}`;
+    };
+    check('every route that moved out of index.js still answers as it did', [
+      await ask('GET', '/api/permissions'),
+      await ask('POST', '/api/permissions/fix', { path: '/nowhere' }),
+      await ask('POST', '/api/permissions/forget', { path: '/nowhere' }),
+      await ask('GET', '/api/update/progress'),
+      await ask('GET', '/api/backups'),
+      await ask('GET', '/api/lookup/status'),
+      await ask('GET', '/api/apply/status'),
+      await ask('POST', '/api/apply/999', { pick: {} }),
+      await ask('GET', '/api/lookup/999'),
+    ], [200, '400 own', '400 own', 200, 200, 200, 200, '404 own', '404 own']);
+  }
 
   // --- 1. asking for an account --------------------------------------------------
   {
@@ -144,6 +183,36 @@ try {
       d.prepare("SELECT COUNT(*) AS n FROM admin_sessions WHERE hash IN ('old-one', 'other-password')").get().n, 0);
     d.close();
   }
+
+  // --- the folder browser stays where audiobooks can be (2.14.152) ----------------
+  // It listed any folder on the machine. Here only BROWSE_ROOTS can be looked
+  // in — /audiobooks and the rest are not on a test machine.
+  await stop();
+  const BOOKS = path.join(path.dirname(DATA), 'books');
+  fs.mkdirSync(path.join(BOOKS, 'Fantasy', 'An Author'), { recursive: true });
+  await start({ BROWSE_ROOTS: BOOKS });
+  const again = await call('POST', '/api/account/signin', { name: 'morgan', password: 'a very good password' });
+  const look = async (p) => (await call('GET', `/api/browse?path=${encodeURIComponent(p)}`, null, { Cookie: again.cookies })).body;
+  const top = await look('/');
+  const real = fs.realpathSync(BOOKS);
+  check('the browser starts at the places audiobooks can be, not at /',
+    [top.top, top.entries.includes(real)], [true, true]);
+  const inside = await look(path.join(real, 'Fantasy'));
+  check('and opens folders inside them',
+    [inside.path, inside.entries, inside.parent], [path.join(real, 'Fantasy'), [path.join(real, 'Fantasy', 'An Author')], real]);
+  check('going up from one of them comes back to the list',
+    (await look(real)).parent, '/');
+  const outside = await look(ROOT);
+  check('and a folder outside them is not listed: it answers with the list, and says so',
+    [outside.top, outside.refused, outside.entries.includes(ROOT)], [true, ROOT, false]);
+
+  // --- a container password shorter than any other may be (2.14.152) ------------
+  await stop();
+  await start({ ADMIN_PASSWORD: 'short' });
+  const weak = await call('POST', '/api/account/signin', { name: 'morgan', password: 'short' });
+  check('a short ADMIN_PASSWORD still lets the administrator in, and the accounts page is told',
+    [weak.status, (await call('GET', '/api/accounts', null, { Cookie: weak.cookies })).body.containerPasswordShort],
+    [200, true]);
 
   // --- 2, again: a dashboard allowed to frame it ---------------------------------
   await stop();

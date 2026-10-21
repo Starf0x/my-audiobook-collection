@@ -61,6 +61,11 @@ const sessions = {
 const KEEP = 30 * 24 * 60 * 60 * 1000;
 
 const envPassword = () => process.env.ADMIN_PASSWORD || '';
+// A password on the container shorter than the floor the app holds every other
+// password to (2.14.152). It is not refused — an install that started fine
+// yesterday must not stop at the gate after an update — but it is said, in the
+// log at start and on the accounts page, where it can be put right.
+export const weakContainerPassword = () => !!envPassword() && envPassword().length < SHORTEST;
 const envName = () => (process.env.ADMIN_USER || '').trim();
 
 const NAME = 'adminName';

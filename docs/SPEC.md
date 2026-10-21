@@ -372,6 +372,7 @@ would otherwise lose every library on it.
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked and the library needs an account; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
 | `HA_TOKEN` | empty | when set, every `/api/ha…` address needs it as `?token=` or `Authorization: Bearer`. The audio itself stays open, or a speaker could not play it |
+| `BROWSE_ROOTS` | empty | more places the folder browser in Settings may look, comma-separated, besides `/audiobooks`, `/import`, `/mnt`, `/media`, `/srv` and the folders already set |
 | `FRAME_ANCESTORS` | `'self'` | who may show the app inside a frame. Set it to add a Home Assistant dashboard that embeds it in a webpage card, e.g. `'self' http://192.168.2.200:8123` |
 | `MA_TOKEN` | empty | the password Music Assistant logs in with (§7.9d). **Empty means the whole Audiobookshelf face is not there**: every one of its addresses answers 404, so a default install grows no new surface |
 | `BASE_URL` | empty | the address other machines reach the app on, when that is not the one they asked at (a reverse proxy). Every URL inside the Home Assistant answers is built from it |
@@ -746,7 +747,7 @@ and an empty genre is a fair question with an empty answer.
 | `GET /api/users` | — | names |
 | `POST /api/users` | — | add a name |
 | `GET/POST /api/settings` | admin | `{libraries, importPath}` |
-| `GET /api/browse?path=` | admin | folder picker: `{path, parent, entries}` |
+| `GET /api/browse?path=` | admin | folder picker: `{path, parent, entries}`. Only inside `/audiobooks`, `/import`, `/mnt`, `/media`, `/srv`, the libraries, the import folder and `BROWSE_ROOTS`; the top (`top: true`) is the list of those, and a path outside them answers with that list and `refused` |
 | `GET /api/genrefolders` | admin | `{folders, suggestedParent}` |
 | `POST /api/genres` | admin | make a genre folder, register it if needed |
 | `GET /api/files/status` | — | file-operation progress |
@@ -2286,6 +2287,27 @@ and stops — it does not wait on it.
   systemd to start it clean.
 * **A sign-in clears away administrator sessions** past their thirty days or
   made under another password.
+
+**And the rest of that review** (2.14.152), also in `hardening`:
+
+* **The folder browser stays where audiobooks can be** (`browseRoots` in
+  `safepath.js`); it listed any folder on the machine.
+* **An `ADMIN_PASSWORD` shorter than 8** — the floor every other password here
+  has — is said in the log at start and on the accounts page. Not refused: an
+  install that started yesterday must not stop at the gate after an update.
+* **The image has a `HEALTHCHECK`**: `node` fetching `/api/admin`, the one
+  address that answers with nobody signed in. `hardening` runs the Dockerfile's
+  own command against a running app, and where nothing answers.
+* **Express 5.3 and music-metadata 12** (which needs Node 22; the image, the LXC
+  and CI are on 26).
+* **`server/index.js` and `public/app.js` were cut down** by moving whole blocks,
+  as written, into files of their own: `server/routes/music-assistant.js`,
+  `folders.js`, `updates.js` and `lookup.js`, each a `mount…(app, deps)` called
+  where its block stood so the routes keep their order; and `public/series.js`
+  and `version.js`, loaded right after `app.js`. Only blocks that the rest of the
+  file uses from inside functions moved — one that defines what other code needs
+  at load time (`whoReads`, `MAINTENANCE_ROWS`) stayed. `hardening` asks every
+  moved route once, and tells a route's own refusal from a route that is gone.
 
 **The server refuses, the interface merely hides.** Every route that changes
 anything carries `requireAdmin`; hiding buttons is not what protects it.

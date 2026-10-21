@@ -11,6 +11,13 @@ ENV DATA_DIR=/data PORT=8523
 VOLUME /data
 EXPOSE 8523
 
+# Whether the app answers, so Docker and Unraid can say "unhealthy" instead of
+# "running" for a process that is up and serving nothing. /api/admin is the one
+# address that answers with nobody signed in, even before an administrator is
+# made. node rather than wget, so it needs nothing the image might not have.
+HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 8523) + '/api/admin', { signal: AbortSignal.timeout(4000) }).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+
 # Unraid reads these off the image, so the WebUI link, the icon and Force update
 # work even for a container that was not created from the template. Unraid fetches
 # the icon over HTTP, so this URL has to stay publicly reachable: anything it
