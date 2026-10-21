@@ -1021,8 +1021,13 @@ async function run() {
     await pickedUp();
     await click('#pGenre');
     await atPage('/');
-    await waitFor(`[...document.querySelectorAll('#genres li.active')].some((l) => l.dataset.name === 'Fantasy')`,
-      'the genre to be opened');
+    // For the end of the opening, not its start. `selectGenre` marks the genre
+    // active at once and fills the authors after asking the server, so a check
+    // read on "active" alone caught it between the two — column "books", no
+    // authors — and read like the shelves drawing over the genre. It failed one
+    // run in four, and a fix went in for a race this was not (2.14.144).
+    await settle(`document.body.dataset.col === 'authors'
+      && [...document.querySelectorAll('#authors li')].some((l) => l.dataset.name === 'Test Author')`);
     const inGenre = await evaluate(`(() => ({
       col: document.body.dataset.col,
       authors: [...document.querySelectorAll('#authors li')].map((l) => l.dataset.name),

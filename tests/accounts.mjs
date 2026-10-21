@@ -6,6 +6,7 @@
 // the thing being checked is who gets an answer and who does not.
 //
 // Run: node tests/accounts.mjs
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -453,15 +454,33 @@ check('a name in the body cannot write into another account',
   db.prepare('SELECT user FROM progress').all().map((p) => p.user), ['Bert']);
 
 // --- seven quiet days ----------------------------------------------------
+// A session is kept by its hash, never the token (2.14.144) — so the database
+// is no key to anybody's account, and its daily copies are not either.
+const keyOf = (t) => `h:${crypto.createHash('sha256').update(t).digest('hex')}`;
 const token = bert.cookies.replace('listener=', '');
+check('the token handed out is not what the database keeps',
+  [db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE token = ?').get(token).n,
+    db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE token = ?').get(keyOf(token)).n], [0, 1]);
+// and a session an older version kept raw goes on working, hashed the first
+// time it comes back, so nobody is signed out by the update
+{
+  const old = crypto.randomBytes(32).toString('hex');
+  const now = new Date().toISOString();
+  db.prepare('INSERT INTO listener_sessions (token, name, made, seen) VALUES (?, ?, ?, ?)').run(old, 'Bert', now, now);
+  const still = (await get('/api/genres', `listener=${old}`)).status;
+  check('a session kept raw before the update still opens, and is kept hashed from then on',
+    [still, db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE token = ?').get(old).n,
+      db.prepare('SELECT COUNT(*) AS n FROM listener_sessions WHERE token = ?').get(keyOf(old)).n], [200, 0, 1]);
+  db.prepare('DELETE FROM listener_sessions WHERE token = ?').run(keyOf(old));
+}
 db.prepare("UPDATE listener_sessions SET seen = ? WHERE token = ?")
-  .run(new Date(Date.now() - 8 * 86400000).toISOString(), token);
+  .run(new Date(Date.now() - 8 * 86400000).toISOString(), keyOf(token));
 check('a session nobody used for a week is over', (await get('/api/genres', bert.cookies)).status, 401);
 
 const again = await post('/api/account/signin', { name: 'Bert', password: 'a good long one' });
 check('signing in again works', again.status, 200);
 db.prepare("UPDATE listener_sessions SET seen = ? WHERE token = ?")
-  .run(new Date(Date.now() - 6 * 86400000).toISOString(), again.cookies.replace('listener=', ''));
+  .run(new Date(Date.now() - 6 * 86400000).toISOString(), keyOf(again.cookies.replace('listener=', '')));
 check('six quiet days is not seven', (await get('/api/genres', again.cookies)).status, 200);
 
 // --- taking an account away ----------------------------------------------

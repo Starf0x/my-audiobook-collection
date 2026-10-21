@@ -32,6 +32,7 @@ const PORTABLE = [
   'series-tags',
   'permissions',
   'restart',
+  'hardening',
   'ogg-lengths',
   'sub-series',
   'moving',

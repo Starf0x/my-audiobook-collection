@@ -36,6 +36,9 @@ services:
       # nothing in front of it sets that header, or one person can spend
       # somebody else's attempts.
       # TRUST_PROXY: "1"
+      # Who may show the app inside a frame: only this app, unless you embed it
+      # in a Home Assistant dashboard (a webpage card) — then add its address.
+      # FRAME_ANCESTORS: "'self' http://192.168.2.200:8123"
       # Start even if it could not become PUID:PGID and is therefore still root.
       # Everything it then creates on your share belongs to root.
       # ALLOW_ROOT: "0"

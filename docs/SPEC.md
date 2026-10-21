@@ -372,6 +372,7 @@ would otherwise lose every library on it.
 | `ADMIN_PASSWORD` | empty | set → the admin page must be unlocked and the library needs an account; empty → private install, everyone may do anything |
 | `GOOGLE_API_KEY` | empty | Google Books lookups |
 | `HA_TOKEN` | empty | when set, every `/api/ha…` address needs it as `?token=` or `Authorization: Bearer`. The audio itself stays open, or a speaker could not play it |
+| `FRAME_ANCESTORS` | `'self'` | who may show the app inside a frame. Set it to add a Home Assistant dashboard that embeds it in a webpage card, e.g. `'self' http://192.168.2.200:8123` |
 | `MA_TOKEN` | empty | the password Music Assistant logs in with (§7.9d). **Empty means the whole Audiobookshelf face is not there**: every one of its addresses answers 404, so a default install grows no new surface |
 | `BASE_URL` | empty | the address other machines reach the app on, when that is not the one they asked at (a reverse proxy). Every URL inside the Home Assistant answers is built from it |
 | `GOOGLE_COUNTRY` | `US` | which country's Google catalogue answers. Series data belongs to a country's Play catalogue, and left to the server's own address Google can answer with a record that has none |
@@ -2260,6 +2261,32 @@ out. `restart` stops and starts a real server process to check both. And the
 update bar reads a 401 or 403 as "back, but this page is signed out", says so,
 and stops — it does not wait on it.
 
+**What a review of the whole app added** (2.14.144), each checked by
+`hardening` against a real server process:
+
+* **Asking for an account is limited.** It is the one route open to anybody,
+  and each request cost a scrypt, a row and a Discord message. Three an hour
+  from one address (then 429 with `Retry-After`), twenty waiting at most; both
+  asked before the scrypt, and a refused one leaves no row.
+* **Headers on every answer**: `Content-Security-Policy: frame-ancestors` (this
+  app only, or what `FRAME_ANCESTORS` adds) with `X-Frame-Options: SAMEORIGIN`
+  beside it, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`;
+  and no `X-Powered-By`.
+* **A write must come from this app's pages.** A POST whose `Origin` names
+  another host is refused with 403. SameSite=Lax stops another *site*, not another
+  app on the same machine on another port. A request with no `Origin` is not a
+  browser page — Music Assistant, Home Assistant, curl — and is left to the
+  route and its token.
+* **Listener sessions are kept hashed** (`h:` + SHA-256), as the
+  administrator's are: the database and its daily copies were a key to every
+  account for a week. A token kept raw by an older version still opens once and
+  is hashed then, so the update signs nobody out.
+* **What nothing else caught**: an unhandled rejection is logged and the app
+  goes on; an uncaught exception is logged and the process ends, for Docker or
+  systemd to start it clean.
+* **A sign-in clears away administrator sessions** past their thirty days or
+  made under another password.
+
 **The server refuses, the interface merely hides.** Every route that changes
 anything carries `requireAdmin`; hiding buttons is not what protects it.
 
@@ -3829,7 +3856,7 @@ quietly on an empty library:
 
 | In the repository | |
 | --- | --- |
-| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` `permissions` `restart` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
+| `first-run` `requests` `series-complete` `series-online` `abs-contract` `safe-paths` `half-done` `outward` `one-at-a-time` `accounts` `levels` `book-bar` `ogg-lengths` `sub-series` `moving` `pages` `packaging` `to-player` `series-tags` `permissions` `restart` `hardening` | run by `npm test`, and by the **Checks** workflow on every push and pull request |
 | `plays-on` | drives a headless browser, so it is a **job of its own** in that workflow and `npm run test:ui` by hand. 53 checks, passing since 2.8.24 brought it up to the app as it is — it signs in at the gate as the administrator, because the *"who is listening?"* dialog it used to type a name into went when accounts arrived in 2.7.0 |
 | `covers-zip` | unpacks with PowerShell, so it is run by hand on Windows: `npm run test:zip` |
 

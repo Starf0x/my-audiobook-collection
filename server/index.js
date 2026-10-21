@@ -50,7 +50,67 @@ import { enabled as absEnabled, inboundToken as absToken, listener as absListene
   syncFromLocal as absSyncFromLocal } from './abs.js';
 
 
+// --- what nothing else caught (2.14.144) ------------------------------------
+// One forgotten `.catch` anywhere ended the whole app: Node stops on an
+// unhandled rejection, and a home server stopped is a book that will not play
+// until somebody looks. A rejection is a promise nobody waited on — the work it
+// was doing is lost, the rest of the app is not — so it is said and the app goes
+// on. A thrown exception that reached the top is different: what was half done
+// may be wrong, so it is said and the process ends, and Docker
+// (`restart: unless-stopped`) or systemd (`Restart=on-failure`) starts it clean.
+process.on('unhandledRejection', (why) => {
+  console.error('[unhandled rejection]', why);
+});
+process.on('uncaughtException', (e) => {
+  console.error('[uncaught exception, restarting]', e);
+  process.exit(1);
+});
+
 const app = express();
+// Express names itself on every answer, which tells a stranger what to look up.
+app.disable('x-powered-by');
+
+// --- headers every answer carries (2.14.144) --------------------------------
+// None were set. The admin page has buttons that delete books and change
+// ownership on a share, and with nothing said any other site could show it in a
+// frame and steer a click on it. `frame-ancestors` says who may frame it:
+// this app alone, unless `FRAME_ANCESTORS` on the container names more — a Home
+// Assistant dashboard that shows the app in a webpage card is the case for that,
+// e.g. `FRAME_ANCESTORS="'self' http://192.168.2.200:8123"`. `nosniff` stops a
+// browser reading a file as a type it was not served as, and the referrer is
+// kept to this app's own pages, so a link out does not hand over the address.
+// A bare `self` is taken for `'self'`: systemd strips the quotes from an
+// EnvironmentFile, and unquoted it would name a host called "self".
+const FRAME_ANCESTORS = (process.env.FRAME_ANCESTORS || "'self'").replace(/[;\r\n]/g, ' ')
+  .split(/\s+/).filter(Boolean).map((s) => (/^'?self'?$/i.test(s) ? "'self'" : s)).join(' ') || "'self'";
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', `frame-ancestors ${FRAME_ANCESTORS}`);
+  if (FRAME_ANCESTORS === "'self'") res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  next();
+});
+
+// --- a write must come from this app's own pages (2.14.144) ------------------
+// The cookies are SameSite=Lax, which keeps another *site* from sending them
+// with a write — but another web app on the same machine, on another port, is
+// the same site, and its pages could post to this one with the administrator's
+// cookie attached. A browser says where a request comes from in `Origin`, so a
+// write whose Origin names another host is refused. One with no Origin is not a
+// browser page — Music Assistant, Home Assistant, curl — and those carry their
+// own tokens, which the routes ask for.
+const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (SAFE.has(req.method) || !origin) return next();
+  let from = '';
+  try { from = new URL(origin).host; } catch { /* "null", or nonsense: not this app */ }
+  const here = [req.headers.host, trustProxy() ? req.headers['x-forwarded-host'] : '']
+    .filter(Boolean).flatMap((h) => String(h).split(',').map((s) => s.trim()));
+  if (from && here.includes(from)) return next();
+  return res.status(403).json({ error: 'That came from another site, so it was not done.' });
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 // Music Assistant's Audiobookshelf client joins its base address and an endpoint
@@ -313,7 +373,7 @@ app.get('/api/account/me', (req, res) => {
 });
 
 app.post('/api/account/request', wrap(async (req, res) => {
-  const said = await requestAccount(req.body || {});
+  const said = await requestAccount(req.body || {}, req.ip || req.socket.remoteAddress || '');
   askedForAnAccount(said);
   res.json({ asked: true, name: said.name });
 }));
