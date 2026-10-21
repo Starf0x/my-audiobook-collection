@@ -74,6 +74,7 @@ const q = {
   open: db.prepare('INSERT INTO listener_sessions (token, name, made, seen) VALUES (?, ?, ?, ?)'),
   touch: db.prepare('UPDATE listener_sessions SET seen = ? WHERE token = ?'),
   close: db.prepare('DELETE FROM listener_sessions WHERE token = ?'),
+  rekey: db.prepare('UPDATE listener_sessions SET token = ? WHERE token = ?'),
   closeAllOf: db.prepare('DELETE FROM listener_sessions WHERE name = ?'),
   stale: db.prepare('DELETE FROM listener_sessions WHERE seen < ?'),
 };
@@ -100,7 +101,37 @@ const PAGE_SAYS = [
 const asWords = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // --- asking for one ------------------------------------------------------
-export async function requestAccount({ name, password, reason, knowsAdmin }) {
+// How much asking one address may do, and how much may wait (2.14.144). This is
+// the one route that answers somebody with no account at all, and every request
+// costs a scrypt, a row and a message to Discord — so a loop on the network
+// could fill the accounts page and ring the phone without end. Three an hour
+// from one address is more than a person ever needs; twenty waiting is more
+// than an administrator ever has. Both are asked before the scrypt.
+export const ASKS_PER_HOUR = 3;
+export const MOST_WAITING = 20;
+const HOUR = 60 * 60 * 1000;
+const asked = new Map(); // address -> times it asked, within the hour
+
+function mayAsk(from) {
+  const now = Date.now();
+  const recent = (asked.get(from) || []).filter((t) => now - t < HOUR);
+  if (recent.length >= ASKS_PER_HOUR) {
+    const e = new Error('That is enough asking from here for now. Try again in an hour.');
+    e.retryAfter = Math.ceil((HOUR - (now - recent[0])) / 1000);
+    throw e;
+  }
+  const waiting = db.prepare("SELECT COUNT(*) AS n FROM users WHERE state = 'pending'").get().n;
+  if (waiting >= MOST_WAITING) {
+    throw new Error('Too many requests are already waiting for the administrator. Try again later.');
+  }
+  return () => {
+    asked.set(from, [...recent, now]);
+    if (asked.size > 1000) for (const [k, v] of asked) if (v.every((t) => now - t >= HOUR)) asked.delete(k);
+  };
+}
+
+export async function requestAccount({ name, password, reason, knowsAdmin }, from = '') {
+  const counted = mayAsk(from);
   const who = asName(name);
   if (!who) throw new Error('Fill in the name you want to listen under.');
   if (who.toLowerCase() === adminName().toLowerCase() && adminName()) {
@@ -116,6 +147,9 @@ export async function requestAccount({ name, password, reason, knowsAdmin }) {
   }
   if (find(who)) throw new Error('There is already an account with that name. Ask the administrator.');
 
+  // counted only once it is a real request: a form sent back for a short
+  // password is somebody typing, not somebody asking
+  counted();
   const salt = crypto.randomBytes(16).toString('hex');
   const key = await scrypt(said, salt);
   q.add.run(who, 'pending', key.toString('hex'), salt, why, knowsAdmin ? 1 : 0, new Date().toISOString());
@@ -193,11 +227,18 @@ export async function signIn({ name, password, from = '' }) {
   return { name: row.name, token: openSession(row.name), claimed: !row.pass };
 }
 
+// What is kept of a session token: its hash, never the token (2.14.144). The
+// tokens were stored as they were handed out, and a copy of the database — one
+// is made every day, beside it — was a key to every listener's account for a
+// week. `h:` marks a hashed row, so a token kept by an older version is told
+// apart, and turned into one the first time it comes back.
+const keyOf = (token) => `h:${crypto.createHash('sha256').update(String(token)).digest('hex')}`;
+
 function openSession(name) {
   const token = crypto.randomBytes(32).toString('hex');
   const now = new Date().toISOString();
   forgetStale();
-  q.open.run(token, name, now, now);
+  q.open.run(keyOf(token), name, now, now);
   q.seen.run(now, now, name);
   return token;
 }
@@ -215,19 +256,26 @@ export const tokenIn = (req, cookie = 'listener') => {
 export function listenerOf(req) {
   const token = tokenIn(req);
   if (!token) return '';
-  const s = q.session.get(token);
+  const key = keyOf(token);
+  let s = q.session.get(key);
+  // kept raw by a version before 2.14.144: hashed now, so nobody is signed out
+  // by the update and no raw token is left behind
+  if (!s && !token.startsWith('h:')) {
+    s = q.session.get(token);
+    if (s) q.rekey.run(key, token);
+  }
   if (!s) return '';
   if (Date.now() - Date.parse(s.seen || s.made || 0) > WEEK) {
-    q.close.run(token);
+    q.close.run(key);
     return '';
   }
   const row = find(s.name);
   if (!row || row.state !== 'approved') {
-    q.close.run(token);
+    q.close.run(key);
     return '';
   }
   const now = new Date().toISOString();
-  q.touch.run(now, token);
+  q.touch.run(now, key);
   // last_seen is a day-level thing on the admin page, so it is not written on
   // every request: once an hour is enough and keeps this off the write path
   if (!row.last_seen || Date.now() - Date.parse(row.last_seen) > 3600000) q.seen.run(now, now, row.name);
@@ -254,7 +302,10 @@ export function seenAdmin(name) {
 
 export function signOut(req) {
   const token = tokenIn(req);
-  if (token) q.close.run(token);
+  if (token) {
+    q.close.run(keyOf(token));
+    q.close.run(token); // one kept raw, from before 2.14.144
+  }
 }
 
 // What the admin page shows: who they are, when they were last here, and how

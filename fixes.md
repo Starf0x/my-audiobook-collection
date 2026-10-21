@@ -892,6 +892,17 @@ without the second look.
 that draws after one asks again whether it is still wanted — and clears nothing
 until it knows.
 
+**Correction (2.14.144).** That was not what `plays-on` saw. It failed the same
+way again after the fix, and the cause was the check: it waited for the genre to
+be *marked active*, which `selectGenre` does at once, and then read the column and
+the authors, which it fills only after asking the server — so it measured the gap
+between the two. The refresh race is real, and `pages` shows it can happen; it was
+never shown to be this. I named a cause the code had not established, and fixed it.
+
+**Rule:** a check waits for the end state it asserts, not for the first sign that
+work began. And a cause is not established because a fix for it went in and the
+next three runs passed — a one-in-four fault does that by itself.
+
 ### The update bar waited for ever on the sign-out it caused (2.14.120)
 
 2.14.96 gave the LXC update a bar. The owner's sat on "the app is restarting, so

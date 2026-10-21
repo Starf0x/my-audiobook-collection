@@ -40,8 +40,14 @@ const governing = () => crypto.createHash('sha256').update(JSON.stringify([
   envName() || storedName(), envPassword() ? hashOf(`env:${envPassword()}`) : getSetting(HASH, ''),
 ])).digest('hex');
 const sessions = {
-  set: (token) => db.prepare('INSERT OR REPLACE INTO admin_sessions (hash, made, under) VALUES (?, ?, ?)')
-    .run(hashOf(token), Date.now(), governing()),
+  set: (token) => {
+    // Each sign-in adds a row, and none was ever taken away: a session past its
+    // thirty days, or made under a password since changed, opens nothing and is
+    // gone from here on (2.14.144).
+    db.prepare('DELETE FROM admin_sessions WHERE made < ? OR under != ?').run(Date.now() - KEEP, governing());
+    db.prepare('INSERT OR REPLACE INTO admin_sessions (hash, made, under) VALUES (?, ?, ?)')
+      .run(hashOf(token), Date.now(), governing());
+  },
   get: (token) => {
     if (!token) return undefined;
     const row = db.prepare('SELECT made, under FROM admin_sessions WHERE hash = ?').get(hashOf(token));

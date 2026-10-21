@@ -311,6 +311,7 @@ check the paths it filled in:
 | `MA_TOKEN` | empty | the password Music Assistant logs in with. Empty means that whole face of the app is not there |
 | Home Assistant token | empty | only for the polling addresses: set it to make `/api/ha…` ask for it. The page above needs no container setting |
 | Base URL | empty | only behind a reverse proxy: the address other machines reach the app on |
+| `FRAME_ANCESTORS` | `'self'` | only if you show the app inside a Home Assistant dashboard (a webpage card): add its address, e.g. `'self' http://192.168.2.200:8123`. Without it the app refuses to be framed by another site |
 | Google country | `US` | which country's Google catalogue a **fresh database** starts on. From 2.3.72 it is chosen in Settings, and the setting wins; this only decides where it begins. Series data belongs to a country's catalogue and the US one has the most of it — but if lookups keep saying Google is busy, try your own country instead |
 
 The last three are optional, and the two variables are masked in the form. Then
