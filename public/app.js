@@ -735,15 +735,63 @@ function importForm(d, c) {
   $('#iFound').innerHTML = '';
   $('#iGenre').innerHTML = d.genres.map((g) =>
     `<option${g === c.genre ? ' selected' : ''}>${esc(g)}</option>`).join('');
-  $('#iAuthor').value = c.artist || '';
   $('#iSeries').value = c.series || '';
+  $('#iSeriesNo').value = c.seriesNo || '';
   $('#iTitle').value = c.album || c.name;
   const preview = () => {
     const parts = [$('#iAuthor').value.trim(), $('#iSeries').value.trim(), $('#iTitle').value.trim()].filter(Boolean);
-    $('#iWhere').textContent = `Moves into ${$('#iGenre').value} / ${parts.join(' / ')}`;
+    // the number only means something inside a series, and the import ignores it without one
+    const no = $('#iSeries').value.trim() && Number($('#iSeriesNo').value) > 0 ? `, book ${Number($('#iSeriesNo').value)}` : '';
+    $('#iWhere').textContent = `Moves into ${$('#iGenre').value} / ${parts.join(' / ')}${no}`;
   };
-  ['iGenre', 'iAuthor', 'iSeries', 'iTitle'].forEach((id) => { $('#' + id).oninput = preview; $('#' + id).onchange = preview; });
+  ['iGenre', 'iAuthor', 'iSeries', 'iSeriesNo', 'iTitle'].forEach((id) => { $('#' + id).oninput = preview; $('#' + id).onchange = preview; });
+  // The author is picked from the ones the chosen genre already has, so a book
+  // lands beside its author's others instead of in a second folder spelled a
+  // little differently. + types one in that the genre has not got yet.
+  // `#iAuthor` holds the name either way, and is what everything else reads.
+  let authors = [];
+  const typing = (on) => {
+    $('#iAuthor').hidden = !on;
+    $('#iAuthorPick').hidden = on;
+    // with nothing to pick from there is no list to go back to
+    $('#iAuthorNew').hidden = on && !authors.length;
+    $('#iAuthorNew').textContent = on ? '↩' : '+';
+    $('#iAuthorNew').title = on ? 'Pick an author this genre already has' : 'Add an author this genre has not got yet';
+  };
+  const setAuthor = (name) => {
+    const known = authors.find((a) => a.toLowerCase() === (name || '').trim().toLowerCase());
+    if (known || !name) {
+      $('#iAuthorPick').value = known || authors[0] || '';
+      $('#iAuthor').value = $('#iAuthorPick').value;
+      typing(!authors.length);
+    } else {
+      $('#iAuthor').value = name;
+      typing(true);
+    }
+    preview();
+  };
+  const loadAuthors = async (name) => {
+    const genre = $('#iGenre').value;
+    const got = await api('/api/authors?genre=' + encodeURIComponent(genre)).catch(() => []);
+    if (genre !== $('#iGenre').value) return; // another genre was picked meanwhile
+    authors = (Array.isArray(got) ? got : []).map((a) => a.name).filter(Boolean);
+    $('#iAuthorPick').innerHTML = authors.map((a) => `<option>${esc(a)}</option>`).join('');
+    setAuthor(name);
+  };
+  $('#iAuthorPick').onchange = () => { $('#iAuthor').value = $('#iAuthorPick').value; preview(); };
+  $('#iAuthorNew').onclick = () => {
+    if ($('#iAuthor').hidden) {
+      $('#iAuthor').value = '';
+      typing(true);
+      $('#iAuthor').focus();
+    } else setAuthor('');
+    preview();
+  };
+  $('#iGenre').onchange = () => { preview(); loadAuthors($('#iAuthor').value); };
+  $('#iAuthor').value = c.artist || '';
+  typing(true);
   preview();
+  loadAuthors(c.artist || '');
   // Look the book up before its folder name is settled, and fill the fields in
   // from a result rather than typing them.
   $('#iLookup').onclick = async () => {
@@ -763,7 +811,7 @@ function importForm(d, c) {
         b.onclick = () => {
           const r = found[Number(b.dataset.use)];
           if (r.title) $('#iTitle').value = r.title;
-          if (r.author) $('#iAuthor').value = r.author;
+          if (r.author) setAuthor(r.author);
           $('#iFound').innerHTML = '';
           preview();
         };
@@ -776,7 +824,8 @@ function importForm(d, c) {
   $('#iGo').onclick = async () => {
     const body = {
       source: c.path, genre: $('#iGenre').value, author: $('#iAuthor').value.trim(),
-      series: $('#iSeries').value.trim(), title: $('#iTitle').value.trim(),
+      series: $('#iSeries').value.trim(), seriesNo: Number($('#iSeriesNo').value) || 0,
+      title: $('#iTitle').value.trim(),
     };
     // Never overwrite a book unseen: if one is already there, the two copies are
     // compared first and it is the admin who decides which one the library keeps.

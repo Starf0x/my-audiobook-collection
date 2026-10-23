@@ -343,8 +343,10 @@
   <h2>Import audiobook</h2>
   <p class="hint" id="iSource"></p>
   <label>Genre</label><select id="iGenre"></select>
-  <label>Author</label><input id="iAuthor">
+  <label>Author</label>
+  <div class="field"><select id="iAuthorPick"></select><input id="iAuthor" hidden placeholder="A new author"><button id="iAuthorNew" class="ghost copy" title="Add an author this genre has not got yet">+</button></div>
   <label>Series (optional)</label><input id="iSeries">
+  <label>Book number in the series</label><input id="iSeriesNo" type="number" min="0" step="1">
   <label>Title</label><input id="iTitle">
   <p class="hint" id="iWhere"></p>
   <div id="iFound"></div>

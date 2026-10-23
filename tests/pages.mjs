@@ -1886,5 +1886,41 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   }
 }
 
+// The import form takes the book number in the series as well (2.14.171): it
+// was only in Edit metadata, so every imported book needed a second visit to be
+// put in its place on the shelf. The files' own number is offered first.
+{
+  const sent = [];
+  const { window, document } = await open('index.html', {
+    '/api/import/compare': { exists: false },
+    '/api/authors': [{ name: 'Brandon Sanderson', books: 4 }, { name: 'Robin Hobb', books: 2 }],
+    '/api/import': (url, opts) => { if (opts?.body) sent.push(JSON.parse(opts.body)); return { dest: '/x' }; },
+  });
+  window.importForm({ genres: ['Fantasy'] }, {
+    path: '/import/Mistborn/The Well of Ascension', where: 'Mistborn / The Well of Ascension', files: 3,
+    genre: 'Fantasy', artist: 'brandon sanderson', series: 'Mistborn', seriesNo: 2, album: 'The Well of Ascension',
+  });
+  await settle();
+  // The author is picked from the genre's own (2.14.171), matched whatever the
+  // case the tags wrote it in, so the book lands beside that author's others.
+  check('the guessed author is picked from the ones the genre has',
+    [document.querySelector('#iAuthorPick').hidden, document.querySelector('#iAuthorPick').value,
+      document.querySelector('#iAuthor').value], [false, 'Brandon Sanderson', 'Brandon Sanderson']);
+  document.querySelector('#iAuthorNew').click();
+  check('+ turns the list into a field for an author the genre has not got',
+    [document.querySelector('#iAuthor').hidden, document.querySelector('#iAuthor').value], [false, '']);
+  document.querySelector('#iAuthorNew').click();
+  check('and going back picks from the list again',
+    [document.querySelector('#iAuthor').hidden, document.querySelector('#iAuthor').value], [true, 'Brandon Sanderson']);
+  check('the import form offers the number the files give', document.querySelector('#iSeriesNo').value, '2');
+  check('and says it under where the book will land', document.querySelector('#iWhere').textContent,
+    'Moves into Fantasy / Brandon Sanderson / Mistborn / The Well of Ascension, book 2');
+  document.querySelector('#iSeriesNo').value = '3';
+  document.querySelector('#iGo').click();
+  await settle(150);
+  check('and the number typed in is what is sent, with the author as the genre spells it',
+    [sent[0]?.seriesNo, sent[0]?.author], [3, 'Brandon Sanderson']);
+}
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);
