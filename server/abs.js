@@ -23,7 +23,7 @@
 import { db } from './db.js';
 import { baseUrl, sameSecret } from './ha.js';
 import { countsAsRead, keptOne } from './finished.js';
-import { finishedABook } from './listeners.js';
+import { finishedABook, find as findAccount, adminName } from './listeners.js';
 
 export const inboundToken = () => (process.env.MA_TOKEN || '').trim();
 export const enabled = () => !!inboundToken();
@@ -37,8 +37,26 @@ const b64 = (s) => Buffer.from(s, 'utf8').toString('base64url');
 const unb64 = (s) => Buffer.from(s, 'base64url').toString('utf8');
 const tokenFor = (user) => `${b64(user || '')}.${inboundToken()}`;
 
+// Which account a name Music Assistant gives may act as: an approved one, or the
+// administrator, under the name as this app keeps it — or null. Nothing is ever
+// added here (2.14.160). Login used to `INSERT OR IGNORE` any name it was given,
+// and the table's defaults make that an approved account with no password: the
+// one shape `signIn` lets the first comer claim by choosing one. So MA_TOKEN and
+// a made-up name were an account on the listening page. '' is the nameless
+// listener, which belongs to no account and so has nothing to check.
+export function knownListener(said) {
+  const name = String(said ?? '').trim();
+  if (!name) return '';
+  const row = findAccount(name);
+  if (row) return row.state === 'approved' ? row.name : null;
+  const admin = adminName() || '';
+  return admin && admin.toLowerCase() === name.toLowerCase() ? admin : null;
+}
+
 // Who this request is, or null when it may not ask. A bare MA_TOKEN is allowed
-// and means the nameless listener the app already supports.
+// and means the nameless listener the app already supports. A name in the token
+// is asked about every time, not trusted for having been handed out: an account
+// removed or refused since then takes the token with it.
 export function listener(req) {
   const want = inboundToken();
   if (!want) return null;
@@ -48,7 +66,9 @@ export function listener(req) {
   if (sameSecret(said, want)) return '';
   const cut = said.indexOf('.');
   if (cut < 0 || !sameSecret(said.slice(cut + 1), want)) return null;
-  try { return unb64(said.slice(0, cut)); } catch { return null; }
+  let name;
+  try { name = unb64(said.slice(0, cut)); } catch { return null; }
+  return knownListener(name);
 }
 
 const ms = (iso) => (iso ? Date.parse(iso) || 0 : 0);

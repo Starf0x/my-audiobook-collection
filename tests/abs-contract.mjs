@@ -120,6 +120,10 @@ fs.writeFileSync(silence, Buffer.alloc(4096, 0));
 process.env.DATA_DIR = DATA;
 const { db } = await import('../server/db.js');
 db.exec('DELETE FROM books; DELETE FROM tracks; DELETE FROM progress; DELETE FROM users;');
+// Music Assistant signs in only as an account that is already there and approved
+// (2.14.160), so the listener these checks play as is one; `ma-accounts` is what
+// checks the refusing
+db.prepare("INSERT INTO users (name, state) VALUES ('Morgan', 'approved')").run();
 const add = db.prepare(`INSERT INTO books (path, genre, author, series, title, narrator, year,
                                            description, series_no, duration)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -200,8 +204,8 @@ try {
   inEnum('the time format', login.serverSettings.timeFormat, 'ServerSettings.timeFormat');
   inEnum('the log level', login.serverSettings.logLevel, 'ServerSettings.logLevel');
   check('the token is the one kind that needs no refreshing', !!login.user.token && !login.user.refreshToken, true);
-  check('a name Music Assistant logs in with is a listener this app knows',
-    db.prepare('SELECT COUNT(*) n FROM users WHERE name = ?').get('Morgan').n, 1);
+  check('logging in as an account adds no account',
+    db.prepare('SELECT COUNT(*) n FROM users').get().n, 1);
   token = login.user.token;
 
   // --- the address shape MA actually uses ------------------------------

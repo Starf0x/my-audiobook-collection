@@ -21,6 +21,7 @@ const PORTABLE = [
   'series-complete',
   'series-online',
   'abs-contract',
+  'ma-accounts',
   'safe-paths',
   'half-done',
   'outward',
