@@ -498,6 +498,17 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('a lookup result that names no number leaves the book its own',
     [document.querySelector('#eTitle').value, document.querySelector('#eSeriesNo').value],
     ['From Google', '3']);
+
+  // Use metadata showed the book's old cover, not the one of the result picked
+  // (2.14.193): it is shown now, and putting the old one back drops it.
+  await window.editMeta(9, { title: 'From Google', thumbnail: 'http://books.google.com/x.jpg' });
+  await settle();
+  check('the chosen result\'s cover is what the dialog shows',
+    [document.querySelector('#eCover').getAttribute('src'), document.querySelector('#eCoverUndo').hidden],
+    ['https://books.google.com/x.jpg', false]);
+  document.querySelector('#eCoverUndo').click();
+  check('and putting the old one back shows the book\'s own',
+    document.querySelector('#eCover').getAttribute('src').startsWith('/api/cover/9'), true);
 }
 
 // edit.js: a series that lives only in the tags can be seen, and taken off

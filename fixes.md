@@ -968,6 +968,18 @@ lookup result is kept as a new author.
 **Rule:** a control that switches between two modes must be tested through the
 change that feeds it (here: the genre), not only on first open.
 
+### Use metadata did not show the chosen cover (2.14.193)
+
+*Use metadata* opens *Edit metadata* filled from the chosen Google result. The
+result's cover went along and was fetched on save, but the dialog only ever showed
+the book's own cover, so it looked as if the cover had not been taken.
+
+**Fixed:** the result's cover is shown in the dialog, with *Put the old cover
+back*; putting it back also drops it from what is saved.
+
+**Rule:** whatever a dialog will save must be visible in it. A value carried
+through silently reads as a value that was lost.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

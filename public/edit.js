@@ -133,13 +133,23 @@ window.editMeta = async function (id, over, genre) {
   const ownCover = `/api/cover/${id}?t=${Date.now()}`;
   forgetPastedCover();
   showCover(ownCover);
-  $('#eCoverUndo').onclick = () => { forgetPastedCover(); showCover(ownCover); };
+  // The cover of the result chosen in *Find metadata*, which saving fetches and
+  // keeps. It was taken on save without ever being shown here, so the dialog
+  // went on showing the old cover as if the result had none (2.14.193).
+  let lookedUp = over && !over.cover && over.thumbnail ? over.thumbnail.replace('http://', 'https://') : '';
+  if (lookedUp) {
+    showCover(lookedUp);
+    $('#eCoverUndo').hidden = false;
+  }
+  $('#eCoverUndo').onclick = () => { forgetPastedCover(); lookedUp = ''; showCover(ownCover); };
   const save = async (writeTags) => {
     const now = $('#eSeries').value.trim();
     // emptied, where there was one: the series comes off, tags and all
     const clearSeries = !now && !!shownSeries;
     const pick = {
       ...(over || {}),
+      // the looked-up cover only while it is the one shown: put back, it is not taken
+      ...(lookedUp ? {} : { thumbnail: '' }),
       title: $('#eTitle').value.trim(), author: $('#eAuthor').value.trim(),
       narrator: $('#eNarrator').value.trim(), year: $('#eYear').value.trim(),
       description: $('#eDescription').value.trim(),
