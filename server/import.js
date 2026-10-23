@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseFile } from 'music-metadata';
 import { db, getSetting, getLibraries } from './db.js';
-import { dirs, audioFiles, discFiles, DISC, addOne, NOT_IMPORTED, REPLACED } from './scan.js';
+import { dirs, audioFiles, discFiles, DISC, addOne, seriesFromTags, NOT_IMPORTED, REPLACED } from './scan.js';
 import { lane, pool } from './pool.js';
 import { inside } from './safepath.js';
 
@@ -208,10 +208,14 @@ async function build(root, quiet) {
       if (!quiet) fileProgress.current = path.basename(b.dir);
       let album = '';
       let artist = '';
+      let seriesNo = 0;
       try {
-        const c = (await lane(() => parseFile(b.files[0]))).common || {};
+        const tags = await lane(() => parseFile(b.files[0]));
+        const c = tags.common || {};
         album = c.album || '';
         artist = c.artist || c.albumartist || '';
+        // the number the files give, offered in the form so it can be corrected
+        seriesNo = seriesFromTags(tags).no || 0;
       } catch { /* unreadable, the folder names will have to do */ }
       // Guess from the folders around it, the way the library itself is laid out.
       // A leading folder that names a known genre is that, not an author, which
@@ -229,6 +233,7 @@ async function build(root, quiet) {
         genre,
         artist: artist || (p.length >= 3 ? p[p.length - 3] : (p[p.length - 2] || '')),
         series: p.length >= 3 ? p[p.length - 2] : '',
+        seriesNo,
       };
     });
     cache = { root, sig: signature(found), items: out, at: Date.now() };
@@ -355,7 +360,7 @@ export function skipImport(source) {
   return { skipped: target };
 }
 
-export async function importBook({ source, genre, author, series, title, replace }) {
+export async function importBook({ source, genre, author, series, seriesNo, title, replace }) {
   const dest = destinationFor({ genre, author, series, title });
   fromImportFolder(source);
   if (fs.existsSync(dest) && !replace) throw new Error(`There is already a folder at ${dest}`);
@@ -382,6 +387,10 @@ export async function importBook({ source, genre, author, series, title, replace
     // force: a replacement lands on the very same file names, and "unchanged"
     // would then keep the old copy's duration, cover and description
     await addOne({ genre, author: clean(author), series: clean(series), dir: dest, force: !!replacedPath });
+    // The book number given in the form orders the shelf. A whole number, and only
+    // inside a series: without one there is nothing for it to order.
+    const no = Math.floor(Number(seriesNo)) || 0;
+    if (clean(series) && no > 0) db.prepare('UPDATE books SET series_no = ? WHERE path = ?').run(no, dest);
     forgetCandidate(source);
     // hand back the row as it was filed, so the page can show the book where it
     // landed instead of leaving it to be found

@@ -786,7 +786,7 @@ table.cmp td.worse { color: #ffa8a8; font-weight: 600; }
    author can be pasted into a search somewhere else. The button keeps its width;
    the field takes the rest. A textarea's button sits at its top. */
 .field { display: flex; gap: 6px; align-items: flex-start; }
-.field input, .field textarea { flex: 1; min-width: 0; }
+.field input, .field textarea, .field select { flex: 1; min-width: 0; }
 .field button.copy { flex: none; padding: 7px 10px; line-height: 1.2; }
 
 /* the series a lookup suggests: a tick beside it, not a field to fill in */

@@ -742,7 +742,16 @@ Set an **Import folder** in Settings, drop new audiobooks in it, then open
 it sits: a folder holding audio is a book, and so is one whose sub-folders are all
 discs. The author and series are guessed from the folders around it and from the
 tags. Pick one, choose the genre, and correct the author, optional
-series and title; the line underneath shows exactly where it will land. *Move*
+series, **book number in the series** and title. The **author** is picked from a
+list of the authors that genre already has, so the book lands beside their other
+books; the guess is chosen in it when it matches one, whatever its case. **+**
+beside the list types in an author the genre has not got yet, and **↩** goes back
+to the list; the line underneath shows exactly
+where it will land. The book number is filled in from the files when they carry
+one, orders the shelf the way the same field in *Edit metadata* does, and is
+ignored when no series is given. It is kept in the library, not written into the
+files: when the files say a different number, a rescan takes theirs, and *Edit
+metadata* is where to put the number into the tags as well. *Move*
 files the folder into `<genre>/<author>/[series]/<title>` and files it straight
 into the library, so it turns up at once without a rescan of everything else —
 the page then opens the genre and author it landed under, with the book in it.

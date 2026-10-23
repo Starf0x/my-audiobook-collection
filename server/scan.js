@@ -208,7 +208,7 @@ const splitVolume = (raw) => {
 // A book filed straight under its author has no series folder, but its files
 // often say which series it belongs to: iTunes and most audiobook taggers put it
 // in the movement name, others in the grouping or a SERIES text frame.
-const seriesFromTags = (tags) => {
+export const seriesFromTags = (tags) => {
   const c = tags.common || {};
   // music-metadata names a TXXX frame by its description — `TXXX:series` — and
   // hands over the text itself. This looked for a bare `TXXX` with the text
