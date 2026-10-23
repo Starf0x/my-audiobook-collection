@@ -746,7 +746,8 @@ series, **book number in the series** and title. The **author** is picked from a
 list of the authors that genre already has, so the book lands beside their other
 books; the guess is chosen in it when it matches one, whatever its case. **+**
 beside the list types in an author the genre has not got yet, and **↩** goes back
-to the list; the line underneath shows exactly
+to the list. Changing the genre reads that genre's authors in at once and shows
+them to pick from; the line underneath shows exactly
 where it will land. The book number is filled in from the files when they carry
 one, orders the shelf the way the same field in *Edit metadata* does, and is
 ignored when no series is given. It is kept in the library, not written into the
