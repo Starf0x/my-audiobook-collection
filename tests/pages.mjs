@@ -1893,10 +1893,11 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   const sent = [];
   const { window, document } = await open('index.html', {
     '/api/import/compare': { exists: false },
-    '/api/authors': [{ name: 'Brandon Sanderson', books: 4 }, { name: 'Robin Hobb', books: 2 }],
+    '/api/authors': (url) => (url.includes('genre=Horror') ? [{ name: 'Stephen King', books: 5 }]
+      : [{ name: 'Brandon Sanderson', books: 4 }, { name: 'Robin Hobb', books: 2 }]),
     '/api/import': (url, opts) => { if (opts?.body) sent.push(JSON.parse(opts.body)); return { dest: '/x' }; },
   });
-  window.importForm({ genres: ['Fantasy'] }, {
+  window.importForm({ genres: ['Fantasy', 'Horror'] }, {
     path: '/import/Mistborn/The Well of Ascension', where: 'Mistborn / The Well of Ascension', files: 3,
     genre: 'Fantasy', artist: 'brandon sanderson', series: 'Mistborn', seriesNo: 2, album: 'The Well of Ascension',
   });
@@ -1910,8 +1911,10 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('+ turns the list into a field for an author the genre has not got',
     [document.querySelector('#iAuthor').hidden, document.querySelector('#iAuthor').value], [false, '']);
   document.querySelector('#iAuthorNew').click();
-  check('and going back picks from the list again',
-    [document.querySelector('#iAuthor').hidden, document.querySelector('#iAuthor').value], [true, 'Brandon Sanderson']);
+  check('and going back shows the list again, waiting for a pick',
+    [document.querySelector('#iAuthor').hidden, document.querySelector('#iAuthorPick').value], [true, '']);
+  document.querySelector('#iAuthorPick').value = 'Brandon Sanderson';
+  document.querySelector('#iAuthorPick').dispatchEvent(new window.Event('change'));
   check('the import form offers the number the files give', document.querySelector('#iSeriesNo').value, '2');
   check('and says it under where the book will land', document.querySelector('#iWhere').textContent,
     'Moves into Fantasy / Brandon Sanderson / Mistborn / The Well of Ascension, book 2');
@@ -1920,6 +1923,16 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   await settle(150);
   check('and the number typed in is what is sent, with the author as the genre spells it',
     [sent[0]?.seriesNo, sent[0]?.author], [3, 'Brandon Sanderson']);
+
+  // Another genre reads its own authors in, and shows them as a list: the old
+  // genre's author is not left standing in the typing field (2.14.182).
+  document.querySelector('#iGenre').value = 'Horror';
+  document.querySelector('#iGenre').dispatchEvent(new window.Event('change'));
+  await settle();
+  check('changing the genre shows that genre\'s authors to pick from',
+    [document.querySelector('#iAuthorPick').hidden, document.querySelector('#iAuthorPick').value,
+      [...document.querySelectorAll('#iAuthorPick option')].map((o) => o.textContent)],
+    [false, '', ['Choose an author…', 'Stephen King']]);
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');

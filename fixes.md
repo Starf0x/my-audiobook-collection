@@ -954,6 +954,20 @@ who is listening must not be able to create who may sign in. Anything that
 reads an identity out of a token checks the account on every request, not once
 when the token was made.
 
+### Changing the genre on import seemed not to load its authors (2.14.182)
+
+2.14.171 gave the import dialog a list of the chosen genre's authors. Changing the
+genre did read the new list in, but the author already filled in was not in it,
+so the dialog stayed in "type a new author" mode with the old genre's name in the
+field. The owner saw no list and concluded nothing had been loaded.
+
+**Fixed:** after a change of genre a name the new genre has not got is dropped and
+the list is shown with *Choose an author…*. Only a guess from the files or a
+lookup result is kept as a new author.
+
+**Rule:** a control that switches between two modes must be tested through the
+change that feeds it (here: the genre), not only on first open.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

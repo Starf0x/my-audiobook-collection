@@ -758,25 +758,34 @@ function importForm(d, c) {
     $('#iAuthorNew').textContent = on ? '↩' : '+';
     $('#iAuthorNew').title = on ? 'Pick an author this genre already has' : 'Add an author this genre has not got yet';
   };
-  const setAuthor = (name) => {
+  // A name the genre has not got is kept as a new author when it was guessed or
+  // looked up (`asNew`). After a change of genre it is not: the list of the new
+  // genre is shown, waiting for a pick, rather than the field with the old genre's
+  // author still in it, which read as the authors never being loaded (2.14.182).
+  const setAuthor = (name, asNew = true) => {
     const known = authors.find((a) => a.toLowerCase() === (name || '').trim().toLowerCase());
-    if (known || !name) {
-      $('#iAuthorPick').value = known || authors[0] || '';
-      $('#iAuthor').value = $('#iAuthorPick').value;
-      typing(!authors.length);
-    } else {
-      $('#iAuthor').value = name;
+    if (known) {
+      $('#iAuthorPick').value = known;
+      $('#iAuthor').value = known;
+      typing(false);
+    } else if (!authors.length || (name && asNew)) {
+      $('#iAuthor').value = name || '';
       typing(true);
+    } else {
+      $('#iAuthorPick').value = '';
+      $('#iAuthor').value = '';
+      typing(false);
     }
     preview();
   };
-  const loadAuthors = async (name) => {
+  const loadAuthors = async (name, asNew) => {
     const genre = $('#iGenre').value;
     const got = await api('/api/authors?genre=' + encodeURIComponent(genre)).catch(() => []);
     if (genre !== $('#iGenre').value) return; // another genre was picked meanwhile
     authors = (Array.isArray(got) ? got : []).map((a) => a.name).filter(Boolean);
-    $('#iAuthorPick').innerHTML = authors.map((a) => `<option>${esc(a)}</option>`).join('');
-    setAuthor(name);
+    $('#iAuthorPick').innerHTML = '<option value="">Choose an author…</option>'
+      + authors.map((a) => `<option>${esc(a)}</option>`).join('');
+    setAuthor(name, asNew);
   };
   $('#iAuthorPick').onchange = () => { $('#iAuthor').value = $('#iAuthorPick').value; preview(); };
   $('#iAuthorNew').onclick = () => {
@@ -787,7 +796,7 @@ function importForm(d, c) {
     } else setAuthor('');
     preview();
   };
-  $('#iGenre').onchange = () => { preview(); loadAuthors($('#iAuthor').value); };
+  $('#iGenre').onchange = () => { preview(); loadAuthors($('#iAuthor').value, false); };
   $('#iAuthor').value = c.artist || '';
   typing(true);
   preview();
