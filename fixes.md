@@ -927,6 +927,33 @@ with the cookie from before; with the sessions back in memory it gets the owner'
 of "the other side" answers the way it was told to; a restart answers the way
 it is.
 
+### Music Assistant's login made accounts anybody could claim (2.14.160)
+
+`/login` took any username that came with `MA_TOKEN` and ran
+`INSERT OR IGNORE INTO users (name)`. That line was written when a listener was
+a name in a table and nothing else. Accounts came later and gave the table
+columns with defaults — `state` `'approved'`, `pass` `''` — and an approved row
+with no password is precisely the shape `signIn` treats as a name from before
+accounts, to be claimed by whoever first chooses a password for it. So the MA
+token and a made-up name produced a real account on the listening page, and a
+mistyped name in Music Assistant left one lying there for anybody. The README
+had been edited that same day to *describe* it, as a quirk to tidy up after,
+rather than seeing it as a door. And the name inside an MA token was decoded and
+believed for as long as the token lived, after its account was removed or
+turned down.
+
+**Fixed:** `knownListener` in `abs.js` lets a name through only if it is an
+approved account or the administrator, and nothing is written; `/login` and
+every token-carrying request ask it. `tests/ma-accounts.mjs` goes red eighteen
+times on 2.14.152.
+
+**Rule:** when a table gains columns with defaults, find every bare `INSERT`
+into it and ask what the defaults now mean — a default is a decision made for
+every writer that never names the column. And a side door that "only" names
+who is listening must not be able to create who may sign in. Anything that
+reads an identity out of a token checks the account on every request, not once
+when the token was made.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

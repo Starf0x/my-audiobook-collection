@@ -931,11 +931,16 @@ so a book you carried on with on a speaker is where you left it here.
 
 You do **not** need Audiobookshelf installed — nothing of it is involved.
 
-**The username is the part people get wrong.** It is not an account, it is which
-listener the places belong to. Use the name you use in the app, or Music
-Assistant keeps its position under somebody else. A name it logs in with that
-this app has not seen becomes a new listener, the same as typing one into the
-page — so a second name appearing in the app's list is the sign you mistyped it.
+**The username is the part people get wrong.** It is the name of your account
+here, and it says which listener the places belong to; Music Assistant never uses
+that account's password, only `MA_TOKEN`. So the account has to **exist and be
+approved first**: a name this app does not know, or one still waiting for
+approval or turned down, is refused with *Invalid username or password* — the
+same words as a wrong token, so if Music Assistant says that and the token is
+right, check the spelling against the accounts page. Nothing is ever added for a
+name Music Assistant tries. The administrator's own name works too. And it stays
+tied to the account: remove the account, or turn it down, and Music Assistant is
+signed out with it until you give it another name.
 
 **And it is one listener for everybody who plays through it.** This is the part
 that surprises a household. Music Assistant signs in once, with one name, and

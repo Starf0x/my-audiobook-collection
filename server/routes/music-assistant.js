@@ -8,6 +8,7 @@ import express from 'express';
 import { db } from '../db.js';
 import { sameSecret } from '../ha.js';
 import { enabled as absEnabled, inboundToken as absToken, listener as absListener,
+  knownListener as absKnown,
   loginResponse as absLogin, libraries as absLibraries, books as absBooks, book as absBook,
   minifiedItem as absMinified, expandedItem as absExpanded, user as absUser,
   progressOf as absProgress, writeProgressFromWhole as absWriteProgress,
@@ -35,15 +36,15 @@ export function mountMusicAssistant(app, { VERSION, sendCover }) {
 
   // Music Assistant asks for a username and a password. The password is MA_TOKEN;
   // the username is which listener this is, so a position it reports lands on the
-  // right person — and a name it has not seen before is one this app now knows,
-  // exactly as the listening page's own dialog would have added it.
+  // right person. It has to be an account that already exists and is approved, or
+  // the administrator: a name this app does not know is refused, with the same
+  // words as a wrong token, and nothing is added (see `knownListener`).
   app.post('/login', (req, res) => {
     if (!absEnabled()) return res.status(404).end();
-    const name = String((req.body || {}).username || '').trim();
-    if (!sameSecret(String((req.body || {}).password || ''), absToken())) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-    if (name) db.prepare('INSERT OR IGNORE INTO users (name) VALUES (?)').run(name);
+    const said = String((req.body || {}).username || '').trim();
+    const name = sameSecret(String((req.body || {}).password || ''), absToken())
+      ? absKnown(said) : null;
+    if (name === null) return res.status(401).json({ error: 'Invalid username or password' });
     res.json(absLogin(name, VERSION));
   });
 
