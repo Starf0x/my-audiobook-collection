@@ -1998,19 +1998,22 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   await settle(150);
   const { window, document } = page;
   const where = document.querySelector('#pWhere');
-  const shown = () => [...where.options].filter((o) => !o.hidden).map((o) => o.textContent);
-  check('the bar offers the speakers, the favourite chosen and starred, the favourite set in the pulldown itself',
-    [shown(), where.value, document.querySelector('#pWhereFav')],
-    [['This browser', 'Kitchen', '★ Office', '☆ Office is no longer the favourite'], 'media_player.office', null]);
-  where.value = 'media_player.kitchen';
-  where.dispatchEvent(new window.Event('change'));
-  where.value = '__favourite';
-  where.dispatchEvent(new window.Event('change'));
-  check('its last entry makes the chosen speaker the favourite, and the choice stays on that speaker',
-    [shown(), where.value, window.localStorage.getItem('haFavourite')],
-    [['This browser', '★ Kitchen', 'Office', '☆ Kitchen is no longer the favourite'], 'media_player.kitchen', 'media_player.kitchen']);
-  where.value = 'media_player.office';
-  where.dispatchEvent(new window.Event('change'));
+  const rows = () => [...document.querySelectorAll('#pWhereList li')]
+    .map((li) => `${li.querySelector('.name').textContent}${li.querySelector('.star')?.textContent || ''}`);
+  check('the bar offers the speakers, each with a star, the favourite chosen and starred',
+    [rows(), where.value, document.querySelector('#pWhereBtn').textContent],
+    [['This browser', 'Kitchen☆', 'Office★'], 'media_player.office', '★ Office ▾']);
+  document.querySelector('#pWhereBtn').click();
+  document.querySelector('#pWhereList .star[data-v="media_player.kitchen"]').click();
+  check('a star makes that speaker the favourite without choosing it, and the list stays open',
+    [rows(), where.value, window.localStorage.getItem('haFavourite'), document.querySelector('#pWhereList').hidden],
+    [['This browser', 'Kitchen★', 'Office☆'], 'media_player.office', 'media_player.kitchen', false]);
+  document.querySelector('#pWhereList .name[data-v="media_player.kitchen"]').click();
+  check('a name chooses that speaker and closes the list',
+    [where.value, document.querySelector('#pWhereBtn').textContent, document.querySelector('#pWhereList').hidden],
+    ['media_player.kitchen', '★ Kitchen ▾', true]);
+  document.querySelector('#pWhereBtn').click();
+  document.querySelector('#pWhereList .name[data-v="media_player.office"]').click();
   await settle(100);
   window.eval(`state.user = "tester"; state.book = ${JSON.stringify(BOOK)}; state.track = 1;`);
   document.querySelector('#pPlay').click();

@@ -1048,8 +1048,8 @@ itself when it starts, and looks again every five minutes — the player bar on 
 wide screen has a pulldown: *This browser*, or any of HA's speakers. With a
 speaker chosen, the bar's ▶ (and a card's Resume) sends the book there from the
 track and second the bar is at, and pressing it again pauses or carries on the
-speaker. The last entry of the pulldown makes the chosen speaker the favourite
-(marked ★), chosen first every time this browser opens the page. Not on a phone, and not there at all without HA.
+speaker. The ☆ beside each speaker in the list makes it the favourite (★),
+chosen first every time this browser opens the page. Not on a phone, and not there at all without HA.
 
 Hours listened count a book marked *Listened* whole, and a book in progress as the
 tracks behind the listener plus the seconds into the one they are on.
