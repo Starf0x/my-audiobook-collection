@@ -116,6 +116,11 @@ try {
   check('a read is never refused for its Origin',
     (await call('GET', '/api/admin', null, { Origin: 'http://elsewhere.example' })).status, 200);
 
+  // the HA page's settings: 06313c0 dropped haSettings from the import, so the read
+  // was a 500 and the page showed empty fields after every update (2.14.270)
+  check('the HA page can read its saved settings',
+    (await call('GET', '/api/ha/config', null, admin)).status, 200);
+
   // --- the routes that moved out of index.js still answer (2.14.152) -------------
   // Moved as written into server/routes/, each mounted where its block stood. A
   // name left behind in index.js would only show when somebody pressed the
