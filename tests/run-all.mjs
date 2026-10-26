@@ -41,6 +41,7 @@ const PORTABLE = [
   'packaging',
   'first-run',
   'requests',
+  'ha-play',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten

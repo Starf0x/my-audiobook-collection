@@ -730,6 +730,39 @@ function watchImportFolder() {
 
 // A dialog rather than a panel: with a long candidate list a form appended below
 // it lands off screen, which looks exactly like the button doing nothing.
+// The author of `list` that the `hints` most likely name, or ''. The hints come
+// in order of trust; for each one the best-matching author wins:
+//  3  the same letters: "J.R.R. Tolkien" is "J. R. R. Tolkien", any case or accent
+//  2  every word of the author is in the hint: "Sanderson, Brandon", or a folder
+//     called "Brandon Sanderson - Mistborn 1"
+//  1  the surname, with the initials of the other names: "B. Sanderson"
+function likelyAuthor(list, hints) {
+  const words = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const score = (a, h) => {
+    const wa = words(a);
+    const wh = words(h);
+    if (!wa.length || !wh.length) return 0;
+    if (wa.join('') === wh.join('')) return 3;
+    if (wa.every((w) => wh.includes(w))) return 2;
+    const surname = wa[wa.length - 1];
+    if (surname.length < 3 || !wh.includes(surname)) return 0;
+    const rest = wh.filter((w) => w !== surname);
+    const initials = wa.slice(0, -1).map((w) => w[0]);
+    return initials.length && initials.every((i) => rest.some((w) => w[0] === i)) ? 1 : 0;
+  };
+  for (const h of hints) {
+    let best = '';
+    let top = 0;
+    for (const a of list) {
+      const s = score(a, h);
+      if (s > top) { top = s; best = a; }
+    }
+    if (best) return best;
+  }
+  return '';
+}
+
 function importForm(d, c) {
   $('#iSource').textContent = `From ${c.where} · ${c.files} file(s)`;
   $('#iFound').innerHTML = '';
@@ -758,12 +791,15 @@ function importForm(d, c) {
     $('#iAuthorNew').textContent = on ? '↩' : '+';
     $('#iAuthorNew').title = on ? 'Pick an author this genre already has' : 'Add an author this genre has not got yet';
   };
-  // A name the genre has not got is kept as a new author when it was guessed or
-  // looked up (`asNew`). After a change of genre it is not: the list of the new
-  // genre is shown, waiting for a pick, rather than the field with the old genre's
-  // author still in it, which read as the authors never being loaded (2.14.182).
+  // What the book itself says about its author: the field, the tags, and every
+  // folder it sits in, the folder of the book included ("Sanderson - Mistborn").
+  const hints = () => [$('#iAuthor').value, c.artist, ...String(c.where || '').split(' / '), c.name];
+  // A name the genre has not got is kept as a new author only when it was looked
+  // up (`asNew`). Otherwise the most likely of the genre's authors is picked, and
+  // where none is likely the list waits for a pick, without a word about it: the
+  // owner asked for a choice, not a complaint (2.14.204).
   const setAuthor = (name, asNew = true) => {
-    const known = authors.find((a) => a.toLowerCase() === (name || '').trim().toLowerCase());
+    const known = likelyAuthor(authors, asNew ? [name] : [name, ...hints()]);
     if (known) {
       $('#iAuthorPick').value = known;
       $('#iAuthor').value = known;
@@ -800,7 +836,7 @@ function importForm(d, c) {
   $('#iAuthor').value = c.artist || '';
   typing(true);
   preview();
-  loadAuthors(c.artist || '');
+  loadAuthors(c.artist || '', false);
   // Look the book up before its folder name is settled, and fill the fields in
   // from a result rather than typing them.
   $('#iLookup').onclick = async () => {

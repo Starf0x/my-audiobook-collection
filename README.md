@@ -744,10 +744,13 @@ discs. The author and series are guessed from the folders around it and from the
 tags. Pick one, choose the genre, and correct the author, optional
 series, **book number in the series** and title. The **author** is picked from a
 list of the authors that genre already has, so the book lands beside their other
-books; the guess is chosen in it when it matches one, whatever its case. **+**
+books. The most likely one is chosen for you, from the tags and from every folder
+around the book: *King, Stephen*, *J.R.R. Tolkien* for *J. R. R. Tolkien*, a folder
+called *Stephen King - The Shining*, or a surname with the right initials. When none
+is likely the list simply waits for your pick. **+**
 beside the list types in an author the genre has not got yet, and **↩** goes back
-to the list. Changing the genre reads that genre's authors in at once and shows
-them to pick from; the line underneath shows exactly
+to the list. Changing the genre reads that genre's authors in at once and picks
+the most likely one again; the line underneath shows exactly
 where it will land. The book number is filled in from the files when they carry
 one, orders the shelf the way the same field in *Edit metadata* does, and is
 ignored when no series is given. It is kept in the library, not written into the
@@ -1033,7 +1036,9 @@ It has a page of its own: **Settings ▾ → Home Assistant**, or
 3. **Play a book on a media player** — the players HA knows, by their own names.
    Press *Play here* beside a book and the app hands that player the playlist from
    the track you are on, then asks it to skip to the second you stopped at. A
-   player that cannot seek still plays, from the start of that track.
+   player that cannot seek still plays, from the start of that track. A player
+   that will not take a playlist is given the track you are on instead, and the
+   page says so; when Home Assistant refuses, its own message is shown.
 
 Hours listened count a book marked *Listened* whole, and a book in progress as the
 tracks behind the listener plus the seconds into the one they are on.
