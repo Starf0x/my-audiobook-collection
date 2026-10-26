@@ -1063,6 +1063,14 @@ refused, not lost in a restart. Only a network failure or 502/503/504 is retried
 now; a 401/403 says to unlock as the administrator, and any other refusal shows
 the server's own words. Guessing the cause of an error was the mistake twice.
 
+**The real cause (2.14.270):** the server's own words were "Something went wrong
+in the app": `/api/ha/config` used `haSettings`, which the review commit 06313c0
+had dropped from the import list in `server/index.js`. Every read of the HA page's
+settings was a ReferenceError, so the fields came up empty after each update and
+the settings only looked lost. `tests/hardening.mjs` now reads that route as the
+administrator. **Rule:** after trimming an import list, ask every route that used
+a removed name once in a test; three guesses could have been one look at the log.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
