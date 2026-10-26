@@ -203,9 +203,11 @@ async function loadQueue() {
         from: Number(b.dataset.from),
         seek: Number(b.dataset.seek),
       });
-      toast(r.seeked
+      toast((r.seeked
         ? `Playing on ${r.player}, ${r.seek} seconds into the track.`
-        : `Playing on ${r.player}${r.seek ? ' — that player would not skip, so it starts at the track' : ''}.`);
+        : `Playing on ${r.player}${r.seek ? ' — that player would not skip, so it starts at the track' : ''}.`)
+        // a player that would not take the playlist was given the one track
+        + (r.single ? ' That player does not take a playlist, so it plays this track only.' : ''));
     });
   });
 }

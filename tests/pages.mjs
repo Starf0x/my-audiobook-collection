@@ -1946,5 +1946,35 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     [false, '', ['Choose an author…', 'Stephen King']]);
 }
 
+// The most likely author of the genre is picked, from the tags or from any folder
+// around the book, and with none likely the list simply waits (2.14.204).
+{
+  const { window, document } = await open('index.html', {
+    '/api/authors': (url) => (url.includes('genre=Horror')
+      ? [{ name: 'J. R. R. Tolkien', books: 1 }, { name: 'Stephen King', books: 5 }]
+      : [{ name: 'Brandon Sanderson', books: 4 }]),
+  });
+  const pickFor = async (c, genre = 'Horror') => {
+    window.importForm({ genres: ['Horror', 'Fantasy'] }, { path: '/import/x', where: 'x', files: 1, genre, name: 'x', ...c });
+    await settle();
+    return [document.querySelector('#iAuthorPick').hidden, document.querySelector('#iAuthorPick').value];
+  };
+  check('"King, Stephen" in the tags is Stephen King', await pickFor({ artist: 'King, Stephen' }), [false, 'Stephen King']);
+  check('initials written another way are the same author', await pickFor({ artist: 'J.R.R. Tolkien' }), [false, 'J. R. R. Tolkien']);
+  check('a folder around the book names the author when the tags do not',
+    await pickFor({ artist: '', where: 'Stephen King - The Shining / CD 1' }), [false, 'Stephen King']);
+  check('with nobody likely the list waits for a pick, rather than a new author',
+    await pickFor({ artist: 'Somebody Else' }), [false, '']);
+  await pickFor({ artist: 'Stephen King' });
+  document.querySelector('#iGenre').value = 'Fantasy';
+  document.querySelector('#iGenre').dispatchEvent(new window.Event('change'));
+  await settle();
+  check('and a change of genre looks again among that genre\'s authors',
+    [document.querySelector('#iAuthorPick').hidden, document.querySelector('#iAuthorPick').value], [false, '']);
+  await pickFor({ artist: 'b sanderson' }, 'Fantasy');
+  check('a surname with the right initial is enough',
+    document.querySelector('#iAuthorPick').value, 'Brandon Sanderson');
+}
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);

@@ -281,7 +281,20 @@ async function call(path, { method = 'GET', body } = {}) {
       ? `Home Assistant at ${url} did not answer within ten seconds.`
       : `Could not reach Home Assistant at ${url}. Check the address, and that this container may reach it.`);
   }
-  if (!res.ok) throw new Error(explainHA(res.status));
+  if (!res.ok) {
+    // What HA itself said, after the number: "HTTP 500" alone gave the owner
+    // nothing to go on (2.14.204). A service that fails answers with a message,
+    // as JSON or as text; it is cut short, and never shown for the token errors.
+    let said = '';
+    if (![401, 403, 404].includes(res.status)) {
+      const text = await res.text().catch(() => '');
+      try { said = JSON.parse(text).message || ''; } catch { said = text; }
+      said = String(said).replace(/\s+/g, ' ').trim().slice(0, 200);
+    }
+    const e = new Error(explainHA(res.status).replace(/\.$/, '') + (said ? `: ${said}` : '.'));
+    e.status = res.status;
+    throw e;
+  }
   return res.status === 204 ? null : res.json();
 }
 
@@ -469,12 +482,36 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
   }
   const id = Number(bookId);
   if (!bookPlaylist(req, id, Number(from) || 0)) throw new Error('That book has no files to play.');
-  const media = `${baseUrl(req)}/api/ha/book/${id}.m3u`
-    + (Number(from) ? `?from=${Number(from)}` : '');
-  await call('/services/media_player/play_media', {
-    method: 'POST',
-    body: { entity_id: entity, media_content_type: 'music', media_content_id: media },
+  // The playlist route asks for HA_TOKEN when it is set, and a media player has
+  // nothing to send it with but the address — without it the player got a 401.
+  const params = new URLSearchParams({
+    ...(Number(from) ? { from: String(Number(from)) } : {}),
+    ...(inboundToken() ? { token: inboundToken() } : {}),
+  }).toString();
+  const playlist = `${baseUrl(req)}/api/ha/book/${id}.m3u${params ? `?${params}` : ''}`;
+  const play = (url, type) => call('/services/media_player/play_media', {
+    method: 'POST', body: { entity_id: entity, media_content_type: type, media_content_id: url },
   });
+  // Not every player takes a playlist: some fail the call outright, and HA answers
+  // 500 (the owner's 3Reality speaker, 2.14.204). Such a player is given the track
+  // the listener is on instead, which plays, and can still be skipped into.
+  let media = playlist;
+  let single = false;
+  try {
+    await play(playlist, 'music');
+  } catch (e) {
+    if (!(e.status >= 400) || [401, 403, 404].includes(e.status)) throw e;
+    const track = db.prepare('SELECT id FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx LIMIT 1')
+      .get(id, Number(from) || 0);
+    if (!track) throw e;
+    media = `${baseUrl(req)}/api/stream/${track.id}`;
+    try {
+      await play(media, 'audio/mpeg');
+    } catch {
+      throw e;
+    }
+    single = true;
+  }
   const at = Math.round(Number(seek) || 0);
   let seeked = false;
   if (at > 0) {
@@ -486,7 +523,7 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
       seeked = true;
     } catch { /* not every player can seek */ }
   }
-  return { player: entity, media, seek: at, seeked };
+  return { player: entity, media, seek: at, seeked, single };
 }
 
 // The push that runs on its own. It needs a request to build URLs from — a URL in

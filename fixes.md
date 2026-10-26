@@ -980,6 +980,25 @@ back*; putting it back also drops it from what is saved.
 **Rule:** whatever a dialog will save must be visible in it. A value carried
 through silently reads as a value that was lost.
 
+### Play here said "Home Assistant answered HTTP 500." and nothing else (2.14.204)
+
+The owner pressed *Play here* for a 3Reality speaker and got only the status
+number. Three things were wrong at once:
+
+- an error from HA kept the number and threw away HA's own message;
+- a player that will not take an M3U playlist made the whole call fail, while it
+  would have played a single audio file;
+- with `HA_TOKEN` set the playlist route asks for it, and the playlist address
+  given to the player carried no `?token=`, so the player would get a 401.
+
+**Fixed:** HA's message follows the number; a failed playlist is retried with the
+current track as `audio/mpeg` and the page says only that track plays; the token
+goes onto the playlist address. `tests/ha-play.mjs` covers all three against a
+stand-in HA.
+
+**Rule:** an address handed to a device must work without this app's session or
+headers, and an error from another system must carry what that system said.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
