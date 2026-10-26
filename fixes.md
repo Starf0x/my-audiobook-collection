@@ -1071,6 +1071,14 @@ the settings only looked lost. `tests/hardening.mjs` now reads that route as the
 administrator. **Rule:** after trimming an import list, ask every route that used
 a removed name once in a test; three guesses could have been one look at the log.
 
+## The HA page's player bar had no speed (2.14.281)
+
+The owner could not change the speed: they were on the Home Assistant page, whose
+copy of the player bar in `ha.html` never had `#pLeft` and `#pSpeed`. The bar is
+written out in each page's HTML, so a control added to one copy is missing from the
+others. **Rule:** a control added to the player bar goes into every page that has
+`<footer id="player">`; `tests/pages.mjs` now checks the speed on `ha.html` too.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

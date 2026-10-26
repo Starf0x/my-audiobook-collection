@@ -217,6 +217,8 @@ for (const [page, own] of [['index.html', 'app.js'], ['listen.html', 'shelf.js']
   });
   await settle(150);
   check('ha.html loads its scripts without complaint', broke, []);
+  // its player bar is the same bar: the speed was missing here (2.14.281)
+  check('ha.html\'s player bar can change the speed', document.querySelectorAll('#pSpeed option').length, 11);
   check('the Home Assistant page lists every sensor it sends, by id and by name',
     [...document.querySelectorAll('#haSensors li')].map((li) => [
       li.querySelector('code')?.textContent, li.querySelector('.hint')?.textContent]),
@@ -1995,10 +1997,21 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   }, (w) => w.localStorage.setItem('haFavourite', 'media_player.office'));
   await settle(150);
   const { window, document } = page;
-  check('the bar offers the speakers, the favourite chosen',
-    [[...document.querySelectorAll('#pWhere option')].map((o) => o.textContent), document.querySelector('#pWhere').value,
-      document.querySelector('#pWhereFav').textContent],
-    [['This browser', 'Kitchen', 'Office'], 'media_player.office', '★']);
+  const where = document.querySelector('#pWhere');
+  const shown = () => [...where.options].filter((o) => !o.hidden).map((o) => o.textContent);
+  check('the bar offers the speakers, the favourite chosen and starred, the favourite set in the pulldown itself',
+    [shown(), where.value, document.querySelector('#pWhereFav')],
+    [['This browser', 'Kitchen', '★ Office', '☆ Office is no longer the favourite'], 'media_player.office', null]);
+  where.value = 'media_player.kitchen';
+  where.dispatchEvent(new window.Event('change'));
+  where.value = '__favourite';
+  where.dispatchEvent(new window.Event('change'));
+  check('its last entry makes the chosen speaker the favourite, and the choice stays on that speaker',
+    [shown(), where.value, window.localStorage.getItem('haFavourite')],
+    [['This browser', '★ Kitchen', 'Office', '☆ Kitchen is no longer the favourite'], 'media_player.kitchen', 'media_player.kitchen']);
+  where.value = 'media_player.office';
+  where.dispatchEvent(new window.Event('change'));
+  await settle(100);
   window.eval(`state.user = "tester"; state.book = ${JSON.stringify(BOOK)}; state.track = 1;`);
   document.querySelector('#pPlay').click();
   await settle(100);

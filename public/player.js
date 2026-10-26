@@ -688,12 +688,23 @@ function drawRemote() {
   const word = playing ? 'Pause' : (remote.book && remote.state === 'paused' ? 'Resume' : 'Play');
   $('#pPlay').innerHTML = `<span class="glyph">${playing ? '⏸' : '▶'}</span><span class="word">${word}</span>`;
   $('#pPlay').classList.toggle('playing', playing);
-  const star = $('#pWhereFav');
-  if (star) {
-    const fav = favourite() === remote.player;
-    star.textContent = fav ? '★' : '☆';
-    star.title = fav ? 'This speaker is the favourite — press to stop it being one' : 'Make this speaker the favourite';
+  drawWhere();
+}
+
+// The favourite is chosen in the pulldown itself (2.14.281): its speaker carries a
+// ★, and a last entry makes the chosen speaker the favourite or stops it being one.
+const FAV_ENTRY = '__favourite';
+function drawWhere() {
+  const pick = $('#pWhere');
+  if (!pick) return;
+  const fav = favourite();
+  for (const o of pick.options) {
+    if (o.value && o.value !== FAV_ENTRY) o.textContent = `${o.value === fav ? '★ ' : ''}${o.dataset.name}`;
   }
+  const entry = pick.querySelector(`option[value="${FAV_ENTRY}"]`);
+  entry.hidden = !remote.player;
+  const name = pick.selectedOptions[0]?.dataset.name || '';
+  entry.textContent = fav && fav === remote.player ? `☆ ${name} is no longer the favourite` : `★ Make ${name} the favourite`;
 }
 
 async function lookAtSpeaker() {
@@ -722,7 +733,7 @@ async function pressRemote() {
       });
       remote.book = id;
       remote.state = 'playing';
-      toast(`Playing on ${$('#pWhere').selectedOptions[0]?.textContent || r.player}.`);
+      toast(`Playing on ${$('#pWhere').selectedOptions[0]?.dataset.name || r.player}.`);
     }
   } catch (e) {
     toast(e.message);
@@ -761,21 +772,22 @@ async function offerSpeakers() {
   box.id = 'pWhereBox';
   box.className = 'where';
   box.innerHTML = `<select id="pWhere" title="Where the book plays">
-      <option value="">This browser</option>
-      ${said.players.map((p) => `<option value="${esc(p.entity_id)}">${esc(p.name)}</option>`).join('')}
-    </select><button id="pWhereFav" class="ghost" title="Make this speaker the favourite">☆</button>`;
+      <option value="" data-name="This browser">This browser</option>
+      ${said.players.map((p) => `<option value="${esc(p.entity_id)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('')}
+      <option value="${FAV_ENTRY}" hidden></option>
+    </select>`;
   bar.insertBefore(box, $('#pGet') || null);
   const pick = $('#pWhere');
   const fav = favourite();
   if (fav && said.players.some((p) => p.entity_id === fav)) pick.value = fav;
-  pick.onchange = () => useWhere(pick.value);
-  $('#pWhereFav').onclick = () => {
-    if (!pick.value) return toast('Pick a speaker to make it the favourite.');
+  pick.onchange = () => {
+    if (pick.value !== FAV_ENTRY) return useWhere(pick.value);
+    pick.value = remote.player;
     try {
-      if (favourite() === pick.value) localStorage.removeItem(FAVOURITE);
-      else localStorage.setItem(FAVOURITE, pick.value);
+      if (favourite() === remote.player) localStorage.removeItem(FAVOURITE);
+      else localStorage.setItem(FAVOURITE, remote.player);
     } catch { /* private window: it lasts as long as the page */ }
-    drawRemote();
+    drawWhere();
   };
   useWhere(pick.value);
 }
