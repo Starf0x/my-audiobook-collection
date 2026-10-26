@@ -2023,6 +2023,14 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   await settle(100);
   check('and its button sends the book to that speaker, from the track the bar is on',
     sent.map(([what, b]) => [what, b.player, b.bookId, b.from]), [['play', 'media_player.office', 5, 1]]);
+  // the book's own button on the page says Pause while the speaker plays it, not
+  // Resume as it did when it only looked at this tab (2.14.347)
+  const shelf = document.querySelector('#books') || document.body.appendChild(document.createElement('div'));
+  shelf.id = 'books';
+  shelf.insertAdjacentHTML('beforeend', '<button data-play="5" data-resume="1">▶ Resume</button>');
+  window.eval('markPlaying()');
+  check('and the book\'s button on the page says Pause while the speaker plays it',
+    document.querySelector('#books button[data-play="5"]').textContent, '⏸ Pause');
   document.querySelector('#pPlay').click();
   await settle(100);
   check('pressed again, it pauses the speaker', sent.slice(1).map(([what, b]) => [what, b.action]), [['control', 'pause']]);
