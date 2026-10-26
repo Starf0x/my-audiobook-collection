@@ -8,7 +8,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 const api = async (url, opts) => {
   const r = await fetch(url, opts);
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(body.error || `HTTP ${r.status}`), { status: r.status });
   return body;
 };
 const post = (url, body) => api(url, {
@@ -65,7 +65,24 @@ const when = (iso) => {
 let loaded = false;
 const holdSaving = (on) => ['#haSave', '#haTest', '#haForget'].forEach((s) => { const b = $(s); if (b) b.disabled = on; });
 async function load(tries = 0) {
-  const c = await api('/api/ha/config').catch(() => null);
+  let refused = null;
+  const c = await api('/api/ha/config').catch((e) => { refused = e; return null; });
+  // Not a restart at all: this browser is not unlocked as the administrator — an
+  // update restarts the app, and an unlock does not outlive that. Waiting would
+  // say "starting" for ever (2.14.259); this says what to do instead.
+  if (!c && refused && (refused.status === 401 || refused.status === 403)) {
+    holdSaving(true);
+    $('#tokState').innerHTML = '<strong class="warn">These settings are the administrator\'s.</strong> '
+      + '<a href="/admin">Unlock as the administrator</a>, then come back to this page — '
+      + 'the saved address and token are still there.';
+    return;
+  }
+  // any other refusal is an answer, not a restart: show it rather than wait
+  if (!c && refused && refused.status && ![502, 503, 504].includes(refused.status)) {
+    holdSaving(true);
+    $('#tokState').innerHTML = `<strong class="warn">The saved settings could not be read:</strong> ${esc(refused.message)}`;
+    return;
+  }
   if (!c) {
     if (!loaded) {
       holdSaving(true);
