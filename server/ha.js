@@ -102,7 +102,7 @@ const hours = (seconds) => Math.round((seconds / 3600) * 10) / 10;
 // How much of the collection has been listened to. A book marked listened counts
 // whole; a book in progress counts the tracks already behind the listener plus the
 // seconds into the one they are on. Per listener, or everybody at once.
-const listenedSeconds = (user) => {
+export const listenedSeconds = (user) => {
   const sql = `SELECT COALESCE(SUM(CASE WHEN p.done = 1 THEN b.duration ELSE
       COALESCE((SELECT SUM(t.duration) FROM tracks t
                 WHERE t.book_id = b.id AND t.idx < p.track_idx), 0) + p.position END), 0) AS s

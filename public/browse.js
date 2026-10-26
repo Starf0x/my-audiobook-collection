@@ -40,6 +40,7 @@ async function loadStats() {
   const s = await api('/api/stats?user=' + encodeURIComponent(state.user));
   $('#status').innerHTML = [
     [s.books, 'audiobooks'], [s.files, 'files'], [s.done, 'listened'], [s.todo, 'not listened'],
+    [s.hours ?? 0, 'hours'], [s.heard ?? 0, 'hours listened'],
   ].map(([n, label]) => `<span><strong>${n.toLocaleString()}</strong> ${label}</span>`).join('')
     // which build is answering, so "is this the new one?" has an answer on screen
     + (s.version ? `<span class="ver">v${esc(s.version)}</span>` : '');
