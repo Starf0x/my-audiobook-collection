@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { db, getSetting, setSetting, getLibraries, DATA_DIR, googleCountry, GOOGLE_COUNTRY_KEY } from './db.js';
 import { countsAsRead, keptOne, readCount } from './finished.js';
 import { scan, progress, lastSkipped, forgetSkipped } from './scan.js';
@@ -28,11 +29,11 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, playerSigOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
-  haEntities, listenedSeconds, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
+  haEntities, listenedSeconds, haSpeed, tempo, haPushSoon, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
-import { toolsWhy, convertible, convertBook, convertProgress,
+import { toolsWhy, toolAt, convertible, convertBook, convertProgress,
   listConverted, deleteConverted, deleteAllConverted } from './convert.js';
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
 import { coverFile, browseRoots, mayBrowse } from './safepath.js';
@@ -1099,6 +1100,7 @@ app.post('/api/listened', (req, res) => {
   const level = earned ? levelOf(finishedCount(user)) : null;
   // reaching one is worth saying; finishing the eleventh book is not
   if (level && level.at && level.finished === level.at) reachedALevel(user, level);
+  haPushSoon();
   res.json({ ok: true, ...(earned ? { level } : {}) });
 });
 
@@ -1415,8 +1417,13 @@ app.get('/api/ha/speakers', wrap(async (req, res) => {
 app.get('/api/ha/speaker', wrap(async (req, res) => res.json(await haSpeaker(req.query.player))));
 app.post('/api/ha/speaker/play', wrap(async (req, res) => {
   rememberRequest(req);
-  const { player, bookId, from, seek } = req.body || {};
-  res.json(await haPlay(req, { player, bookId: Number(bookId), from, seek, version: VERSION }));
+  const { player, bookId, from, seek, speed } = req.body || {};
+  res.json(await haPlay(req, { player, bookId: Number(bookId), from, seek, speed, listener: whoWrites(req), version: VERSION }));
+}));
+// a new speed while a speaker plays: the same book again, from where it got to
+app.post('/api/ha/speaker/speed', wrap(async (req, res) => {
+  const { player, speed } = req.body || {};
+  res.json(await haSpeed(req, { player, speed, version: VERSION }));
 }));
 app.post('/api/ha/speaker/control', wrap(async (req, res) => {
   const { player, action } = req.body || {};
@@ -1497,7 +1504,19 @@ app.get('/api/download/:id', wrap(async (req, res) => {
 app.get('/api/stream/:trackId', (req, res) => {
   const track = db.prepare('SELECT path FROM tracks WHERE id = ?').get(Number(req.params.trackId));
   if (!track || !fs.existsSync(track.path)) return res.status(404).end();
-  res.sendFile(track.path); // sendFile handles Range requests
+  // A speaker cannot be told how fast to play, so a speed other than 1× is played
+  // here (2.14.325): the file through ffmpeg's atempo, which keeps the pitch, as
+  // MP3, from `at` seconds in. No Range on that — it is made as it is sent.
+  const speed = tempo(req.query.speed);
+  if (speed === 1) return res.sendFile(track.path); // sendFile handles Range requests
+  const at = Math.max(0, Math.floor(Number(req.query.at) || 0));
+  res.set({ 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' });
+  const ff = spawn(toolAt('ffmpeg'), ['-hide_banner', '-nostdin', '-loglevel', 'error',
+    ...(at ? ['-ss', String(at)] : []), '-i', track.path, '-vn', '-filter:a', `atempo=${speed}`,
+    '-c:a', 'libmp3lame', '-b:a', '128k', '-f', 'mp3', 'pipe:1'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  ff.stdout.pipe(res);
+  ff.on('error', () => (res.headersSent ? res.destroy() : res.status(500).end()));
+  res.on('close', () => ff.kill('SIGKILL'));
 });
 
 const tickIt = db.prepare('UPDATE progress SET done = 1 WHERE user = ? AND book_id = ?');
@@ -1537,6 +1556,7 @@ app.post('/api/progress', (req, res) => {
     // finish, which is what a level is made of
     finishedABook(user, Number(bookId));
   }
+  haPushSoon(); // HA hears of a new place in seconds, not at the next interval (2.14.325)
   res.json({ ok: true, done: !!(kept && (kept.done || countsAsRead(kept))) });
 });
 

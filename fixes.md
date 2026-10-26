@@ -1079,6 +1079,18 @@ written out in each page's HTML, so a control added to one copy is missing from 
 others. **Rule:** a control added to the player bar goes into every page that has
 `<footer id="player">`; `tests/pages.mjs` now checks the speed on `ha.html` too.
 
+
+## HA and the app disagreed about how far in (2.14.325)
+
+The owner's HA card said 2 % while the app was further. Two causes: a place only
+reached HA at the next timed push (minutes), and a book sent to a speaker moved
+nobody's place at all — the browser that sent it was quiet and the speaker tells
+the app nothing. Now every change of place asks for a push within ten seconds
+(`haPushSoon`), and while a speaker plays what the app started, its place is read
+off the speaker every 30 s (`keepPlaces`) and kept under the listener who pressed
+Play. **Rule:** when playback moves to another device, something has to carry the
+place back, or every number built on it goes stale without a sound.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
