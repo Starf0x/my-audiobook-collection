@@ -484,7 +484,7 @@ export function haEntities(req, version) {
     // One per listener: what that person is in the middle of is the state, so a
     // dashboard card can show it without digging into attributes, and what they
     // have finished hangs off it — kept, marked read, with how long they took.
-    ...everybody(asked).map((p) => [`sensor.audiobook_${p.id}`,
+    ...everybody(asked).flatMap((p) => [[`sensor.audiobook_${p.id}`,
       p.reading ? p.reading.title : 'nothing', attrs({
         friendly_name: `Audiobook · ${p.name}`, icon: 'mdi:account-music',
         listener: p.name,
@@ -501,7 +501,14 @@ export function haEntities(req, version) {
         // in the state above included — and what they have finished below it
         listening: p.listening,
         finished: p.finished,
-      })]),
+      })],
+      // How far into that book, as a number of its own (2.14.303): a gauge card
+      // shows a sensor's state and cannot read an attribute. 0 with nothing on.
+      [`sensor.audiobook_${p.id}_progress`, String(p.reading ? p.reading.percent : 0), attrs({
+        friendly_name: `Audiobook progress · ${p.name}`, icon: 'mdi:progress-clock',
+        unit_of_measurement: '%', state_class: 'measurement', listener: p.name,
+        ...(p.reading ? { book_id: p.reading.id, title: p.reading.title } : {}),
+      })]]),
   ];
 }
 

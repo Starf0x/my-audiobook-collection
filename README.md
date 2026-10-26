@@ -1029,7 +1029,10 @@ It has a page of its own: **Settings ▾ → Home Assistant**, or
    attributes), `sensor.audiobook_files`, `sensor.audiobook_hours`,
    `sensor.audiobook_hours_listened`, `sensor.audiobook_hours_left` and
    `sensor.audiobook_next_up` (the title to carry on with, with its track, the
-   seconds in, the percentage, and the whole queue). Pick whose progress to report
+   seconds in, the percentage, and the whole queue). Each listener also gets
+   `sensor.audiobook_<name>` (the book they are in, details as attributes) and
+   `sensor.audiobook_<name>_progress` (how far into it, in %, ready for a gauge
+   card). Pick whose progress to report
    and how often to send — Home Assistant forgets states written straight into it
    when it restarts, so a repeat keeps them there. *Show what will be sent* lists
    it without sending.
