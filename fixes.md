@@ -1091,6 +1091,29 @@ off the speaker every 30 s (`keepPlaces`) and kept under the listener who presse
 Play. **Rule:** when playback moves to another device, something has to carry the
 place back, or every number built on it goes stale without a sound.
 
+## The speed did not reach a book started from HA (2.14.336)
+
+2.14.325 passed the speed only from the app's own player bar. The owner starts
+books on the speaker from Home Assistant, and that call carries no speed — the
+choice lived in the browser's localStorage, where the server cannot see it. The
+app now keeps each listener's speed (`/api/speed`, setting `speed:<name>`) and
+uses it when a play arrives without one. **Rule:** a preference that a server-side
+path needs cannot live only in the browser.
+
+Also in 2.14.336: the HA card still lagged after 2.14.325. A book started from HA
+(`/api/ha/play`) carries no listener, so `keepPlaces` skipped it — now it falls
+back to the listener chosen on the HA page, or the only one there is. And places
+written by Music Assistant (`abs.js`) did not ask for a prompt push; they do now.
+
+The real case, once asked: the owner resumes the speaker with its own button
+through an HA automation. After an update restarted the app, it no longer knew
+what the speaker was playing, so nothing was kept. What is playing where is now
+kept in the database (`haNowOn`) and picked up again at start, the next track
+handed on as before; a speaker that reports what it plays is followed track by
+track, and one playing something else moves no place. **Rule:** state the app
+needs to keep doing its job across a restart belongs in the database, not in a
+Map — and ask how the owner actually uses it before guessing twice.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

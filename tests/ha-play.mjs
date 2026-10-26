@@ -53,7 +53,7 @@ const ha = http.createServer((req, res) => {
 await new Promise((r) => ha.listen(0, '127.0.0.1', r));
 
 const { db, setSetting } = await import('../server/db.js');
-const { haPlay, haControl, haSpeed, playerSigOk, bookPlaylist, FOLLOW_EVERY, KEEP_EVERY, stopFollowing } = await import('../server/ha.js');
+const { haPlay, haControl, haSpeed, haSetSpeed, playerSigOk, bookPlaylist, FOLLOW_EVERY, KEEP_EVERY, stopFollowing } = await import('../server/ha.js');
 KEEP_EVERY.ms = 30; // how often a speaker's place is read; set before anything plays
 setSetting('haUrl', `http://127.0.0.1:${ha.address().port}`);
 setSetting('haToken', 'outbound-token');
@@ -155,8 +155,44 @@ asked.length = 0;
   const kept = db.prepare("SELECT track_idx, position, via FROM progress WHERE user = 'Ada' AND book_id = 1").get();
   check('the place a speaker has got to is kept under the listener who pressed Play',
     kept && [kept.track_idx, kept.position, kept.via], [1, 42, 'home-assistant']);
+  // the owner resumes with the speaker's own button, so what the app started has
+  // to outlive a restart of the app (2.14.336)
+  const { getSetting } = await import('../server/db.js');
+  check('and what is playing where is kept in the database, for after a restart',
+    JSON.parse(getSetting('haNowOn') || '[]').map(([e, w]) => [e, w.bookId, w.listener]),
+    [['media_player.sonos', 1, 'Ada']]);
+  // a player that says what it plays: another of the book's tracks is followed…
+  players['media_player.sonos'].attributes.media_content_id = 'http://x/api/stream/12?sig=1';
+  players['media_player.sonos'].attributes.media_position = 7;
+  await wait(150);
+  const moved = db.prepare("SELECT track_idx, position FROM progress WHERE user = 'Ada' AND book_id = 1").get();
+  check('a speaker that moved on to the next track moves the place with it', [moved.track_idx, moved.position], [2, 7]);
+  // …and something that is not this book moves nothing
+  players['media_player.sonos'].attributes.media_content_id = 'spotify:track:abc';
+  players['media_player.sonos'].attributes.media_position = 99;
+  await wait(150);
+  const still = db.prepare("SELECT track_idx, position FROM progress WHERE user = 'Ada' AND book_id = 1").get();
+  check('and music that is not the book leaves the place alone', [still.track_idx, still.position], [2, 7]);
   await haControl({ player: 'media_player.sonos', action: 'stop' });
   db.prepare('UPDATE tracks SET duration = 0.05').run();
+}
+
+// Started from Home Assistant there is no speed in the call: the owner played
+// on the speaker through HA and it stayed at 1× (2.14.336). The listener's own
+// choice, kept by the app, is used — and a new one restarts what is playing.
+asked.length = 0;
+{
+  const speeds = () => asked.filter((a) => a.media_content_id)
+    .map((a) => new URL(a.media_content_id).searchParams.get('speed'));
+  await haSetSpeed(req, { listener: 'Ada', speed: 1.5, apply: false });
+  players['media_player.sonos'] = { state: 'playing', attributes: { supported_features: 2097152 | 512, media_position: 0 } };
+  await haPlay(req, { player: 'media_player.sonos', bookId: 1, from: 2, listener: 'Ada' });
+  check('a book started without a speed plays at the one the listener chose', speeds(), ['1.5']);
+  asked.length = 0;
+  const r = await haSetSpeed(req, { listener: 'Ada', speed: 1.2 });
+  check('and choosing another starts the speaker again at it',
+    [r.restarted, speeds()], [['media_player.sonos'], ['1.2']]);
+  await haControl({ player: 'media_player.sonos', action: 'stop' });
 }
 
 // and when HA refuses, its own words come back with the number

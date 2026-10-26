@@ -534,7 +534,7 @@ export async function haPush(req, version) {
 // Play a book on one of HA's media players: the playlist first, then the seek — a
 // player takes a URL, and a position can only be asked for once it has something
 // to seek within. A player that cannot seek still plays, from the track's start.
-export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed = 1, listener = '', version = '' } = {}) {
+export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed, listener = '', version = '' } = {}) {
   const entity = String(player || haSettings().player || '').trim();
   if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
   // no book named: the one being listened to, from where it stopped. That is what
@@ -563,13 +563,18 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed = 
   // HA has no way to tell a speaker how fast to play (2.14.325): a speed other
   // than 1× is played by this app, the track sent through ffmpeg's atempo — and
   // then from the second to start at, since a seek into a stream cannot be asked.
-  const rate = tempo(speed);
+  // Started from HA — an automation, the HA page — there is no speed in the call:
+  // then it is the one the listener last chose in the app (2.14.336).
+  const who = listener || haSettings().listener || onlyListener();
+  const rate = tempo(speed ?? speedOf(who));
   const startAt = Math.max(0, Number(seek) || 0);
   const sped = (extra = {}) => (rate === 1 ? {} : { speed: rate, ...extra });
   const st = await call(`/states/${entity}`).catch(() => null);
   const queues = (Number(st?.attributes?.supported_features) || 0) & MEDIA_ENQUEUE;
   const first = await playTrack(entity, base, tracks[0], '', sped(startAt ? { at: Math.round(startAt) } : {}));
-  nowOn.set(entity, { bookId: id, from: Number(from) || 0, i: 0, at: startAt, speed: rate, since: Date.now(), listener });
+  nowOn.set(entity, { bookId: id, from: Number(from) || 0, i: 0, at: startAt, speed: rate, since: Date.now(),
+    heard: 0, lastPoll: Date.now(), listener: who, single: !queues });
+  saveNowOn();
   keepPlaces();
   let queued = 0;
   if (queues) {
@@ -604,10 +609,60 @@ export const tempo = (speed) => {
   return n >= 0.5 && n <= 2 ? n : 1;
 };
 
+// The speed each listener last chose in the app, kept here so that a book started
+// from Home Assistant plays at it too — the browser's own choice is in the browser.
+const speedKey = (who) => `speed:${who}`;
+// with one listener there is no question whose book it is
+const onlyListener = () => {
+  const all = db.prepare('SELECT name FROM users').all();
+  return all.length === 1 ? all[0].name : '';
+};
+export const speedOf = (who) => tempo(getSetting(speedKey(who)) || 1);
+
+// A new speed chosen: kept, and whatever a speaker is playing for that listener
+// starts again at it, from where it had got to.
+export async function haSetSpeed(req, { listener, speed, apply = true, version = '' } = {}) {
+  const rate = tempo(speed);
+  if (listener) setSetting(speedKey(listener), String(rate));
+  const restarted = [];
+  if (!apply) return { speed: rate, restarted };
+  for (const [entity, was] of [...nowOn]) {
+    if (was.listener !== listener || was.speed === rate) continue;
+    const st = await call(`/states/${entity}`).catch(() => null);
+    if (st?.state !== 'playing') continue;
+    await haSpeed(req, { player: entity, speed: rate, version }).catch(() => null);
+    restarted.push(entity);
+  }
+  return { speed: rate, restarted };
+}
+
 // What this app last started on each player: the book, the track (from + i), the
 // second it started at and how fast — so a new speed can start again where the
 // listener is, worked out from how far the player says it got.
+//
+// Kept in the database as well (2.14.336): the owner resumes the speaker with its
+// own button, through an HA automation, so after the app restarted — an update —
+// it no longer knew what the speaker was playing, and nothing was kept.
 const nowOn = new Map();
+const NOW_ON = 'haNowOn';
+const saveNowOn = () => setSetting(NOW_ON, JSON.stringify([...nowOn]));
+setTimeout(() => {
+  try {
+    for (const [entity, was] of JSON.parse(getSetting(NOW_ON) || '[]')) {
+      nowOn.set(entity, { ...was, lastPoll: Date.now() });
+      // a player that cannot queue is handed the next track by this app: carry on
+      // doing that, from the track it is on
+      const base = getSetting(KEY.base);
+      if (was.single && base) {
+        const tracks = db.prepare('SELECT id, path, duration FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx')
+          .all(was.bookId, was.from + was.i);
+        Object.assign(nowOn.get(entity), { from: was.from + was.i, i: 0 });
+        if (tracks.length > 1) follow(entity, base, tracks, was.at, was.speed);
+      }
+    }
+    if (nowOn.size) keepPlaces();
+  } catch { /* nothing kept, or not readable: nothing to carry on */ }
+}, 0).unref?.();
 
 export async function haSpeed(req, { player, speed, version = '' } = {}) {
   const entity = String(player || '').trim();
@@ -629,7 +684,12 @@ const placeOn = (was, st) => {
     if (st.state === 'playing' && a.media_position_updated_at) {
       heard += Math.max(0, (Date.now() - Date.parse(a.media_position_updated_at)) / 1000);
     }
-  } else heard = (Date.now() - was.since) / 1000;
+  } else {
+    // a player that keeps no count: the time it has been seen playing, counted on
+    // each look — so a pause from the speaker's own button is not counted
+    heard = (Number(was.heard) || 0)
+      + (st?.state === 'playing' ? Math.max(0, (Date.now() - (was.lastPoll || Date.now())) / 1000) : 0);
+  }
   return was.at + heard * was.speed;
 };
 
@@ -645,12 +705,29 @@ function keepPlaces() {
   keeping = setInterval(async () => {
     if (!nowOn.size) { clearInterval(keeping); keeping = null; return; }
     for (const [entity, was] of nowOn) {
-      if (!was.listener) continue;
       const st = await call(`/states/${entity}`).catch(() => null);
-      if (st?.state !== 'playing') continue;
+      const now = Date.now();
+      const looked = was.lastPoll || now;
+      was.lastPoll = now;
+      if (st?.state !== 'playing') { saveNowOn(); continue; }
+      // Playing something of this book's? A player that says what it plays is
+      // believed: another of the book's tracks (one that queues moves on by itself)
+      // is followed, and anything else is not this book and moves no place.
+      const playing = String(st.attributes?.media_content_id || '').match(/\/api\/stream\/(\d+)/);
+      if (st.attributes?.media_content_id && !playing) continue;
+      if (playing) {
+        const t = db.prepare('SELECT book_id, idx FROM tracks WHERE id = ?').get(Number(playing[1]));
+        if (!t || t.book_id !== was.bookId) continue;
+        if (t.idx !== was.from + was.i) Object.assign(was, { i: t.idx - was.from, at: 0, heard: 0 });
+      }
+      was.heard = (Number(was.heard) || 0) + (now - looked) / 1000;
+      saveNowOn();
+      if (!was.listener) continue;
       const idx = was.from + was.i;
       const t = db.prepare('SELECT duration FROM tracks WHERE book_id = ? AND idx = ?').get(was.bookId, idx);
-      const position = Math.min(Math.round(placeOn(was, st)), Math.floor(Number(t?.duration) || Infinity));
+      // `heard` is up to date just above, so nothing more is added for this look
+      const position = Math.min(Math.round(placeOn({ ...was, lastPoll: now }, st)),
+        Math.floor(Number(t?.duration) || Infinity));
       db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, via, started)
           VALUES (?, ?, ?, ?, datetime('now'), 'home-assistant', datetime('now'))
         ON CONFLICT(user, book_id) DO UPDATE SET track_idx = excluded.track_idx,
@@ -720,7 +797,8 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
     since = 0;
     quiet = 0;
     const on = nowOn.get(entity);
-    if (on) Object.assign(on, { i, at: 0, since: Date.now() });
+    if (on) Object.assign(on, { i, at: 0, since: Date.now(), heard: 0, lastPoll: Date.now() });
+    saveNowOn();
     try { await playTrack(entity, base, tracks[i], '', rate === 1 ? {} : { speed: rate }); } catch { stop(); }
   }, FOLLOW_EVERY.ms);
   timer.unref?.();
@@ -737,6 +815,7 @@ export async function haControl({ player, action } = {}) {
     clearInterval(following.get(entity));
     following.delete(entity);
     nowOn.delete(entity);
+    saveNowOn();
   }
   await call(`/services/media_player/${service}`, { method: 'POST', body: { entity_id: entity } });
   return { player: entity, action };

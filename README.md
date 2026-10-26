@@ -1057,6 +1057,8 @@ chosen first every time this browser opens the page. Not on a phone, and not the
 The speed in the bar holds on a speaker too: HA cannot set a speaker's speed, so
 the app plays the track at that speed itself (ffmpeg's *atempo*, pitch kept), and a
 new speed while it plays starts the track again where the speaker had got to.
+The app keeps each listener's speed, so a book started from Home Assistant itself
+(an automation, the HA page) plays at it as well.
 While a speaker plays a book the app started, its place is read off the speaker
 every half minute and kept under the listener who pressed Play, so the page and
 the sensors in HA follow it; any change of place reaches HA within seconds.
