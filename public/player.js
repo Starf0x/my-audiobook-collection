@@ -730,6 +730,7 @@ async function pressRemote() {
     } else {
       const r = await post('/api/ha/speaker/play', {
         player: remote.player, bookId: id, from: state.track || 0, seek: Math.round(audio.currentTime || 0),
+        speed: speedWanted(), // played at that speed by the app (2.14.325)
       });
       remote.book = id;
       remote.state = 'playing';
@@ -754,6 +755,17 @@ function useWhere(player) {
   drawRemote();
   drawWhere();
 }
+
+// A new speed while a speaker plays reaches the speaker too (2.14.325): the app
+// starts the track again at that speed, from where the speaker had got to.
+maybe('#pSpeed', (el) => el.addEventListener('change', async () => {
+  if (!remote.player || !remote.book || remote.state !== 'playing') return;
+  try {
+    await post('/api/ha/speaker/speed', { player: remote.player, speed: speedWanted() });
+  } catch (e) {
+    toast(e.message);
+  }
+}));
 
 // whatever starts this tab's sound while a speaker is chosen goes to the speaker
 audio.addEventListener('play', () => {

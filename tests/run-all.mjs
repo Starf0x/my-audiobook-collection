@@ -42,6 +42,7 @@ const PORTABLE = [
   'first-run',
   'requests',
   'ha-play',
+  'speaker-speed',
 ];
 
 // what this runner does not run, and why — said out loud rather than forgotten

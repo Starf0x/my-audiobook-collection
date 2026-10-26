@@ -534,7 +534,7 @@ export async function haPush(req, version) {
 // Play a book on one of HA's media players: the playlist first, then the seek — a
 // player takes a URL, and a position can only be asked for once it has something
 // to seek within. A player that cannot seek still plays, from the track's start.
-export async function haPlay(req, { player, bookId, from = 0, seek = 0, version = '' } = {}) {
+export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed = 1, listener = '', version = '' } = {}) {
   const entity = String(player || haSettings().player || '').trim();
   if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
   // no book named: the one being listened to, from where it stopped. That is what
@@ -560,25 +560,33 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
   const base = baseUrl(req);
   const tracks = db.prepare('SELECT id, path, duration FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx')
     .all(id, Number(from) || 0);
+  // HA has no way to tell a speaker how fast to play (2.14.325): a speed other
+  // than 1× is played by this app, the track sent through ffmpeg's atempo — and
+  // then from the second to start at, since a seek into a stream cannot be asked.
+  const rate = tempo(speed);
+  const startAt = Math.max(0, Number(seek) || 0);
+  const sped = (extra = {}) => (rate === 1 ? {} : { speed: rate, ...extra });
   const st = await call(`/states/${entity}`).catch(() => null);
   const queues = (Number(st?.attributes?.supported_features) || 0) & MEDIA_ENQUEUE;
-  const first = await playTrack(entity, base, tracks[0]);
+  const first = await playTrack(entity, base, tracks[0], '', sped(startAt ? { at: Math.round(startAt) } : {}));
+  nowOn.set(entity, { bookId: id, from: Number(from) || 0, i: 0, at: startAt, speed: rate, since: Date.now(), listener });
+  keepPlaces();
   let queued = 0;
   if (queues) {
     for (const t of tracks.slice(1)) {
       try {
-        await playTrack(entity, base, t, 'add');
+        await playTrack(entity, base, t, 'add', sped());
         queued++;
       } catch { break; } // what is queued plays; the rest is not worth failing for
     }
   } else if (tracks.length > 1) {
-    follow(entity, base, tracks, Number(seek) || 0);
+    follow(entity, base, tracks, startAt, rate);
   }
   const media = first;
   const single = !queues;
   const at = Math.round(Number(seek) || 0);
-  let seeked = false;
-  if (at > 0) {
+  let seeked = rate !== 1 && at > 0; // started there already
+  if (at > 0 && rate === 1) {
     await new Promise((r) => setTimeout(r, 3000));
     try {
       await call('/services/media_player/media_seek', {
@@ -587,7 +595,71 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
       seeked = true;
     } catch { /* not every player can seek */ }
   }
-  return { player: entity, media, seek: at, seeked, single, queued };
+  return { player: entity, media, seek: at, seeked, single, queued, speed: rate };
+}
+
+// 0.5× to 2×, which is what one atempo does and what the speed pulldown offers
+export const tempo = (speed) => {
+  const n = Math.round((Number(speed) || 1) * 10) / 10;
+  return n >= 0.5 && n <= 2 ? n : 1;
+};
+
+// What this app last started on each player: the book, the track (from + i), the
+// second it started at and how fast — so a new speed can start again where the
+// listener is, worked out from how far the player says it got.
+const nowOn = new Map();
+
+export async function haSpeed(req, { player, speed, version = '' } = {}) {
+  const entity = String(player || '').trim();
+  const was = nowOn.get(entity);
+  if (!was) throw new Error('Nothing this app started is playing there.');
+  const st = await call(`/states/${entity}`).catch(() => null);
+  const seek = Math.round(placeOn(was, st));
+  return haPlay(req, { player: entity, bookId: was.bookId, from: was.from + was.i, seek, speed,
+    listener: was.listener, version });
+}
+
+// Where the speaker has got to, as a second in the book: from `at`, plus what the
+// player says it has played at its speed — or, from one that keeps no count, the
+// time since the track began.
+const placeOn = (was, st) => {
+  const a = st?.attributes || {};
+  let heard = Number(a.media_position);
+  if (Number.isFinite(heard)) {
+    if (st.state === 'playing' && a.media_position_updated_at) {
+      heard += Math.max(0, (Date.now() - Date.parse(a.media_position_updated_at)) / 1000);
+    }
+  } else heard = (Date.now() - was.since) / 1000;
+  return was.at + heard * was.speed;
+};
+
+// A book played on a speaker moved nobody's place: the browser that sent it is
+// quiet, and the speaker tells this app nothing. So the place, the app's page and
+// the sensors in HA stayed where the browser had left them (2.14.325). While a
+// speaker plays what this app started, its place is written down every half
+// minute under the listener who pressed Play, and HA is told soon after.
+export const KEEP_EVERY = { ms: 30000 };
+let keeping = null;
+function keepPlaces() {
+  if (keeping) return;
+  keeping = setInterval(async () => {
+    if (!nowOn.size) { clearInterval(keeping); keeping = null; return; }
+    for (const [entity, was] of nowOn) {
+      if (!was.listener) continue;
+      const st = await call(`/states/${entity}`).catch(() => null);
+      if (st?.state !== 'playing') continue;
+      const idx = was.from + was.i;
+      const t = db.prepare('SELECT duration FROM tracks WHERE book_id = ? AND idx = ?').get(was.bookId, idx);
+      const position = Math.min(Math.round(placeOn(was, st)), Math.floor(Number(t?.duration) || Infinity));
+      db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, via, started)
+          VALUES (?, ?, ?, ?, datetime('now'), 'home-assistant', datetime('now'))
+        ON CONFLICT(user, book_id) DO UPDATE SET track_idx = excluded.track_idx,
+          position = excluded.position, updated = excluded.updated, via = excluded.via`)
+        .run(was.listener, was.bookId, idx, position);
+      haPushSoon();
+    }
+  }, KEEP_EVERY.ms);
+  keeping.unref?.();
 }
 
 // HA's flag for a player that takes `enqueue` on play_media
@@ -595,10 +667,10 @@ const MEDIA_ENQUEUE = 2097152;
 
 // One track to a player, as `music` first — what Music Assistant and ESPHome
 // players take — then as the file's own type (2.14.215). Gives back its address.
-async function playTrack(entity, base, track, enqueue = '') {
-  const url = playerUrl(base, `/api/stream/${track.id}`);
+async function playTrack(entity, base, track, enqueue = '', extra = {}) {
+  const url = playerUrl(base, `/api/stream/${track.id}`, extra);
   const ext = String(track.path || '').split('.').pop().toLowerCase();
-  const own = { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
+  const own = extra.speed ? 'audio/mpeg' : { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
     opus: 'audio/ogg', flac: 'audio/flac', wav: 'audio/wav' }[ext] || 'audio/mpeg';
   let last = null;
   for (const type of ['music', own]) {
@@ -619,7 +691,7 @@ async function playTrack(entity, base, track, enqueue = '') {
 // stop, and that is left alone. One book per player; Play here again replaces it.
 const following = new Map();
 export const FOLLOW_EVERY = { ms: 5000 };
-function follow(entity, base, tracks, skipped = 0) {
+function follow(entity, base, tracks, skipped = 0, rate = 1) {
   clearInterval(following.get(entity));
   let i = 0;
   let since = 0; // when the current track was first seen playing
@@ -640,13 +712,16 @@ function follow(entity, base, tracks, skipped = 0) {
     }
     const heard = (Date.now() - since) / 1000;
     // the first track was started `skipped` seconds in, so less of it is left to hear
-    const left = (Number(tracks[i].duration) || 0) - (i === 0 ? skipped : 0);
+    // and at another speed it takes that much more or less time
+    const left = ((Number(tracks[i].duration) || 0) - (i === 0 ? skipped : 0)) / rate;
     if (heard < left * 0.9) return stop(); // stopped by hand
     i++;
     if (i >= tracks.length) return stop();
     since = 0;
     quiet = 0;
-    try { await playTrack(entity, base, tracks[i]); } catch { stop(); }
+    const on = nowOn.get(entity);
+    if (on) Object.assign(on, { i, at: 0, since: Date.now() });
+    try { await playTrack(entity, base, tracks[i], '', rate === 1 ? {} : { speed: rate }); } catch { stop(); }
   }, FOLLOW_EVERY.ms);
   timer.unref?.();
   following.set(entity, timer);
@@ -661,6 +736,7 @@ export async function haControl({ player, action } = {}) {
   if (action === 'stop') {
     clearInterval(following.get(entity));
     following.delete(entity);
+    nowOn.delete(entity);
   }
   await call(`/services/media_player/${service}`, { method: 'POST', body: { entity_id: entity } });
   return { player: entity, action };
@@ -702,7 +778,24 @@ const pushFrom = () => lastReq
   || asIfFrom(getSetting(KEY.base))
   || asIfFrom((process.env.BASE_URL || '').trim());
 
+// A place changed: HA hears of it within a few seconds rather than at the next
+// interval, which is minutes (2.14.325). One push for a burst of changes.
+let pushVersion = '';
+let soon = null;
+export const PUSH_SOON = { ms: 10000 };
+export function haPushSoon() {
+  const { url, hasToken } = haSettings();
+  if (!url || !hasToken || soon) return;
+  soon = setTimeout(() => {
+    soon = null;
+    const from = pushFrom();
+    if (from) haPush(from, pushVersion).catch(() => { /* lastPush.error already says why */ });
+  }, PUSH_SOON.ms);
+  soon.unref?.();
+}
+
 export function scheduleHaPush(version) {
+  pushVersion = version;
   if (timer) clearInterval(timer);
   if (startup) clearTimeout(startup);
   timer = null;

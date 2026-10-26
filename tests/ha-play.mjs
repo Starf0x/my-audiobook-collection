@@ -53,7 +53,8 @@ const ha = http.createServer((req, res) => {
 await new Promise((r) => ha.listen(0, '127.0.0.1', r));
 
 const { db, setSetting } = await import('../server/db.js');
-const { haPlay, haControl, playerSigOk, bookPlaylist, FOLLOW_EVERY, stopFollowing } = await import('../server/ha.js');
+const { haPlay, haControl, haSpeed, playerSigOk, bookPlaylist, FOLLOW_EVERY, KEEP_EVERY, stopFollowing } = await import('../server/ha.js');
+KEEP_EVERY.ms = 30; // how often a speaker's place is read; set before anything plays
 setSetting('haUrl', `http://127.0.0.1:${ha.address().port}`);
 setSetting('haToken', 'outbound-token');
 db.prepare("INSERT INTO books (id, path, genre, author, title) VALUES (1, '/a/b', 'Fantasy', 'Adair Hart', 'The Purification')").run();
@@ -119,6 +120,43 @@ players['media_player.3reality'].state = 'idle';
   check('Stop is passed to the player, and no next track follows it',
     [asked.some((a) => a.entity_id === 'media_player.3reality' && !a.media_content_id), plays().map(([p]) => p)],
     [true, ['/api/stream/10']]);
+}
+
+// HA cannot set a speaker's speed, so the app plays it at that speed (2.14.325):
+// the address asks for the speed, and the first track for the second to start at,
+// since a seek into a stream made as it is sent cannot be asked for.
+asked.length = 0;
+{
+  const params = () => asked.filter((a) => a.media_content_id).map((a) => {
+    const u = new URL(a.media_content_id);
+    return [u.pathname, u.searchParams.get('speed'), u.searchParams.get('at')];
+  });
+  const r = await haPlay(req, { player: 'media_player.sonos', bookId: 1, from: 1, seek: 30, speed: 1.5 });
+  check('a speed other than 1× is in every address, the start only in the first, and no seek is asked',
+    [params(), r.seeked, asked.some((a) => 'seek_position' in a)],
+    [[['/api/stream/11', '1.5', '30'], ['/api/stream/12', '1.5', null]], true, false]);
+  asked.length = 0;
+  players['media_player.sonos'] = { state: 'paused', attributes: { supported_features: 2097152 | 512, media_position: 20 } };
+  await haSpeed(req, { player: 'media_player.sonos', speed: 1.2 });
+  check('a new speed starts the track again where the speaker got to: 30 s + 20 s heard at 1.5×',
+    params()[0], ['/api/stream/11', '1.2', '60']);
+  const none = await haSpeed(req, { player: 'media_player.nothing', speed: 1.2 }).catch((e) => e.message);
+  check('and on a player this app started nothing on, it says so', none, 'Nothing this app started is playing there.');
+}
+
+// A book on a speaker moved nobody's place, so the app and HA stayed where the
+// browser had left them (2.14.325). Its place is now read off the speaker.
+asked.length = 0;
+{
+  players['media_player.sonos'] = { state: 'playing', attributes: { supported_features: 2097152 | 512, media_position: 42 } };
+  db.prepare('UPDATE tracks SET duration = 600').run();
+  await haPlay(req, { player: 'media_player.sonos', bookId: 1, from: 1, listener: 'Ada' });
+  await wait(150);
+  const kept = db.prepare("SELECT track_idx, position, via FROM progress WHERE user = 'Ada' AND book_id = 1").get();
+  check('the place a speaker has got to is kept under the listener who pressed Play',
+    kept && [kept.track_idx, kept.position, kept.via], [1, 42, 'home-assistant']);
+  await haControl({ player: 'media_player.sonos', action: 'stop' });
+  db.prepare('UPDATE tracks SET duration = 0.05').run();
 }
 
 // and when HA refuses, its own words come back with the number

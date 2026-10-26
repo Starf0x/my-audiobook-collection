@@ -1054,6 +1054,13 @@ track and second the bar is at, and pressing it again pauses or carries on the
 speaker. The ☆ beside each speaker in the list makes it the favourite (★),
 chosen first every time this browser opens the page. Not on a phone, and not there at all without HA.
 
+The speed in the bar holds on a speaker too: HA cannot set a speaker's speed, so
+the app plays the track at that speed itself (ffmpeg's *atempo*, pitch kept), and a
+new speed while it plays starts the track again where the speaker had got to.
+While a speaker plays a book the app started, its place is read off the speaker
+every half minute and kept under the listener who pressed Play, so the page and
+the sensors in HA follow it; any change of place reaches HA within seconds.
+
 Hours listened count a book marked *Listened* whole, and a book in progress as the
 tracks behind the listener plus the seconds into the one they are on.
 
