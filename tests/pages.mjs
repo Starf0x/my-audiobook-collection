@@ -69,7 +69,7 @@ const EMPTY = {
   '/api/genrefolders': { folders: [{ genre: 'Fantasy', path: '/audiobooks/Fantasy' }], suggestedParent: '' },
   '/api/authors': [],
   '/api/home': { continue: [], recent: [] },
-  '/api/stats': { books: 0, files: 0, done: 0, todo: 0, version: 'test' },
+  '/api/stats': { books: 0, files: 0, done: 0, todo: 0, hours: 1234, heard: 56, version: 'test' },
   '/api/listened': { books: [] },
   '/api/favourites': [],
   '/api/untagged': [],
@@ -193,6 +193,9 @@ for (const [page, own] of [['index.html', 'app.js'], ['listen.html', 'shelf.js']
   check(`and they share one scope, so ${page} has both halves`,
     [window.eval('typeof $'), window.eval('typeof seriesRows'), window.eval('typeof drawBooks')],
     ['function', 'function', 'function']);
+  await settle(100);
+  check(`${page}'s line of numbers says the hours too`,
+    /1,234 hours.*56 hours listened/.test(window.document.querySelector('#status')?.textContent || ''), true);
 }
 // The third page stands on its own — no browse.js, no player — so it only has to
 // load and draw.

@@ -28,7 +28,7 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, playerSigOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
-  haEntities, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
+  haEntities, listenedSeconds, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -745,8 +745,12 @@ const SERIES = "NULLIF(COALESCE(NULLIF(b.series, ''), NULLIF(b.tag_series, '')),
 app.get('/api/stats', (req, res) => {
   const books = db.prepare('SELECT COUNT(*) AS n FROM books').get().n;
   const files = db.prepare('SELECT COUNT(*) AS n FROM tracks').get().n;
-  const done = readCount(whoReads(req));
-  res.json({ books, files, done, todo: books - done, version: VERSION });
+  const who = whoReads(req);
+  const done = readCount(who);
+  // the hours in the collection, and how many of them this listener has heard (2.14.314)
+  const seconds = db.prepare('SELECT COALESCE(SUM(duration), 0) AS s FROM books').get().s;
+  res.json({ books, files, done, todo: books - done,
+    hours: Math.round(seconds / 3600), heard: Math.round(listenedSeconds(who) / 3600), version: VERSION });
 });
 
 const REQUIRED_TAGS = ['album', 'title', 'artist', 'album artist', 'genre', 'year', 'description', 'cover', 'track no'];

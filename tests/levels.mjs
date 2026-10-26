@@ -151,6 +151,9 @@ check('a book the app watched run out does', finishedCount('Ann'), 1);
   const strip = (await get('/api/stats?user=Ann', ann.cookies)).body;
   check('and the numbers under the page count the same books as the list',
     [strip.done, strip.todo], [listed.length, strip.books - listed.length]);
+  // and the hours beside them (2.14.314): the collection's, and how many of them Ann heard
+  check('with the hours in the collection and the hours this listener heard',
+    [typeof strip.hours, typeof strip.heard, strip.heard <= strip.hours], ['number', 'number', true]);
 }
 await post('/api/listened', { bookId: 5, done: true, played: true }, ann.cookies);
 check('and finishing the same book twice is one accomplishment', finishedCount('Ann'), 1);
