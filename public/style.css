@@ -1170,5 +1170,18 @@ body.now-playing { height: 100dvh; overflow: hidden; display: flex; flex-directi
 
 /* where the book plays: a speaker pulldown in the bar, wide screens only (2.14.248) */
 #player .where { display: inline-flex; gap: 4px; align-items: center; }
-#player .where select { max-width: 200px; }
+#player .where { position: relative; }
+#pWhereBtn { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the list opens upwards, the bar being at the foot of the page */
+#pWhereList {
+  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 50;
+  min-width: 240px; max-height: 60vh; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px -10px #000;
+}
+#pWhereList li { display: flex; align-items: center; border-radius: 6px; }
+#pWhereList li.on, #pWhereList li:hover { background: var(--panel2); }
+#pWhereList button { background: none; border: 0; color: inherit; cursor: pointer; padding: 6px 8px; }
+#pWhereList .name { flex: 1; text-align: left; white-space: nowrap; }
+#pWhereList .star { color: var(--dim); font-size: 16px; }
+#pWhereList .star.fav { color: #f5c518; }
 @media (max-width: 720px) { #player .where { display: none; } }
