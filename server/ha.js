@@ -57,6 +57,33 @@ export function sameSecret(said, want) {
   return crypto.timingSafeEqual(digest(said), digest(want));
 }
 
+// An address a media player is handed carries its own pass: a signature of the
+// path, made with a key this app keeps. The player has no cookie of ours, and
+// without `HA_TOKEN` — the common install — it had nothing else either, so every
+// playlist and track it was given answered "Sign in first." and HA reported the
+// speaker's failure as "The data provided is invalid" (2.14.226). A signature opens
+// that one path and nothing else, and needs nothing set up.
+const playerKey = () => {
+  let key = getSetting('playerKey');
+  if (!key) {
+    key = crypto.randomBytes(32).toString('hex');
+    setSetting('playerKey', key);
+  }
+  return key;
+};
+const signatureOf = (pathname) => crypto.createHmac('sha256', playerKey()).update(pathname).digest('hex').slice(0, 32);
+
+// `pathname` with what follows it, signed: `/api/stream/12` → `…/api/stream/12?sig=…`
+export function playerUrl(base, pathname, params = {}) {
+  const q = new URLSearchParams({ ...params, sig: signatureOf(pathname) });
+  return `${base}${pathname}?${q}`;
+}
+
+export function playerSigOk(req) {
+  const said = req.query && req.query.sig;
+  return !!said && sameSecret(said, signatureOf(String(req.originalUrl || '').split('?')[0]));
+}
+
 export function tokenOk(req) {
   const want = inboundToken();
   if (!want) return true;
@@ -114,10 +141,10 @@ export function haState(req, version = '', who = null) {
 
   const link = (b, trackIdx) => ({
     // the whole book from the beginning
-    playlist: `${base}/api/ha/book/${b.id}.m3u`,
+    playlist: playerUrl(base, `/api/ha/book/${b.id}.m3u`),
     // and from where this listener stopped, which is what "continue" means
     ...(trackIdx === undefined ? {} : {
-      continueFrom: `${base}/api/ha/book/${b.id}.m3u?from=${trackIdx}`,
+      continueFrom: playerUrl(base, `/api/ha/book/${b.id}.m3u`, { from: trackIdx }),
     }),
   });
 
@@ -482,13 +509,9 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
   }
   const id = Number(bookId);
   if (!bookPlaylist(req, id, Number(from) || 0)) throw new Error('That book has no files to play.');
-  // The playlist route asks for HA_TOKEN when it is set, and a media player has
-  // nothing to send it with but the address — without it the player got a 401.
-  const params = new URLSearchParams({
-    ...(Number(from) ? { from: String(Number(from)) } : {}),
-    ...(inboundToken() ? { token: inboundToken() } : {}),
-  }).toString();
-  const playlist = `${baseUrl(req)}/api/ha/book/${id}.m3u${params ? `?${params}` : ''}`;
+  // A media player has nothing to show for itself but the address, so the address
+  // carries a signature (`playerUrl`) rather than HA_TOKEN, which is a secret.
+  const playlist = playerUrl(baseUrl(req), `/api/ha/book/${id}.m3u`, Number(from) ? { from: Number(from) } : {});
   const play = (url, type) => call('/services/media_player/play_media', {
     method: 'POST', body: { entity_id: entity, media_content_type: type, media_content_id: url },
   });
@@ -507,7 +530,7 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
     const track = db.prepare('SELECT id, path FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx LIMIT 1')
       .get(id, Number(from) || 0);
     if (!track) throw e;
-    media = `${baseUrl(req)}/api/stream/${track.id}`;
+    media = playerUrl(baseUrl(req), `/api/stream/${track.id}`);
     const ext = String(track.path || '').split('.').pop().toLowerCase();
     const own = { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
       opus: 'audio/ogg', flac: 'audio/flac', wav: 'audio/wav' }[ext] || 'audio/mpeg';
@@ -616,7 +639,7 @@ export function bookPlaylist(req, id, from = 0) {
     `#PLAYLIST:${oneLine(book.title)}${book.author ? ` — ${oneLine(book.author)}` : ''}`,
     ...tracks.flatMap((t) => [
       `#EXTINF:${Math.round(t.duration || 0)},${oneLine(book.title)} — ${oneLine(t.title)}`,
-      `${base}/api/stream/${t.id}`,
+      playerUrl(base, `/api/stream/${t.id}`),
     ]),
   ].join('\n') + '\n';
 }

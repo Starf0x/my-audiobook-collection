@@ -1006,6 +1006,25 @@ Assistant players take), then as the file's own type, and when everything is
 refused the message gives HA's answer to the playlist and to the track. Guessing
 one content type for every player was the mistake.
 
+### A media player was told "Sign in first." (2.14.226)
+
+The real cause behind *Play here* failing on the owner's speaker. Since listeners
+need an account, one gate in front of `/api` lets in a signed-in listener, the
+admin, HA with `HA_TOKEN`, and Music Assistant. A media player is none of those:
+it fetches the playlist and the tracks itself, with no cookie, and on an install
+without `HA_TOKEN` it had nothing to show. Every address answered 401, and HA
+passed the speaker's failure on as "The data provided is invalid or could not be
+processed". 2.14.204 and 2.14.215 changed the content type, which was never it.
+
+**Found** by opening `/api/ha/continue.m3u` in a browser without signing in:
+`{"error":"Sign in first."}`. **Fixed:** every address handed to a player is signed
+(`playerUrl`: an HMAC of the path with a key kept in settings), and the gate and
+`forHA` let a valid signature through for that one path.
+
+**Rule:** before changing what is sent to a device, fetch the address it is given
+the way the device would, without a session. That one request would have saved
+two releases.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

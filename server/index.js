@@ -27,7 +27,7 @@ import { scheduleBackups } from './backup.js';
 import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
-import { haState, bookPlaylist, tokenOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
+import { haState, bookPlaylist, tokenOk, playerSigOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
   haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
@@ -218,6 +218,8 @@ app.use('/api', (req, res, next) => {
   }
   // the two machines that hold a token of their own rather than a cookie
   if ((inboundToken() && tokenOk(req)) || (absEnabled() && absListener(req) !== null)) return next();
+  // and a media player, with the signed address it was handed (2.14.226)
+  if (playerSigOk(req)) return next();
   return res.status(401).json({ error: 'Sign in first.' });
 });
 
@@ -1326,7 +1328,7 @@ app.get('/api/cover/:id', (req, res) => sendCover(req, res, req.params.id));
 // --- Home Assistant ----------------------------------------------------
 // Two answers and no component: a JSON document to poll, and a playlist to hand
 // to a media player. Both refuse when HA_TOKEN is set and not said.
-const forHA = (req, res, next) => (tokenOk(req)
+const forHA = (req, res, next) => (tokenOk(req) || playerSigOk(req)
   ? next()
   : res.status(401).json({ error: 'HA_TOKEN is set on this container; pass it as ?token= or a Bearer header.' }));
 
