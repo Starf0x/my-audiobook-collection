@@ -45,7 +45,7 @@ const ha = http.createServer((req, res) => {
 await new Promise((r) => ha.listen(0, '127.0.0.1', r));
 
 const { db, setSetting } = await import('../server/db.js');
-const { haPlay } = await import('../server/ha.js');
+const { haPlay, playerSigOk, bookPlaylist } = await import('../server/ha.js');
 setSetting('haUrl', `http://127.0.0.1:${ha.address().port}`);
 setSetting('haToken', 'outbound-token');
 db.prepare("INSERT INTO books (id, path, genre, author, title) VALUES (1, '/a/b', 'Fantasy', 'Adair Hart', 'The Purification')").run();
@@ -57,9 +57,23 @@ const req = { headers: { host: 'x' }, protocol: 'http', query: {} };
 
 {
   const r = await haPlay(req, { player: 'media_player.kitchen', bookId: 1, from: 1 });
-  check('a player that takes a playlist is given one, with the token it will be asked for',
-    [asked[0].media_content_id, r.single],
-    ['http://books.local:8080/api/ha/book/1.m3u?from=1&token=inbound-secret', false]);
+  const url = new URL(asked[0].media_content_id);
+  check('a player that takes a playlist is given one, signed, and without the HA_TOKEN secret in it',
+    [url.origin + url.pathname, url.searchParams.get('from'), /^[0-9a-f]{32}$/.test(url.searchParams.get('sig') || ''),
+      url.searchParams.has('token'), r.single],
+    ['http://books.local:8080/api/ha/book/1.m3u', '1', true, false, false]);
+
+  // The player has no cookie, and without HA_TOKEN nothing else either: it was
+  // answered "Sign in first." (2.14.226). The signature is what lets it in, for
+  // that one path only.
+  const asking = (u) => ({ originalUrl: u.pathname + u.search, query: Object.fromEntries(u.searchParams) });
+  check('the signed address is let in', playerSigOk(asking(url)), true);
+  const other = new URL(url);
+  other.pathname = '/api/ha/book/2.m3u';
+  check('and the same signature opens no other book', playerSigOk(asking(other)), false);
+  const tracks = bookPlaylist(req, 1, 0).split('\n').filter((l) => l.startsWith('http'));
+  check('every track in the playlist is signed as well',
+    tracks.map((l) => playerSigOk(asking(new URL(l)))), [true, true, true]);
 }
 
 asked.length = 0;
@@ -67,7 +81,7 @@ refusePlaylist = true;
 {
   const r = await haPlay(req, { player: 'media_player.3reality', bookId: 1, from: 1 });
   check('one that fails the playlist is given the track the listener is on',
-    [asked.length, asked[1].media_content_id, asked[1].media_content_type, r.single],
+    [asked.length, asked[1].media_content_id.split('?')[0], asked[1].media_content_type, r.single],
     [2, 'http://books.local:8080/api/stream/11', 'music', true]);
 }
 

@@ -1044,13 +1044,16 @@ Hours listened count a book marked *Listened* whole, and a book in progress as t
 tracks behind the listener plus the seconds into the one they are on.
 
 Two things worth knowing: the **player fetches the audio itself**, so behind a
-reverse proxy set `BASE_URL` on the container to the address other machines use;
+reverse proxy set `BASE_URL` on the container to the address other machines use
+(every playlist and track address handed to a player carries its own signature,
+`?sig=…`, so it plays without signing in and without `HA_TOKEN`);
 and **positions do not come back from a player**, so a book played on a speaker
 and then carried on in the browser starts where the browser last was.
 
 If you would rather have HA poll, it still can: `GET /api/ha` is the whole state,
-`GET /api/ha/continue.m3u` is the book being listened to from where it stopped, and
-`HA_TOKEN` on the container makes those ask for a token. The whole of it, with
+`GET /api/ha/continue.m3u` is the book being listened to from where it stopped.
+Since listeners need an account, those two answer only with `HA_TOKEN` set on the
+container and passed as `?token=` or a Bearer header. The whole of it, with
 dashboard and automation examples, is in
 [docs/home-assistant.md](docs/home-assistant.md).
 

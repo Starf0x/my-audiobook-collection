@@ -74,7 +74,8 @@ const m3u = bookPlaylist({ headers: { host: 'h' }, protocol: 'http' }, 1, 0);
 const lines = m3u.trim().split(NL);
 check('the playlist is the four lines it should be', lines.length, 4);
 check('and they are the ones this app wrote',
-  [lines[0], lines[3]], ['#EXTM3U', 'http://h/api/stream/1']);
+  // the track's address carries its signature since 2.14.226, which is not this check's business
+  [lines[0], lines[3].split('?')[0]], ['#EXTM3U', 'http://h/api/stream/1']);
 check('the smuggled track line never becomes a line', lines.includes('#EXTINF:1,Not a real track'), false);
 check('nor does the smuggled address', lines.includes('http://elsewhere/steal.mp3'), false);
 check('the title is still readable, only folded',
