@@ -1976,5 +1976,54 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     document.querySelector('#iAuthorPick').value, 'Brandon Sanderson');
 }
 
+// Where the book plays (2.14.248): a speaker pulldown in the bar, only while HA
+// is connected, with the favourite chosen first, and the bar's button sending
+// the book to it from the track and second the bar is at.
+{
+  const BOOK = { id: 5, title: 'A Book', author: 'An Author', coverV: 0,
+    tracks: [{ id: 51, idx: 0, title: 'One', duration: 600 }, { id: 52, idx: 1, title: 'Two', duration: 600 }] };
+  const sent = [];
+  const speakers = { connected: true, players: [
+    { entity_id: 'media_player.kitchen', name: 'Kitchen', state: 'idle' },
+    { entity_id: 'media_player.office', name: 'Office', state: 'idle' }] };
+  const page = await open('listen.html', {
+    '/api/books': BOOK,
+    '/api/ha/speakers': speakers,
+    '/api/ha/speaker': { player: 'media_player.office', state: 'idle', title: '' },
+    '/api/ha/speaker/play': (url, opts) => { sent.push(['play', JSON.parse(opts.body)]); return { player: 'media_player.office' }; },
+    '/api/ha/speaker/control': (url, opts) => { sent.push(['control', JSON.parse(opts.body)]); return {}; },
+  }, (w) => w.localStorage.setItem('haFavourite', 'media_player.office'));
+  await settle(150);
+  const { window, document } = page;
+  check('the bar offers the speakers, the favourite chosen',
+    [[...document.querySelectorAll('#pWhere option')].map((o) => o.textContent), document.querySelector('#pWhere').value,
+      document.querySelector('#pWhereFav').textContent],
+    [['This browser', 'Kitchen', 'Office'], 'media_player.office', '★']);
+  window.eval(`state.user = "tester"; state.book = ${JSON.stringify(BOOK)}; state.track = 1;`);
+  document.querySelector('#pPlay').click();
+  await settle(100);
+  check('and its button sends the book to that speaker, from the track the bar is on',
+    sent.map(([what, b]) => [what, b.player, b.bookId, b.from]), [['play', 'media_player.office', 5, 1]]);
+  document.querySelector('#pPlay').click();
+  await settle(100);
+  check('pressed again, it pauses the speaker', sent.slice(1).map(([what, b]) => [what, b.action]), [['control', 'pause']]);
+  const none = await open('listen.html', { '/api/ha/speakers': { connected: false, players: [] } });
+  await settle(100);
+  check('without Home Assistant there is no pulldown at all', none.document.querySelector('#pWhere'), null);
+}
+
+// Right after an update the app is still restarting when the HA page reloads:
+// the settings could not be read, the form stayed empty, and looked like lost
+// settings that the owner then typed in again (2.14.248). It must say so instead,
+// and not let an empty form be saved.
+{
+  const { document } = await open('ha.html', { '/api/ha/config': { __status: 502, error: 'restarting' } });
+  await settle(100);
+  check('a page that could not read the HA settings says so, and will not save',
+    [/Reading the saved settings/.test(document.querySelector('#tokState').textContent),
+      document.querySelector('#haSave').disabled, document.querySelector('#haTest').disabled],
+    [true, true, true]);
+}
+
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);

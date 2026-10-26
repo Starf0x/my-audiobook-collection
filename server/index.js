@@ -28,7 +28,7 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, playerSigOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
-  haEntities, haPush, haPlay, haControl, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
+  haEntities, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -1378,6 +1378,7 @@ app.post('/api/ha/config', requireAdmin, (req, res) => {
   const saved = saveHaSettings(req.body || {});
   rememberRequest(req);
   scheduleHaPush(VERSION);
+  haConnect();
   res.json(saved);
 });
 
@@ -1393,7 +1394,30 @@ app.post('/api/notify/test', requireAdmin, wrap(async (req, res) => {
   res.json({ sent: !lastSaid.error, last: lastSaid });
 }));
 
-app.post('/api/ha/test', requireAdmin, wrap(async (req, res) => res.json(await haPing())));
+app.post('/api/ha/test', requireAdmin, wrap(async (req, res) => {
+  const said = await haPing();
+  await haConnect();
+  res.json(said);
+}));
+
+// The speaker pulldown on the listening page, for anybody signed in: which players
+// there are while HA answers, and nothing at all while it does not (2.14.248).
+app.get('/api/ha/speakers', wrap(async (req, res) => {
+  if (!haLink.connected) return res.json({ connected: false, players: [] });
+  const players = await haPlayers().catch(() => null);
+  if (!players) return res.json({ connected: false, players: [] });
+  res.json({ connected: true, players: players.map(({ entity_id, name, state }) => ({ entity_id, name, state })) });
+}));
+app.get('/api/ha/speaker', wrap(async (req, res) => res.json(await haSpeaker(req.query.player))));
+app.post('/api/ha/speaker/play', wrap(async (req, res) => {
+  rememberRequest(req);
+  const { player, bookId, from, seek } = req.body || {};
+  res.json(await haPlay(req, { player, bookId: Number(bookId), from, seek, version: VERSION }));
+}));
+app.post('/api/ha/speaker/control', wrap(async (req, res) => {
+  const { player, action } = req.body || {};
+  res.json(await haControl({ player, action }));
+}));
 app.get('/api/ha/players', requireAdmin, wrap(async (req, res) => res.json(await haPlayers())));
 
 // what would be written into HA, without writing it
@@ -1567,8 +1591,10 @@ for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position,
   if (countsAsRead(row)) tickIt.run(row.user, row.book_id);
 }
 
-// a container that was already set up keeps pushing to Home Assistant on its own
+// a container that was already set up keeps pushing to Home Assistant on its own,
+// and connects to it at once rather than when somebody next opens a page
 scheduleHaPush(VERSION);
+keepHaLinked();
 
 const port = process.env.PORT || 8523;
 app.listen(port, () => {

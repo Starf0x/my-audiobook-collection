@@ -336,6 +336,39 @@ export async function haPing() {
   };
 }
 
+// Whether HA answers, known before anybody opens a page: the listening page shows
+// its speaker pulldown only while this says so. Looked at when the app starts —
+// a container that was set up connects on its own (2.14.248) — every five
+// minutes after that, and whenever the connection is saved or tested.
+export const haLink = { connected: false, at: '', error: '' };
+export async function haConnect() {
+  const { url, hasToken } = haSettings();
+  if (!url || !hasToken) return Object.assign(haLink, { connected: false, at: new Date().toISOString(), error: '' });
+  try {
+    await haPing();
+    Object.assign(haLink, { connected: true, at: new Date().toISOString(), error: '' });
+  } catch (e) {
+    Object.assign(haLink, { connected: false, at: new Date().toISOString(), error: e.message });
+  }
+  return haLink;
+}
+let linkTimer = null;
+export function keepHaLinked() {
+  clearInterval(linkTimer);
+  haConnect();
+  linkTimer = setInterval(haConnect, 300000);
+  linkTimer.unref?.();
+}
+
+// One player's state, for a page that is driving it: playing, paused or idle,
+// and what it is playing.
+export async function haSpeaker(player) {
+  const entity = String(player || '').trim();
+  if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
+  const st = await call(`/states/${entity}`);
+  return { player: entity, state: st?.state || 'unknown', title: st?.attributes?.media_title || '' };
+}
+
 // Every media player HA knows, by the name a person would recognise.
 export async function haPlayers() {
   const states = await call('/states');

@@ -27,12 +27,15 @@
   <section class="box">
     <h3>1 · The connection</h3>
     <label for="haUrl">Home Assistant address</label>
-    <input id="haUrl" placeholder="http://192.168.2.200:8123" spellcheck="false">
+    <!-- not a user name: a browser's password manager took this field for one,
+         filled in an address it had kept, and the save then forgot the token -->
+    <input id="haUrl" name="ha-address" placeholder="http://192.168.2.200:8123" spellcheck="false"
+      autocomplete="off" data-lpignore="true" data-1p-ignore>
     <p class="hint">The address you open Home Assistant at, with no dashboard path after it.</p>
 
     <label for="haTok">Long-lived access token</label>
     <input id="haTok" type="password" placeholder="paste the token here" spellcheck="false"
-      autocomplete="off">
+      autocomplete="new-password" data-lpignore="true" data-1p-ignore>
     <p class="hint">In Home Assistant: your own profile (bottom left) → <em>Security</em> →
       <em>Long-lived access tokens</em> → <em>Create token</em>. Copy it there and paste it here — it
       is shown once. It is kept in this app's database and never shown again here.

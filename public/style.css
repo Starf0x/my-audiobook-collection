@@ -1167,3 +1167,8 @@ body.now-playing { height: 100dvh; overflow: hidden; display: flex; flex-directi
 .now-transport { gap: 12px; }
 .now-transport #pPrev, .now-transport #pNext { width: 44px; height: 44px; font-size: 16px; }
 .now-transport .skip { width: 52px; height: 52px; }
+
+/* where the book plays: a speaker pulldown in the bar, wide screens only (2.14.248) */
+#player .where { display: inline-flex; gap: 4px; align-items: center; }
+#player .where select { max-width: 200px; }
+@media (max-width: 720px) { #player .where { display: none; } }

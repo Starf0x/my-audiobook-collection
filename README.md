@@ -1041,7 +1041,15 @@ It has a page of its own: **Settings ▾ → Home Assistant**, or
    each time one plays out (stopping it by hand ends that). A player that cannot
    seek still plays, from the start of that track. When Home Assistant refuses,
    its own message is shown. **⏸ Pause**, **▶ Carry on** and **⏹ Stop** under the
-   player act on that speaker; the listening page's own player does not reach it.
+   player act on that speaker.
+
+**Where it plays.** While the app is connected to Home Assistant — it connects by
+itself when it starts, and looks again every five minutes — the player bar on a
+wide screen has a pulldown: *This browser*, or any of HA's speakers. With a
+speaker chosen, the bar's ▶ (and a card's Resume) sends the book there from the
+track and second the bar is at, and pressing it again pauses or carries on the
+speaker. **☆** beside it makes that speaker the favourite, chosen first every time
+this browser opens the page. Not on a phone, and not there at all without HA.
 
 Hours listened count a book marked *Listened* whole, and a book in progress as the
 tracks behind the listener plus the seconds into the one they are on.

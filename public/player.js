@@ -665,3 +665,118 @@ window.pickUp = pickUp;
 // At load, on every page that has a player. It asks the server who this is
 // before it takes anything, so the moment it runs no longer matters.
 pickUp();
+
+// --- where it plays: this browser, or a speaker Home Assistant knows -------
+//
+// Asked for by the owner (2.14.248): a pulldown in the bar, on a wide screen only,
+// that sends the book to one of HA's media players instead of this tab — with one
+// of them kept as the favourite, chosen first every time the page opens. It is
+// there only while the app is connected to HA; without it there is nothing to
+// pick from, and a pulldown with one entry is clutter.
+//
+// With a speaker chosen, this tab makes no sound of its own: whatever would start
+// the <audio> element — the bar's button, a card's Resume, the cover — is caught
+// on its way to playing and sent to the speaker instead, from the track and second
+// the bar is at. Pressed again, it pauses or carries on the speaker.
+const FAVOURITE = 'haFavourite';
+const remote = { player: '', state: '', book: 0, poll: null };
+const favourite = () => { try { return localStorage.getItem(FAVOURITE) || ''; } catch { return ''; } };
+
+function drawRemote() {
+  if (!remote.player) return drawPlay();
+  const playing = remote.state === 'playing';
+  const word = playing ? 'Pause' : (remote.book && remote.state === 'paused' ? 'Resume' : 'Play');
+  $('#pPlay').innerHTML = `<span class="glyph">${playing ? '⏸' : '▶'}</span><span class="word">${word}</span>`;
+  $('#pPlay').classList.toggle('playing', playing);
+  const star = $('#pWhereFav');
+  if (star) {
+    const fav = favourite() === remote.player;
+    star.textContent = fav ? '★' : '☆';
+    star.title = fav ? 'This speaker is the favourite — press to stop it being one' : 'Make this speaker the favourite';
+  }
+}
+
+async function lookAtSpeaker() {
+  if (!remote.player) return;
+  const st = await api(`/api/ha/speaker?player=${encodeURIComponent(remote.player)}`).catch(() => null);
+  if (!st) return;
+  remote.state = st.state;
+  if (st.state !== 'playing' && st.state !== 'paused') remote.book = 0;
+  drawRemote();
+}
+
+// The press itself: send the book, or pause and carry on the one already sent.
+async function pressRemote() {
+  if (!state.book) return;
+  const id = state.book.id;
+  try {
+    if (remote.book === id && remote.state === 'playing') {
+      await post('/api/ha/speaker/control', { player: remote.player, action: 'pause' });
+      remote.state = 'paused';
+    } else if (remote.book === id && remote.state === 'paused') {
+      await post('/api/ha/speaker/control', { player: remote.player, action: 'play' });
+      remote.state = 'playing';
+    } else {
+      const r = await post('/api/ha/speaker/play', {
+        player: remote.player, bookId: id, from: state.track || 0, seek: Math.round(audio.currentTime || 0),
+      });
+      remote.book = id;
+      remote.state = 'playing';
+      toast(`Playing on ${$('#pWhere').selectedOptions[0]?.textContent || r.player}.`);
+    }
+  } catch (e) {
+    toast(e.message);
+  }
+  drawRemote();
+}
+
+function useWhere(player) {
+  remote.player = player;
+  remote.book = 0;
+  remote.state = '';
+  clearInterval(remote.poll);
+  if (player) {
+    audio.pause();
+    remote.poll = setInterval(lookAtSpeaker, 5000);
+    lookAtSpeaker();
+  }
+  drawRemote();
+}
+
+// whatever starts this tab's sound while a speaker is chosen goes to the speaker
+audio.addEventListener('play', () => {
+  if (!remote.player) return;
+  audio.pause();
+  pressRemote();
+});
+const ownPress = $('#pPlay').onclick;
+$('#pPlay').onclick = () => (remote.player ? pressRemote() : ownPress());
+
+async function offerSpeakers() {
+  const bar = $('#player');
+  if (!bar || location.pathname.startsWith('/player') || narrow()) return;
+  const said = await api('/api/ha/speakers').catch(() => null);
+  if (!said || !said.connected || !said.players.length) return;
+  const box = document.createElement('span');
+  box.id = 'pWhereBox';
+  box.className = 'where';
+  box.innerHTML = `<select id="pWhere" title="Where the book plays">
+      <option value="">This browser</option>
+      ${said.players.map((p) => `<option value="${esc(p.entity_id)}">${esc(p.name)}</option>`).join('')}
+    </select><button id="pWhereFav" class="ghost" title="Make this speaker the favourite">☆</button>`;
+  bar.insertBefore(box, $('#pGet') || null);
+  const pick = $('#pWhere');
+  const fav = favourite();
+  if (fav && said.players.some((p) => p.entity_id === fav)) pick.value = fav;
+  pick.onchange = () => useWhere(pick.value);
+  $('#pWhereFav').onclick = () => {
+    if (!pick.value) return toast('Pick a speaker to make it the favourite.');
+    try {
+      if (favourite() === pick.value) localStorage.removeItem(FAVOURITE);
+      else localStorage.setItem(FAVOURITE, pick.value);
+    } catch { /* private window: it lasts as long as the page */ }
+    drawRemote();
+  };
+  useWhere(pick.value);
+}
+offerSpeakers();
