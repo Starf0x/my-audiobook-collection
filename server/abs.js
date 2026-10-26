@@ -21,7 +21,7 @@
 // The whole surface is off unless MA_TOKEN is set on the container, the way the
 // Home Assistant answers are gated by HA_TOKEN.
 import { db } from './db.js';
-import { baseUrl, sameSecret } from './ha.js';
+import { baseUrl, sameSecret, haPushSoon } from './ha.js';
 import { countsAsRead, keptOne } from './finished.js';
 import { finishedABook, find as findAccount, adminName } from './listeners.js';
 
@@ -334,6 +334,8 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
                 -- said nothing: leave the tick alone. Said something: it decides.
                 done = COALESCE(?, progress.done)`)
     .run(user || '', bookId, idx, left, new Date().toISOString(), said, said);
+  // and HA hears of it within seconds, as it does of a place kept by the page (2.14.336)
+  haPushSoon();
 }
 
 // A book played out on a speaker is a completion, as one played out in the

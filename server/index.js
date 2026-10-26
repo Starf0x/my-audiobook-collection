@@ -29,7 +29,7 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, playerSigOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
-  haEntities, listenedSeconds, haSpeed, tempo, haPushSoon, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
+  haEntities, listenedSeconds, haSpeed, haSetSpeed, tempo, haPushSoon, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -1419,6 +1419,14 @@ app.post('/api/ha/speaker/play', wrap(async (req, res) => {
   rememberRequest(req);
   const { player, bookId, from, seek, speed } = req.body || {};
   res.json(await haPlay(req, { player, bookId: Number(bookId), from, seek, speed, listener: whoWrites(req), version: VERSION }));
+}));
+// The speed a listener chose in the app (2.14.336): kept for books started from
+// HA, and passed on at once to a speaker playing for them.
+app.post('/api/speed', wrap(async (req, res) => {
+  const listener = whoWrites(req);
+  if (!listener) return res.status(400).json({ error: 'No user' });
+  const { speed, apply } = req.body || {};
+  res.json(await haSetSpeed(req, { listener, speed, apply: apply !== false, version: VERSION }));
 }));
 // a new speed while a speaker plays: the same book again, from where it got to
 app.post('/api/ha/speaker/speed', wrap(async (req, res) => {
