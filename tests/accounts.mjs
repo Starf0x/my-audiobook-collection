@@ -655,6 +655,13 @@ check('guessing starts costing after a handful of tries', refused > 0, true);
     [ada.state, ada.author, ada.listener], ['A Book', 'An Author', 'Ada']);
   check('with how far in they are',
     [ada.chapter, ada.chapters, typeof ada.percent], [1, 1, 'number']);
+  // the same percentage as a number of its own, for a gauge card (2.14.303)
+  const adaP = sensors['sensor.audiobook_ada_progress'];
+  check('and a progress sensor beside it whose state is that percentage, in %',
+    [adaP.state, adaP.unit_of_measurement, adaP.state_class, adaP.title],
+    [String(ada.percent), '%', 'measurement', 'A Book']);
+  check('which is 0 for somebody with nothing on the go',
+    sensors['sensor.audiobook_bo_progress'].state, '0');
   check('and when they began it, which is not when they last heard it',
     [ada.started, ada.last_heard], ['2026-10-01 09:00:00', '2026-10-19 10:00:00']);
   check('somebody with nothing on the go says so rather than borrowing a book',
