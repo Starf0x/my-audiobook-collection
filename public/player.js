@@ -95,6 +95,9 @@ function playTrack(idx, position = 0, andPlay = true) {
 // Whatever offers to play the book that is playing says what pressing it will do
 // now — the card in the library, and the tile on the shelf — and everything else
 // still says Play. The Home Assistant page has neither, and these find nothing.
+// Sounding here, or — with a speaker chosen in the bar — on that speaker
+// (2.14.347): the cards said Resume while the speaker played the book.
+let sounding = () => !audio.paused;
 function markPlaying() {
   const playing = state.book ? state.book.id : 0;
   const label = (button, id) => {
@@ -105,9 +108,9 @@ function markPlaying() {
     const kept = button.dataset.resume === '1';
     const again = button.dataset.again === '1';
     button.textContent = mine
-      ? (audio.paused ? '▶ Resume' : '⏸ Pause')
+      ? (!sounding() ? '▶ Resume' : '⏸ Pause')
       : (again ? '▶ Play again' : kept ? '▶ Resume' : '▶ Play');
-    button.classList.toggle('playing', mine && !audio.paused);
+    button.classList.toggle('playing', mine && sounding());
     // it has a place kept in it from now on, so it stays a Resume when another
     // book takes over — and it is not a finished book any more either
     if (mine) {
@@ -124,8 +127,8 @@ function markPlaying() {
   document.querySelectorAll('#books .card .cover').forEach((cover) => {
     const img = cover.querySelector('img[onclick^="playBook"]');
     const mine = img && Number(img.getAttribute('onclick').match(/\d+/)[0]) === playing;
-    cover.dataset.glyph = mine && !audio.paused ? '⏸' : '▶';
-    cover.classList.toggle('playing', !!mine && !audio.paused);
+    cover.dataset.glyph = mine && sounding() ? '⏸' : '▶';
+    cover.classList.toggle('playing', !!mine && sounding());
   });
 }
 
@@ -682,7 +685,9 @@ const FAVOURITE = 'haFavourite';
 const remote = { player: '', state: '', book: 0, poll: null };
 const favourite = () => { try { return localStorage.getItem(FAVOURITE) || ''; } catch { return ''; } };
 
+sounding = () => (remote.player ? remote.state === 'playing' : !audio.paused);
 function drawRemote() {
+  markPlaying();
   if (!remote.player) return drawPlay();
   const playing = remote.state === 'playing';
   const word = playing ? 'Pause' : (remote.book && remote.state === 'paused' ? 'Resume' : 'Play');

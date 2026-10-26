@@ -1114,6 +1114,12 @@ track, and one playing something else moves no place. **Rule:** state the app
 needs to keep doing its job across a restart belongs in the database, not in a
 Map — and ask how the owner actually uses it before guessing twice.
 
+## The book's button said Resume while a speaker played it (2.14.347)
+
+`markPlaying` asked `audio.paused`, and with a speaker chosen this tab is always
+paused. It asks `sounding()` now: the speaker's state when one is chosen, the tab's
+otherwise; `drawRemote` redraws the buttons on every look at the speaker.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
