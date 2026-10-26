@@ -2023,6 +2023,14 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     [/Reading the saved settings/.test(document.querySelector('#tokState').textContent),
       document.querySelector('#haSave').disabled, document.querySelector('#haTest').disabled],
     [true, true, true]);
+
+  // and a browser that is not unlocked as the administrator is told that, rather
+  // than "starting" for ever (2.14.259)
+  const locked = await open('ha.html', { '/api/ha/config': { __status: 403, error: 'Only the admin can change things here. Unlock first.' } });
+  await settle(100);
+  check('a browser that is not the administrator is told to unlock, not to wait',
+    [/Unlock as the administrator/.test(locked.document.querySelector('#tokState').textContent),
+      locked.document.querySelector('#haSave').disabled], [true, true]);
 }
 
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');

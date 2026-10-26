@@ -1057,6 +1057,12 @@ without a new token asks before the token is forgotten.
 **Rule:** a form that shows saved values must not look the same when the values
 could not be read. Say so, and do not let it be saved.
 
+**And then (2.14.259):** 2.14.248 retried every failure as "the app may still be
+starting", and the owner sat on that message for good: the read was being
+refused, not lost in a restart. Only a network failure or 502/503/504 is retried
+now; a 401/403 says to unlock as the administrator, and any other refusal shows
+the server's own words. Guessing the cause of an error was the mistake twice.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
