@@ -177,6 +177,21 @@ async function refreshPlayers() {
 }
 $('#haRefreshPlayers').onclick = () => work($('#haRefreshPlayers'), refreshPlayers);
 
+// A book playing on a speaker is not in this page's own player, so its Resume and
+// Pause had no hold on it and there was no way to stop it from here (2.14.237).
+// These act on the chosen player through HA; Stop also ends the app handing it
+// the next track.
+const control = (button, action, said) => work(button, async () => {
+  const player = $('#haPlayer').value;
+  if (!player) return toast('Pick a player first.');
+  await post('/api/ha/control', { player, action });
+  toast(said);
+  await refreshPlayers();
+});
+$('#haPause').onclick = () => control($('#haPause'), 'pause', 'Paused.');
+$('#haResume').onclick = () => control($('#haResume'), 'play', 'Carrying on.');
+$('#haStop').onclick = () => control($('#haStop'), 'stop', 'Stopped.');
+
 $('#haPlayer').onchange = () => save({ player: $('#haPlayer').value }).catch((e) => toast(e.message));
 
 // The continue queue, with a button per book. The seconds come from the same
@@ -206,8 +221,10 @@ async function loadQueue() {
       toast((r.seeked
         ? `Playing on ${r.player}, ${r.seek} seconds into the track.`
         : `Playing on ${r.player}${r.seek ? ' — that player would not skip, so it starts at the track' : ''}.`)
-        // a player that would not take the playlist was given the one track
-        + (r.single ? ' That player does not take a playlist, so it plays this track only.' : ''));
+        // a player that queues has the rest of the book behind this track; one
+        // that cannot is handed the next track by the app as each one ends
+        + (r.queued ? ` The rest of the book, ${r.queued} tracks, is queued behind it.`
+          : r.single ? ' The app gives it the next track each time one ends.' : ''));
     });
   });
 }

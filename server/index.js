@@ -28,7 +28,7 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, playerSigOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
-  haEntities, haPush, haPlay, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
+  haEntities, haPush, haPlay, haControl, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -1416,6 +1416,7 @@ app.post('/api/ha/play', adminOrHA, wrap(async (req, res) => {
   rememberRequest(req);
   res.json(await haPlay(req, { ...(req.body || {}), version: VERSION }));
 }));
+app.post('/api/ha/control', adminOrHA, wrap(async (req, res) => res.json(await haControl(req.body || {}))));
 
 // The whole book, as one archive. The browser's own player offered a download of
 // the single track that happened to be playing; a book is not one track, so this

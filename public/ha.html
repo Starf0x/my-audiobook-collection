@@ -76,12 +76,17 @@
 
   <section class="box">
     <h3>3 · Play a book on a media player</h3>
-    <p class="hint">The players Home Assistant knows. Pick one, then carry on with a book: the
-      playlist starts at the track you are on, and the app asks the player to skip to the second you
-      stopped at.</p>
+    <p class="hint">The players Home Assistant knows. Pick one, then carry on with a book: it
+      starts at the track you are on, and the app asks the player to skip to the second you
+      stopped at. The buttons beside it pause, carry on and stop whatever that player is playing.</p>
     <div class="row">
       <select id="haPlayer"><option value="">— no player yet —</option></select>
       <button id="haRefreshPlayers" class="ghost">Ask Home Assistant again</button>
+    </div>
+    <div class="row">
+      <button id="haPause" class="ghost">⏸ Pause</button>
+      <button id="haResume" class="ghost">▶ Carry on</button>
+      <button id="haStop" class="ghost">⏹ Stop</button>
     </div>
     <div id="haQueue"></div>
   </section>

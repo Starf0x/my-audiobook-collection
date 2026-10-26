@@ -511,47 +511,31 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
   if (!bookPlaylist(req, id, Number(from) || 0)) throw new Error('That book has no files to play.');
   // A media player has nothing to show for itself but the address, so the address
   // carries a signature (`playerUrl`) rather than HA_TOKEN, which is a secret.
-  const playlist = playerUrl(baseUrl(req), `/api/ha/book/${id}.m3u`, Number(from) ? { from: Number(from) } : {});
-  const play = (url, type) => call('/services/media_player/play_media', {
-    method: 'POST', body: { entity_id: entity, media_content_type: type, media_content_id: url },
-  });
-  // Not every player takes a playlist: some fail the call outright, and HA answers
-  // 500 (the owner's 3Reality speaker, 2.14.204). Such a player is given the track
-  // the listener is on instead, which plays, and can still be skipped into — as
-  // `music` first, which is what Music Assistant and ESPHome players take, then as
-  // the file's own type. 2.14.204 tried only `audio/mpeg`, and the speaker refused
-  // that as "invalid" as well (2.14.215).
-  let media = playlist;
-  let single = false;
-  try {
-    await play(playlist, 'music');
-  } catch (e) {
-    if (!(e.status >= 400) || [401, 403, 404].includes(e.status)) throw e;
-    const track = db.prepare('SELECT id, path FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx LIMIT 1')
-      .get(id, Number(from) || 0);
-    if (!track) throw e;
-    media = playerUrl(baseUrl(req), `/api/stream/${track.id}`);
-    const ext = String(track.path || '').split('.').pop().toLowerCase();
-    const own = { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
-      opus: 'audio/ogg', flac: 'audio/flac', wav: 'audio/wav' }[ext] || 'audio/mpeg';
-    let last = null;
-    for (const type of ['music', own]) {
+  //
+  // The tracks go to the player one by one, not as a playlist. An M3U was one
+  // call, but the owner's ESPHome speaker took it and then played nothing
+  // (2.14.226) — while every player that plays a URL plays a single file. A player
+  // that can queue is handed the rest of the book behind the first track; one that
+  // cannot is given the next track by this app whenever one ends (`follow`).
+  const base = baseUrl(req);
+  const tracks = db.prepare('SELECT id, path, duration FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx')
+    .all(id, Number(from) || 0);
+  const st = await call(`/states/${entity}`).catch(() => null);
+  const queues = (Number(st?.attributes?.supported_features) || 0) & MEDIA_ENQUEUE;
+  const first = await playTrack(entity, base, tracks[0]);
+  let queued = 0;
+  if (queues) {
+    for (const t of tracks.slice(1)) {
       try {
-        await play(media, type);
-        last = null;
-        break;
-      } catch (err) { last = err; }
+        await playTrack(entity, base, t, 'add');
+        queued++;
+      } catch { break; } // what is queued plays; the rest is not worth failing for
     }
-    // every way refused: both answers, so the owner sees what HA said to each
-    if (last) {
-      const why = (err) => err.message.replace(/^Home Assistant answered /, '');
-      const both = new Error(`Home Assistant refused the playlist (${why(e).replace(/\.$/, '')}) `
-        + `and the single track (${why(last).replace(/\.$/, '')}). Its log says which part it could not handle.`);
-      both.status = e.status;
-      throw both;
-    }
-    single = true;
+  } else if (tracks.length > 1) {
+    follow(entity, base, tracks, Number(seek) || 0);
   }
+  const media = first;
+  const single = !queues;
   const at = Math.round(Number(seek) || 0);
   let seeked = false;
   if (at > 0) {
@@ -563,8 +547,86 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
       seeked = true;
     } catch { /* not every player can seek */ }
   }
-  return { player: entity, media, seek: at, seeked, single };
+  return { player: entity, media, seek: at, seeked, single, queued };
 }
+
+// HA's flag for a player that takes `enqueue` on play_media
+const MEDIA_ENQUEUE = 2097152;
+
+// One track to a player, as `music` first — what Music Assistant and ESPHome
+// players take — then as the file's own type (2.14.215). Gives back its address.
+async function playTrack(entity, base, track, enqueue = '') {
+  const url = playerUrl(base, `/api/stream/${track.id}`);
+  const ext = String(track.path || '').split('.').pop().toLowerCase();
+  const own = { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
+    opus: 'audio/ogg', flac: 'audio/flac', wav: 'audio/wav' }[ext] || 'audio/mpeg';
+  let last = null;
+  for (const type of ['music', own]) {
+    try {
+      await call('/services/media_player/play_media', {
+        method: 'POST',
+        body: { entity_id: entity, media_content_type: type, media_content_id: url, ...(enqueue ? { enqueue } : {}) },
+      });
+      return url;
+    } catch (e) { last = e; }
+  }
+  throw last;
+}
+
+// A player that cannot queue is given the next track when one ends. Watched
+// through HA every few seconds: playing, then idle once most of the track's
+// length has gone by, is a track that ended — idle sooner is somebody pressing
+// stop, and that is left alone. One book per player; Play here again replaces it.
+const following = new Map();
+export const FOLLOW_EVERY = { ms: 5000 };
+function follow(entity, base, tracks, skipped = 0) {
+  clearInterval(following.get(entity));
+  let i = 0;
+  let since = 0; // when the current track was first seen playing
+  let quiet = 0; // polls with nothing playing yet
+  const stop = () => { clearInterval(following.get(entity)); following.delete(entity); };
+  const timer = setInterval(async () => {
+    const st = await call(`/states/${entity}`).catch(() => null);
+    if (!st) return;
+    if (['off', 'unavailable'].includes(st.state)) return stop();
+    if (st.state === 'playing' || st.state === 'paused') {
+      if (!since) since = Date.now();
+      return;
+    }
+    if (!since) {
+      // never started: give it two minutes, then stop watching
+      if (++quiet * FOLLOW_EVERY.ms > 120000) stop();
+      return;
+    }
+    const heard = (Date.now() - since) / 1000;
+    // the first track was started `skipped` seconds in, so less of it is left to hear
+    const left = (Number(tracks[i].duration) || 0) - (i === 0 ? skipped : 0);
+    if (heard < left * 0.9) return stop(); // stopped by hand
+    i++;
+    if (i >= tracks.length) return stop();
+    since = 0;
+    quiet = 0;
+    try { await playTrack(entity, base, tracks[i]); } catch { stop(); }
+  }, FOLLOW_EVERY.ms);
+  timer.unref?.();
+  following.set(entity, timer);
+}
+// Pause, carry on or stop what a player is playing. Stop also ends the app handing
+// it the next track, or the next track would start the moment it went quiet.
+export async function haControl({ player, action } = {}) {
+  const entity = String(player || haSettings().player || '').trim();
+  if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
+  const service = { pause: 'media_pause', play: 'media_play', stop: 'media_stop' }[action];
+  if (!service) throw new Error('Pause, play or stop.');
+  if (action === 'stop') {
+    clearInterval(following.get(entity));
+    following.delete(entity);
+  }
+  await call(`/services/media_player/${service}`, { method: 'POST', body: { entity_id: entity } });
+  return { player: entity, action };
+}
+
+export const stopFollowing = () => { for (const e of [...following.keys()]) { clearInterval(following.get(e)); following.delete(e); } };
 
 // The push that runs on its own. It needs a request to build URLs from — a URL in
 // HA that only works from one browser is no use — so the last real one is kept,

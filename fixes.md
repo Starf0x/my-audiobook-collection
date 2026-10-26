@@ -1025,6 +1025,21 @@ processed". 2.14.204 and 2.14.215 changed the content type, which was never it.
 the way the device would, without a session. That one request would have saved
 two releases.
 
+### The speaker took the playlist and played nothing (2.14.237)
+
+With the sign-in fixed (2.14.226) HA accepted the M3U for the owner's ESPHome
+speaker and the speaker stayed silent: it plays a single audio file, not a
+playlist. A second entity for the same speaker refused the M3U outright and then
+played the single track fine, seek included.
+
+**Fixed:** *Play here* hands over tracks, never a playlist. A player whose
+`supported_features` has `MEDIA_ENQUEUE` gets the rest of the book queued with
+`enqueue: add`; any other player is watched through HA and given the next track
+when one has played out (most of its length heard, then idle).
+
+**Rule:** "HA accepted the call" does not mean "the device can play it". Send a
+device the plainest thing it is known to play.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
