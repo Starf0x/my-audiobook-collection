@@ -1034,11 +1034,14 @@ It has a page of its own: **Settings ▾ → Home Assistant**, or
    when it restarts, so a repeat keeps them there. *Show what will be sent* lists
    it without sending.
 3. **Play a book on a media player** — the players HA knows, by their own names.
-   Press *Play here* beside a book and the app hands that player the playlist from
-   the track you are on, then asks it to skip to the second you stopped at. A
-   player that cannot seek still plays, from the start of that track. A player
-   that will not take a playlist is given the track you are on instead, and the
-   page says so; when Home Assistant refuses, its own message is shown.
+   Press *Play here* beside a book and the app hands that player the track you are
+   on, then asks it to skip to the second you stopped at. A player that can queue
+   (Sonos, Music Assistant) gets the rest of the book queued behind it; one that
+   cannot, such as an ESPHome voice speaker, is given the next track by the app
+   each time one plays out (stopping it by hand ends that). A player that cannot
+   seek still plays, from the start of that track. When Home Assistant refuses,
+   its own message is shown. **⏸ Pause**, **▶ Carry on** and **⏹ Stop** under the
+   player act on that speaker; the listening page's own player does not reach it.
 
 Hours listened count a book marked *Listened* whole, and a book in progress as the
 tracks behind the listener plus the seconds into the one they are on.
