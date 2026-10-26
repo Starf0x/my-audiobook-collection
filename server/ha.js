@@ -494,21 +494,38 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, version 
   });
   // Not every player takes a playlist: some fail the call outright, and HA answers
   // 500 (the owner's 3Reality speaker, 2.14.204). Such a player is given the track
-  // the listener is on instead, which plays, and can still be skipped into.
+  // the listener is on instead, which plays, and can still be skipped into — as
+  // `music` first, which is what Music Assistant and ESPHome players take, then as
+  // the file's own type. 2.14.204 tried only `audio/mpeg`, and the speaker refused
+  // that as "invalid" as well (2.14.215).
   let media = playlist;
   let single = false;
   try {
     await play(playlist, 'music');
   } catch (e) {
     if (!(e.status >= 400) || [401, 403, 404].includes(e.status)) throw e;
-    const track = db.prepare('SELECT id FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx LIMIT 1')
+    const track = db.prepare('SELECT id, path FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx LIMIT 1')
       .get(id, Number(from) || 0);
     if (!track) throw e;
     media = `${baseUrl(req)}/api/stream/${track.id}`;
-    try {
-      await play(media, 'audio/mpeg');
-    } catch {
-      throw e;
+    const ext = String(track.path || '').split('.').pop().toLowerCase();
+    const own = { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
+      opus: 'audio/ogg', flac: 'audio/flac', wav: 'audio/wav' }[ext] || 'audio/mpeg';
+    let last = null;
+    for (const type of ['music', own]) {
+      try {
+        await play(media, type);
+        last = null;
+        break;
+      } catch (err) { last = err; }
+    }
+    // every way refused: both answers, so the owner sees what HA said to each
+    if (last) {
+      const why = (err) => err.message.replace(/^Home Assistant answered /, '');
+      const both = new Error(`Home Assistant refused the playlist (${why(e).replace(/\.$/, '')}) `
+        + `and the single track (${why(last).replace(/\.$/, '')}). Its log says which part it could not handle.`);
+      both.status = e.status;
+      throw both;
     }
     single = true;
   }

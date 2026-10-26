@@ -999,6 +999,13 @@ stand-in HA.
 **Rule:** an address handed to a device must work without this app's session or
 headers, and an error from another system must carry what that system said.
 
+**And then (2.14.215):** the speaker refused the single track as well, with HA's
+"The data provided is invalid or could not be processed". The fallback had been
+sent as `audio/mpeg` only; it now goes as `music` first (what ESPHome and Music
+Assistant players take), then as the file's own type, and when everything is
+refused the message gives HA's answer to the playlist and to the track. Guessing
+one content type for every player was the mistake.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

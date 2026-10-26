@@ -68,7 +68,7 @@ refusePlaylist = true;
   const r = await haPlay(req, { player: 'media_player.3reality', bookId: 1, from: 1 });
   check('one that fails the playlist is given the track the listener is on',
     [asked.length, asked[1].media_content_id, asked[1].media_content_type, r.single],
-    [2, 'http://books.local:8080/api/stream/11', 'audio/mpeg', true]);
+    [2, 'http://books.local:8080/api/stream/11', 'music', true]);
 }
 
 // and when HA fails that as well, its own words come back with the number
@@ -82,8 +82,9 @@ ha.on('request', (q, res) => {
 });
 {
   const e = await haPlay(req, { player: 'media_player.3reality', bookId: 1 }).catch((err) => err);
-  check('a failure says what Home Assistant said', e.message,
-    'Home Assistant answered HTTP 500: Error communicating with the speaker');
+  check('a failure says what Home Assistant said to each attempt', e.message,
+    'Home Assistant refused the playlist (HTTP 500: Error communicating with the speaker) '
+    + 'and the single track (HTTP 500: Error communicating with the speaker). Its log says which part it could not handle.');
 }
 
 ha.close();
