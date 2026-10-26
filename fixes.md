@@ -1040,6 +1040,23 @@ when one has played out (most of its length heard, then idle).
 **Rule:** "HA accepted the call" does not mean "the device can play it". Send a
 device the plainest thing it is known to play.
 
+### The HA address and token "went" after an update (2.14.248)
+
+Nothing in an update touches the settings, and nothing else was lost; the owner's
+password manager filled in nothing either. What fits: after *Install*, the page
+reloads while the app is still restarting, the read of `/api/ha/config` fails,
+and `load()` gave up silently — leaving the fields as empty as the HTML has them,
+which looks exactly like lost settings. Typing them in again then "fixed" it.
+
+**Fixed:** the page keeps asking every three seconds until the app answers, says
+it is reading the saved settings meanwhile, and Save, Test and Forget stay
+disabled until it has them, so an empty form can never be saved over real
+settings. Also: the fields opt out of password managers, and a different address
+without a new token asks before the token is forgotten.
+
+**Rule:** a form that shows saved values must not look the same when the values
+could not be read. Say so, and do not let it be saved.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

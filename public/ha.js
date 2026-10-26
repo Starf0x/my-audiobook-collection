@@ -56,9 +56,27 @@ const when = (iso) => {
   return then.toLocaleString();
 };
 
-async function load() {
-  const c = await api('/api/ha/config').catch((e) => { toast(e.message); return null; });
-  if (!c) return;
+// The saved settings, read before anything on the page can be saved over them.
+// Right after an update the app is still restarting when this page reloads, and
+// the read failed: the fields stayed as empty as the HTML has them, looking
+// exactly like settings that were lost — so the owner typed them in again, every
+// update (2.14.248). Now Save and Test wait until the read has worked, the page
+// says it is still asking, and it asks again until the app answers.
+let loaded = false;
+const holdSaving = (on) => ['#haSave', '#haTest', '#haForget'].forEach((s) => { const b = $(s); if (b) b.disabled = on; });
+async function load(tries = 0) {
+  const c = await api('/api/ha/config').catch(() => null);
+  if (!c) {
+    if (!loaded) {
+      holdSaving(true);
+      $('#tokState').innerHTML = '<strong class="warn">Reading the saved settings — the app may still be starting…</strong>';
+      if (tries < 40) setTimeout(() => load(tries + 1), 3000);
+      else toast('The saved Home Assistant settings could not be read. Reload the page to try again.');
+    }
+    return;
+  }
+  loaded = true;
+  holdSaving(false);
   state.config = c;
   $('#haUrl').value = c.url || '';
   $('#haEvery').value = String(c.every);
@@ -118,7 +136,21 @@ $('#haCopyAll').onclick = () => copied($('#haCopyAll').dataset.copy || '',
 
 const save = (body) => post('/api/ha/config', body).then((c) => { state.config = c; return c; });
 
+// A new address without a new token forgets the saved token — on purpose, so it
+// is never sent to another machine. But the owner lost it after an update without
+// ever changing the address (2.14.248): the field had been filled in by the
+// browser. So it is said first, and the saved address stays unless they agree.
+const addressKept = () => {
+  const now = $('#haUrl').value.trim().replace(/\/+$/, '');
+  const was = (state.config && state.config.url) || '';
+  if (!was || now === was || $('#haTok').value.trim() || !(state.config && state.config.hasToken)) return true;
+  if (confirm(`The address says ${now || '(nothing)'}, but ${was} is saved. Saving it forgets the token. Go ahead?`)) return true;
+  $('#haUrl').value = was;
+  return false;
+};
+
 $('#haSave').onclick = () => work($('#haSave'), async () => {
+  if (!addressKept()) return;
   await save({
     url: $('#haUrl').value.trim(),
     token: $('#haTok').value.trim(),
@@ -139,6 +171,7 @@ $('#haForget').onclick = () => work($('#haForget'), async () => {
 
 $('#haTest').onclick = () => work($('#haTest'), async () => {
   // save what is on screen first, or a token just pasted would not be tested
+  if (!addressKept()) return;
   await save({ url: $('#haUrl').value.trim(), token: $('#haTok').value.trim() });
   $('#haTok').value = '';
   const r = await post('/api/ha/test');
