@@ -1130,6 +1130,16 @@ writes nothing while a speaker is chosen, and the press first takes up the
 server's place (`placeMayHaveMoved`). Lesson: two writers of one value — check
 every path that writes it, not only the new one.
 
+## Resuming on the speaker went far back (2.14.369)
+
+`keepPlaces` took any `media_content_id` without `/api/stream/<id>` in it for
+other music and kept no place. An ESPHome speaker (the owner's 3Reality) plays
+through HA's own proxy and reports HA's address, so no place was ever kept, and
+the button's "carry on" started from where the book was last started from the
+app. Now the address first seen after this app started a track counts as that
+track; a different one after it is still not the book. Lesson: an external
+system may rewrite an ID I hand it — don't match on my own format alone.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

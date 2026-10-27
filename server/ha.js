@@ -713,8 +713,17 @@ function keepPlaces() {
       // Playing something of this book's? A player that says what it plays is
       // believed: another of the book's tracks (one that queues moves on by itself)
       // is followed, and anything else is not this book and moves no place.
-      const playing = String(st.attributes?.media_content_id || '').match(/\/api\/stream\/(\d+)/);
-      if (st.attributes?.media_content_id && !playing) continue;
+      const id = String(st.attributes?.media_content_id || '');
+      const playing = id.match(/\/api\/stream\/(\d+)/);
+      // An ESPHome speaker plays through HA's own proxy and says HA's address, not
+      // this app's: every look was taken for other music and no place was kept, so
+      // the button resumed from long ago (2.14.369). The address first seen after
+      // this app started the track is that track; a different one is not the book.
+      if (playing) was.own = id;
+      else if (id) {
+        was.own ||= id;
+        if (id !== was.own) continue;
+      }
       if (playing) {
         const t = db.prepare('SELECT book_id, idx FROM tracks WHERE id = ?').get(Number(playing[1]));
         if (!t || t.book_id !== was.bookId) continue;
@@ -797,7 +806,7 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
     since = 0;
     quiet = 0;
     const on = nowOn.get(entity);
-    if (on) Object.assign(on, { i, at: 0, since: Date.now(), heard: 0, lastPoll: Date.now() });
+    if (on) Object.assign(on, { i, at: 0, since: Date.now(), heard: 0, lastPoll: Date.now(), own: '' });
     saveNowOn();
     try { await playTrack(entity, base, tracks[i], '', rate === 1 ? {} : { speed: rate }); } catch { stop(); }
   }, FOLLOW_EVERY.ms);
