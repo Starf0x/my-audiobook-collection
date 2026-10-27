@@ -546,6 +546,9 @@ window.placeMayHaveMoved = async () => {
 
 function saveProgress(leaving) {
   if (!state.book || !state.user || !audio.currentTime) return;
+  // With a speaker chosen the server keeps the speaker's place (2.14.358): this
+  // tab's own, from before the speaker started, wrote it back on leaving the page.
+  if (remote.player) return;
   const place = { user: state.user, bookId: state.book.id, trackIdx: state.track, position: audio.currentTime };
   // On the way out of a page an ordinary request is cancelled along with the
   // document that made it. A beacon outlives it, which is the difference
@@ -733,6 +736,9 @@ async function pressRemote() {
       await post('/api/ha/speaker/control', { player: remote.player, action: 'play' });
       remote.state = 'playing';
     } else {
+      // the speaker may have played on without this tab (its own button): start
+      // from the server's place, not from this tab's stale one
+      await window.placeMayHaveMoved();
       const r = await post('/api/ha/speaker/play', {
         player: remote.player, bookId: id, from: state.track || 0, seek: Math.round(audio.currentTime || 0),
         speed: speedWanted(), // played at that speed by the app (2.14.325)
