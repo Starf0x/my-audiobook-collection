@@ -123,7 +123,11 @@ app.use((req, res, next) => {
 // an old link does not break. index: false, or express.static would serve
 // index.html at / before these ever ran.
 const PUBLIC = path.join(path.dirname(url.fileURLToPath(import.meta.url)), '../public');
-const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC, name));
+// Asked again every time (2.14.391): the owner reaches the app through a proxy,
+// and without a word on caching an update's scripts could be served stale by it
+// or the browser — the page then went on with last version's player.
+const fresh = (res) => res.set('Cache-Control', 'no-cache');
+const page = (name) => (req, res) => res.sendFile(path.join(PUBLIC, name), { headers: { 'Cache-Control': 'no-cache' } });
 app.get('/', page('listen.html'));
 app.get('/admin', page('index.html'));
 app.get('/ha', page('ha.html'));
@@ -132,7 +136,7 @@ app.get('/accounts', page('accounts.html'));
 app.get('/player', page('player.html'));
 app.get('/listen.html', (req, res) => res.redirect('/'));
 app.get('/index.html', (req, res) => res.redirect('/admin'));
-app.use(express.static(PUBLIC, { index: false }));
+app.use(express.static(PUBLIC, { index: false, setHeaders: fresh }));
 
 // Covers are named after the image itself, so this marker in the URL changes
 // exactly when the picture does, and a browser may then keep it for a week. A
@@ -1424,9 +1428,9 @@ app.post('/api/ha/speaker/play', wrap(async (req, res) => {
 // HA, and passed on at once to a speaker playing for them.
 app.post('/api/speed', wrap(async (req, res) => {
   const listener = whoWrites(req);
-  if (!listener) return res.status(400).json({ error: 'No user' });
-  const { speed, apply } = req.body || {};
-  res.json(await haSetSpeed(req, { listener, speed, apply: apply !== false, version: VERSION }));
+  const { speed, apply, player } = req.body || {};
+  if (!listener && !player) return res.status(400).json({ error: 'No user' });
+  res.json(await haSetSpeed(req, { listener, player: String(player || ''), speed, apply: apply !== false, version: VERSION }));
 }));
 // a new speed while a speaker plays: the same book again, from where it got to
 app.post('/api/ha/speaker/speed', wrap(async (req, res) => {

@@ -89,6 +89,11 @@ try {
   check('and not to sniff types, and to keep the referrer at home',
     [page.headers.get('x-content-type-options'), page.headers.get('referrer-policy')], ['nosniff', 'same-origin']);
   check('and Express no longer names itself', page.headers.get('x-powered-by'), null);
+  // an update's scripts are asked for again, not served stale by a proxy (2.14.391)
+  const script = await call('GET', '/player.js');
+  const listen = await call('GET', '/');
+  check('the pages and their scripts are checked again on every load',
+    [script.headers.get('cache-control'), listen.headers.get('cache-control')], ['no-cache', 'no-cache']);
 
   // The image's HEALTHCHECK, run exactly as the Dockerfile writes it (2.14.152):
   // a typo in it would show only as a container Docker calls unhealthy.

@@ -1157,6 +1157,28 @@ A timeout on play_media now counts as sent (`PLAY_WAIT`, 45 s), and the page say
 how long the switch took. Lesson: a timeout is not a "no" — never retry a
 non-idempotent call on a timeout.
 
+## …and 2.14.380 made it never speed up at all (2.14.391)
+
+The 30 s was not "a slow yes": as `music` the ESPHome speaker hung on the sped-up
+stream, and what played it was the *retry* as audio/mpeg. Treating the timeout as
+sent dropped that retry. Now a sped-up stream (always MP3) is offered as
+audio/mpeg first, `music` second, and a timeout is retried as before. Lesson: I
+explained the delay without evidence; when a "fix" changes what happens after a
+failure, ask which of the two attempts actually worked.
+
+## A new speed only came with the next chapter; the bar did not follow (2.14.391)
+
+The owner listens through the admin page (via https://mabc.the-airheads.com),
+signed in as the administrator, while HA plays under the listener set on the HA
+page. `haSetSpeed` restarted only speakers playing for the name that asked, so
+nothing restarted; the speed was kept and turned up at the next chapter or a
+pause and play. And `followSpeaker` needed `state.user`, empty there. Now the
+page sends the speaker it has chosen and that one is restarted under any name
+(its listener's speed kept too), and a book shown for a speaker needs no name.
+Pages and scripts are sent `Cache-Control: no-cache`, so a proxy cannot hold on
+to last version's scripts. Lesson: test as the owner actually uses it — which
+page, which account, which address.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
