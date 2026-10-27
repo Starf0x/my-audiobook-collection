@@ -1997,6 +1997,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     '/api/ha/speaker': { player: 'media_player.office', state: 'idle', title: '' },
     '/api/ha/speaker/play': (url, opts) => { sent.push(['play', JSON.parse(opts.body)]); return { player: 'media_player.office' }; },
     '/api/ha/speaker/control': (url, opts) => { sent.push(['control', JSON.parse(opts.body)]); return {}; },
+    '/api/progress': (url, opts) => { sent.push(['progress', JSON.parse(opts.body)]); return {}; },
   }, (w) => w.localStorage.setItem('haFavourite', 'media_player.office'));
   await settle(150);
   const { window, document } = page;
@@ -2034,6 +2035,12 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   document.querySelector('#pPlay').click();
   await settle(100);
   check('pressed again, it pauses the speaker', sent.slice(1).map(([what, b]) => [what, b.action]), [['control', 'pause']]);
+  // leaving the page does not write this tab's old place over the speaker's (2.14.358)
+  Object.defineProperty(window.eval('audio'), 'currentTime', { value: 12, configurable: true });
+  window.dispatchEvent(new window.Event('pagehide'));
+  await settle(50);
+  check('leaving the page keeps no place of this tab while a speaker is chosen',
+    sent.filter(([what]) => what === 'progress').length, 0);
   const none = await open('listen.html', { '/api/ha/speakers': { connected: false, players: [] } });
   await settle(100);
   check('without Home Assistant there is no pulldown at all', none.document.querySelector('#pWhere'), null);

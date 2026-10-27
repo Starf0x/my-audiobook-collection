@@ -1120,6 +1120,16 @@ Map — and ask how the owner actually uses it before guessing twice.
 paused. It asks `sounding()` now: the speaker's state when one is chosen, the tab's
 otherwise; `drawRemote` redraws the buttons on every look at the speaker.
 
+## The speaker's place was overwritten by the browser's (2.14.358)
+
+The server wrote the speaker's place every 30s, but the page that had the speaker
+chosen still held its own, older `audio.currentTime` and sent it on `pagehide` —
+so every page switch put the place back to where the browser had been. And a
+press to send the book started from that stale place too. `saveProgress` now
+writes nothing while a speaker is chosen, and the press first takes up the
+server's place (`placeMayHaveMoved`). Lesson: two writers of one value — check
+every path that writes it, not only the new one.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
