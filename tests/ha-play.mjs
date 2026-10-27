@@ -173,6 +173,19 @@ asked.length = 0;
   await wait(150);
   const still = db.prepare("SELECT track_idx, position FROM progress WHERE user = 'Ada' AND book_id = 1").get();
   check('and music that is not the book leaves the place alone', [still.track_idx, still.position], [2, 7]);
+  // an ESPHome speaker says HA's proxy address, not the app's: still the book (2.14.369)
+  players['media_player.voice'] = { state: 'playing',
+    attributes: { media_content_id: 'http://ha:8123/api/esphome/ffmpeg_proxy/x/1.flac', media_position: 55 } };
+  await haPlay(req, { player: 'media_player.voice', bookId: 1, from: 0, listener: 'Bea' });
+  await wait(150);
+  const proxied = db.prepare("SELECT track_idx, position FROM progress WHERE user = 'Bea' AND book_id = 1").get();
+  check('a speaker playing through HA\'s own proxy still moves the place', proxied && [proxied.track_idx, proxied.position], [0, 55]);
+  players['media_player.voice'].attributes.media_content_id = 'spotify:track:abc';
+  players['media_player.voice'].attributes.media_position = 99;
+  await wait(150);
+  const after = db.prepare("SELECT position FROM progress WHERE user = 'Bea' AND book_id = 1").get();
+  check('and other music after it still leaves the place alone', after.position, 55);
+  await haControl({ player: 'media_player.voice', action: 'stop' });
   await haControl({ player: 'media_player.sonos', action: 'stop' });
   db.prepare('UPDATE tracks SET duration = 0.05').run();
 }
