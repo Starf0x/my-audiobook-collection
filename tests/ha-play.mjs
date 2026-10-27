@@ -32,6 +32,7 @@ const players = {
   'media_player.3reality': { state: 'idle', attributes: { supported_features: 512 } },
 };
 let failAll = false;
+let slowPlay = 0; // ms a play_media takes to answer
 const ha = http.createServer((req, res) => {
   let body = '';
   req.on('data', (c) => { body += c; });
@@ -42,6 +43,7 @@ const ha = http.createServer((req, res) => {
       return res.end(JSON.stringify(players[decodeURIComponent(states[1])] || {}));
     }
     asked.push(body ? JSON.parse(body) : {});
+    if (slowPlay && req.url.includes('play_media')) return setTimeout(() => { res.writeHead(200); res.end('[]'); }, slowPlay);
     if (failAll) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ message: 'Error communicating with the speaker' }));
@@ -53,7 +55,7 @@ const ha = http.createServer((req, res) => {
 await new Promise((r) => ha.listen(0, '127.0.0.1', r));
 
 const { db, setSetting } = await import('../server/db.js');
-const { haPlay, haControl, haSpeed, haSetSpeed, playerSigOk, bookPlaylist, FOLLOW_EVERY, KEEP_EVERY, stopFollowing } = await import('../server/ha.js');
+const { haPlay, haControl, haSpeed, haSetSpeed, playerSigOk, bookPlaylist, FOLLOW_EVERY, KEEP_EVERY, PLAY_WAIT, stopFollowing } = await import('../server/ha.js');
 KEEP_EVERY.ms = 30; // how often a speaker's place is read; set before anything plays
 setSetting('haUrl', `http://127.0.0.1:${ha.address().port}`);
 setSetting('haToken', 'outbound-token');
@@ -185,6 +187,15 @@ asked.length = 0;
   await wait(150);
   const after = db.prepare("SELECT position FROM progress WHERE user = 'Bea' AND book_id = 1").get();
   check('and other music after it still leaves the place alone', after.position, 55);
+  // a speaker that is slow to answer play_media is not sent the track again as
+  // another type, which started it over and made a new speed take 30 s (2.14.380)
+  PLAY_WAIT.ms = 50;
+  slowPlay = 200;
+  asked.length = 0;
+  await haPlay(req, { player: 'media_player.voice', bookId: 1, from: 0, listener: 'Bea', speed: 1.5 });
+  slowPlay = 0;
+  check('a slow answer to play_media is not taken as a refusal: the track is sent once',
+    asked.filter((a) => a.media_content_id && !a.enqueue).length, 1);
   await haControl({ player: 'media_player.voice', action: 'stop' });
   await haControl({ player: 'media_player.sonos', action: 'stop' });
   db.prepare('UPDATE tracks SET duration = 0.05').run();

@@ -1140,6 +1140,23 @@ app. Now the address first seen after this app started a track counts as that
 track; a different one after it is still not the book. Lesson: an external
 system may rewrite an ID I hand it — don't match on my own format alone.
 
+## The page's bar did not follow the speaker (2.14.380)
+
+Not a bug but a gap: the bar showed this tab's own place while the speaker played
+on. `/api/ha/speaker` now also says which book this app started there, the track
+and the live place (`placeOn`), and `lookAtSpeaker` (every 5 s) loads that book
+into the bar as a carry (never played here) and moves the track and time along.
+
+## A faster speed took 30 s on the speaker; 1× was at once (2.14.380)
+
+HA answers play_media only once the speaker has started. For the plain file that
+is quick; for a sped-up ffmpeg stream it took longer than the 10 s `call` allows.
+The timeout was taken as a refusal, so `playTrack` sent the track again as the
+other type — starting the stream over, and the old speed played on meanwhile.
+A timeout on play_media now counts as sent (`PLAY_WAIT`, 45 s), and the page says
+how long the switch took. Lesson: a timeout is not a "no" — never retry a
+non-idempotent call on a timeout.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes
