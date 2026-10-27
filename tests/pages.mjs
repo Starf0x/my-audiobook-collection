@@ -2048,7 +2048,8 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     '/api/ha/speaker': { player: 'media_player.office', state: 'playing', title: '', bookId: 5, track: 1, position: 30 },
   }, (w) => w.localStorage.setItem('haFavourite', 'media_player.office'));
   await settle(150);
-  follows.window.eval('state.user = "tester"; lookAtSpeaker()');
+  // no name: the admin page of an administrator without an account (2.14.391)
+  follows.window.eval('state.user = ""; lookAtSpeaker()');
   await settle(150);
   check('the bar shows the book the speaker plays, on its track, without playing it here',
     follows.window.eval('[state.book && state.book.id, state.track, audio.paused]'), [5, 1, true]);

@@ -628,14 +628,20 @@ export const speedOf = (who) => tempo(getSetting(speedKey(who)) || 1);
 
 // A new speed chosen: kept, and whatever a speaker is playing for that listener
 // starts again at it, from where it had got to.
-export async function haSetSpeed(req, { listener, speed, apply = true, version = '' } = {}) {
+export async function haSetSpeed(req, { listener, player = '', speed, apply = true, version = '' } = {}) {
   const rate = tempo(speed);
   if (listener) setSetting(speedKey(listener), String(rate));
+  // The speaker the page has chosen is restarted whoever it plays for (2.14.391):
+  // the owner's admin page asked under another name than the one HA plays under,
+  // so a new speed only arrived with the next chapter or a pause and play.
+  const mine = (entity, was) => entity === player || (listener && was.listener === listener);
+  const chosen = nowOn.get(player);
+  if (chosen?.listener && chosen.listener !== listener) setSetting(speedKey(chosen.listener), String(rate));
   const restarted = [];
   if (!apply) return { speed: rate, restarted };
   const t0 = Date.now();
   for (const [entity, was] of [...nowOn]) {
-    if (was.listener !== listener || was.speed === rate) continue;
+    if (!mine(entity, was) || was.speed === rate) continue;
     const st = await call(`/states/${entity}`).catch(() => null);
     if (st?.state !== 'playing') continue;
     await haSpeed(req, { player: entity, speed: rate, version }).catch(() => null);
@@ -760,7 +766,6 @@ function keepPlaces() {
 // HA's flag for a player that takes `enqueue` on play_media
 const MEDIA_ENQUEUE = 2097152;
 
-export const PLAY_WAIT = { ms: 45000 };
 // One track to a player, as `music` first — what Music Assistant and ESPHome
 // players take — then as the file's own type (2.14.215). Gives back its address.
 async function playTrack(entity, base, track, enqueue = '', extra = {}) {
@@ -769,21 +774,18 @@ async function playTrack(entity, base, track, enqueue = '', extra = {}) {
   const own = extra.speed ? 'audio/mpeg' : { mp3: 'audio/mpeg', m4a: 'audio/mp4', m4b: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
     opus: 'audio/ogg', flac: 'audio/flac', wav: 'audio/wav' }[ext] || 'audio/mpeg';
   let last = null;
-  for (const type of ['music', own]) {
+  // A sped-up stream is MP3 made as it is sent, and is offered as that first: as
+  // `music` the owner's ESPHome speaker hung on it and only played it once it was
+  // sent again as audio/mpeg — half a minute late (2.14.391). Taking the hang as
+  // done (2.14.380) left it never sped up at all.
+  for (const type of extra.speed ? [own, 'music'] : ['music', own]) {
     try {
-      // HA answers play_media once the speaker has started, which for a sped-up
-      // stream took longer than the ten seconds allowed: that was taken as a
-      // refusal and the track sent again as the other type — starting it all over,
-      // so a faster speed took half a minute (2.14.380). Slow is not a refusal.
       await call('/services/media_player/play_media', {
-        method: 'POST', timeout: PLAY_WAIT.ms,
+        method: 'POST',
         body: { entity_id: entity, media_content_type: type, media_content_id: url, ...(enqueue ? { enqueue } : {}) },
       });
       return url;
-    } catch (e) {
-      if (e.timedOut) return url;
-      last = e;
-    }
+    } catch (e) { last = e; }
   }
   throw last;
 }

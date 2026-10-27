@@ -36,7 +36,8 @@ window.playBook = async function (id, carried) {
     } else audio.pause();
     return;
   }
-  if (!state.user) return toast('Pick a name first.');
+  // a book carried in, or shown because a speaker plays it, needs no name (2.14.391)
+  if (!state.user && !carried) return toast('Pick a name first.');
   const book = await api(`/api/books/${id}?user=${encodeURIComponent(state.user)}`);
   // A book that was finished is played again from the beginning: its kept place
   // is the end of the last track, which would play a few seconds and stop. And
@@ -732,7 +733,7 @@ async function lookAtSpeaker() {
 // when the speaker was started from HA: loaded here, never played here.
 async function followSpeaker({ bookId, track = 0, position = 0 }) {
   if (!state.book || state.book.id !== bookId) {
-    if (state.user) await window.playBook(bookId, { track, position }).catch(() => {});
+    await window.playBook(bookId, { track, position }).catch(() => {});
     return;
   }
   if (state.track !== track) return playTrack(track, position, false);
@@ -788,7 +789,8 @@ function useWhere(player) {
 // starts the track again at that speed, from where the speaker had got to.
 // The server keeps the speed too (2.14.336), so a book started from Home
 // Assistant plays at it and a speaker playing for this listener follows a change.
-const tellSpeed = (apply) => (state.user ? post('/api/speed', { speed: speedWanted(), apply }).catch(() => null) : null);
+const tellSpeed = (apply) => (state.user || remote.player
+  ? post('/api/speed', { speed: speedWanted(), apply, player: remote.player }).catch(() => null) : null);
 maybe('#pSpeed', (el) => el.addEventListener('change', async () => {
   const r = await tellSpeed(true);
   // said, with how long it took: a switch that is slow shows up here (2.14.380)
