@@ -721,7 +721,24 @@ async function lookAtSpeaker() {
   if (!st) return;
   remote.state = st.state;
   if (st.state !== 'playing' && st.state !== 'paused') remote.book = 0;
+  else if (st.bookId) {
+    remote.book = st.bookId;
+    await followSpeaker(st);
+  }
   drawRemote();
+}
+
+// The bar shows the book the speaker plays and where it is in it (2.14.380), also
+// when the speaker was started from HA: loaded here, never played here.
+async function followSpeaker({ bookId, track = 0, position = 0 }) {
+  if (!state.book || state.book.id !== bookId) {
+    if (state.user) await window.playBook(bookId, { track, position }).catch(() => {});
+    return;
+  }
+  if (state.track !== track) return playTrack(track, position, false);
+  try {
+    if (Math.abs((audio.currentTime || 0) - position) >= 2) audio.currentTime = position;
+  } catch { /* not loaded yet: the next look sets it */ }
 }
 
 // The press itself: send the book, or pause and carry on the one already sent.
@@ -772,7 +789,11 @@ function useWhere(player) {
 // The server keeps the speed too (2.14.336), so a book started from Home
 // Assistant plays at it and a speaker playing for this listener follows a change.
 const tellSpeed = (apply) => (state.user ? post('/api/speed', { speed: speedWanted(), apply }).catch(() => null) : null);
-maybe('#pSpeed', (el) => el.addEventListener('change', () => tellSpeed(true)));
+maybe('#pSpeed', (el) => el.addEventListener('change', async () => {
+  const r = await tellSpeed(true);
+  // said, with how long it took: a switch that is slow shows up here (2.14.380)
+  if (r?.restarted?.length) toast(`The speaker plays at ${r.speed}× now (switched in ${Math.round(r.took / 1000)} s).`);
+}));
 // and once on opening, for a speed chosen before the server kept it — kept only,
 // so opening the page on another device does not change what a speaker is doing
 setTimeout(() => tellSpeed(false), 2000);

@@ -285,7 +285,7 @@ const explainHA = (status) => ({
     + 'at — http://192.168.2.200:8123 — with no dashboard path after it.',
 }[status] || `Home Assistant answered HTTP ${status}.`);
 
-async function call(path, { method = 'GET', body } = {}) {
+async function call(path, { method = 'GET', body, timeout = 10000 } = {}) {
   const url = getSetting(KEY.url);
   const token = getSetting(KEY.token);
   if (!url) throw new Error('No Home Assistant address yet. Fill it in on the Home Assistant page.');
@@ -301,12 +301,14 @@ async function call(path, { method = 'GET', body } = {}) {
       ...(body ? { body: JSON.stringify(body) } : {}),
       // a redirect is another address, and this request carries the token
       redirect: 'error',
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(timeout),
     });
   } catch (e) {
-    throw new Error(e.name === 'TimeoutError'
-      ? `Home Assistant at ${url} did not answer within ten seconds.`
+    const err = new Error(e.name === 'TimeoutError'
+      ? `Home Assistant at ${url} did not answer within ${Math.round(timeout / 1000)} seconds.`
       : `Could not reach Home Assistant at ${url}. Check the address, and that this container may reach it.`);
+    err.timedOut = e.name === 'TimeoutError';
+    throw err;
   }
   if (!res.ok) {
     // What HA itself said, after the number: "HTTP 500" alone gave the owner
@@ -366,7 +368,12 @@ export async function haSpeaker(player) {
   const entity = String(player || '').trim();
   if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
   const st = await call(`/states/${entity}`);
-  return { player: entity, state: st?.state || 'unknown', title: st?.attributes?.media_title || '' };
+  const said = { player: entity, state: st?.state || 'unknown', title: st?.attributes?.media_title || '' };
+  // and, for a book this app started there, which one and where the speaker is in
+  // it now — the page's bar follows it (2.14.380)
+  const was = nowOn.get(entity);
+  if (!was) return said;
+  return { ...said, bookId: was.bookId, track: was.from + was.i, position: Math.round(placeOn(was, st)) };
 }
 
 // Every media player HA knows, by the name a person would recognise.
@@ -626,6 +633,7 @@ export async function haSetSpeed(req, { listener, speed, apply = true, version =
   if (listener) setSetting(speedKey(listener), String(rate));
   const restarted = [];
   if (!apply) return { speed: rate, restarted };
+  const t0 = Date.now();
   for (const [entity, was] of [...nowOn]) {
     if (was.listener !== listener || was.speed === rate) continue;
     const st = await call(`/states/${entity}`).catch(() => null);
@@ -633,7 +641,8 @@ export async function haSetSpeed(req, { listener, speed, apply = true, version =
     await haSpeed(req, { player: entity, speed: rate, version }).catch(() => null);
     restarted.push(entity);
   }
-  return { speed: rate, restarted };
+  // how long the speaker took to switch, which the page says (2.14.380)
+  return { speed: rate, restarted, took: Date.now() - t0 };
 }
 
 // What this app last started on each player: the book, the track (from + i), the
@@ -751,6 +760,7 @@ function keepPlaces() {
 // HA's flag for a player that takes `enqueue` on play_media
 const MEDIA_ENQUEUE = 2097152;
 
+export const PLAY_WAIT = { ms: 45000 };
 // One track to a player, as `music` first — what Music Assistant and ESPHome
 // players take — then as the file's own type (2.14.215). Gives back its address.
 async function playTrack(entity, base, track, enqueue = '', extra = {}) {
@@ -761,12 +771,19 @@ async function playTrack(entity, base, track, enqueue = '', extra = {}) {
   let last = null;
   for (const type of ['music', own]) {
     try {
+      // HA answers play_media once the speaker has started, which for a sped-up
+      // stream took longer than the ten seconds allowed: that was taken as a
+      // refusal and the track sent again as the other type — starting it all over,
+      // so a faster speed took half a minute (2.14.380). Slow is not a refusal.
       await call('/services/media_player/play_media', {
-        method: 'POST',
+        method: 'POST', timeout: PLAY_WAIT.ms,
         body: { entity_id: entity, media_content_type: type, media_content_id: url, ...(enqueue ? { enqueue } : {}) },
       });
       return url;
-    } catch (e) { last = e; }
+    } catch (e) {
+      if (e.timedOut) return url;
+      last = e;
+    }
   }
   throw last;
 }

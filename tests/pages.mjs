@@ -2041,6 +2041,17 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   await settle(50);
   check('leaving the page keeps no place of this tab while a speaker is chosen',
     sent.filter(([what]) => what === 'progress').length, 0);
+  // the bar follows the speaker: its book, track and place, also when HA started it (2.14.380)
+  const follows = await open('listen.html', {
+    '/api/books': BOOK,
+    '/api/ha/speakers': speakers,
+    '/api/ha/speaker': { player: 'media_player.office', state: 'playing', title: '', bookId: 5, track: 1, position: 30 },
+  }, (w) => w.localStorage.setItem('haFavourite', 'media_player.office'));
+  await settle(150);
+  follows.window.eval('state.user = "tester"; lookAtSpeaker()');
+  await settle(150);
+  check('the bar shows the book the speaker plays, on its track, without playing it here',
+    follows.window.eval('[state.book && state.book.id, state.track, audio.paused]'), [5, 1, true]);
   const none = await open('listen.html', { '/api/ha/speakers': { connected: false, players: [] } });
   await settle(100);
   check('without Home Assistant there is no pulldown at all', none.document.querySelector('#pWhere'), null);
