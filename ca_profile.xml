@@ -1,7 +1,5 @@
-<?xml version="1.0"?>
 <CommunityApplications>
   <Profile>This repository holds My Audiobook Collection, a self-hosted Docker app for browsing and listening to your own audiobooks. The collection is organised as Genre / Author / (Series) / Book, MP3 metadata is read and gaps are filled from Google Books, and every listener keeps their own place in each book. It also plays books on Home Assistant speakers and serves Music Assistant. The Unraid template is my-My-Audiobook-Collection.xml. For help, read the wiki at https://github.com/Starf0x/my-audiobook-collection/wiki and ask questions or report problems at https://github.com/Starf0x/my-audiobook-collection/issues.</Profile>
   <Icon>https://raw.githubusercontent.com/Starf0x/my-audiobook-collection/main/public/icon-256.png</Icon>
   <WebPage>https://my_audiobook_collection.the-airheads.com/</WebPage>
 </CommunityApplications>
- 
