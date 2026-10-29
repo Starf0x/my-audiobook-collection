@@ -512,7 +512,9 @@ audio.addEventListener('ended', () => {
   // next one and is not a stop
   if (state.book && state.track >= state.book.tracks.length - 1) nowPlaying(false, 'finished');
 });
-window.addEventListener('pagehide', () => { if (announced) nowPlaying(false, 'left the page'); });
+// Leaving the page is no stop (2.14.402): the book plays on on the next page, and
+// a request sent from a page going away rarely arrives anyway. A tab that is
+// closed stops saving its place, and the server says so once it has gone quiet.
 
 // an event object is the first argument of a handler, and would read as "leaving"
 audio.onpause = () => saveProgress();
