@@ -292,6 +292,9 @@ finds as worth looking at, not as a verdict.
 
 ## Run it on Unraid
 
+`ca_profile.xml` in the root describes this repository for Unraid's Community
+Applications.
+
 The template does the whole form for you. Copy
 `my-My-Audiobook-Collection.xml` to
 `/boot/config/plugins/dockerMan/templates-user/` on the server, then Docker →
