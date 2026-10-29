@@ -1215,7 +1215,33 @@ app.post('/api/favourites/:id', wrap(async (req, res) => {
 // can: a position arriving every ten seconds says somebody is listening, never
 // that they just pressed play. Only the changes are passed on — a page that
 // says "started" twice for one book is a page, not two starts.
+//
+// A stop the page never sent went unsaid, and that was most of them (2.14.402):
+// a tab closed or a phone put away sends nothing that arrives, and a restart of
+// the app forgot who was listening, so the next pause matched nobody. Who is
+// listening is kept in the database now, and a player that has gone quiet — no
+// place saved for QUIET_AFTER, three minutes (a phone's background tab saves only
+// about once a minute) — is taken to have stopped.
 const playing = new Map(); // user -> book id
+const NOW_LISTENING = 'nowListening';
+const heard = new Map(); // user -> when the page last saved a place
+const QUIET_AFTER = Number(process.env.QUIET_AFTER_MS) || 3 * 60 * 1000;
+const keepListening = () => setSetting(NOW_LISTENING, JSON.stringify([...playing]));
+try {
+  for (const [user, id] of JSON.parse(getSetting(NOW_LISTENING) || '[]')) { playing.set(user, id); heard.set(user, Date.now()); }
+} catch { /* nothing kept */ }
+const stopped = (user, id, how) => {
+  playing.delete(user);
+  heard.delete(user);
+  keepListening();
+  const book = db.prepare('SELECT title FROM books WHERE id = ?').get(id);
+  if (book) stoppedListening(user, book.title, how);
+};
+setInterval(() => {
+  for (const [user, id] of [...playing]) {
+    if (Date.now() - (heard.get(user) || 0) > QUIET_AFTER) stopped(user, id, 'went quiet');
+  }
+}, Math.min(30000, QUIET_AFTER / 2)).unref?.();
 app.post('/api/playing', (req, res) => {
   const user = whoWrites(req);
   const id = Number((req.body || {}).bookId);
@@ -1226,10 +1252,11 @@ app.post('/api/playing', (req, res) => {
   const was = playing.get(user);
   if (on && was !== id) {
     playing.set(user, id);
+    heard.set(user, Date.now());
+    keepListening();
     startedListening(user, book.title, book.author);
   } else if (!on && was === id) {
-    playing.delete(user);
-    stoppedListening(user, book.title, (req.body || {}).how);
+    stopped(user, id, (req.body || {}).how);
   }
   return res.json({ ok: true });
 });
@@ -1557,6 +1584,7 @@ app.post('/api/progress', (req, res) => {
     ON CONFLICT(user, book_id) DO UPDATE SET track_idx = excluded.track_idx,
       position = excluded.position, updated = excluded.updated, via = excluded.via`)
     .run(user, bookId, trackIdx, position, cameFrom(req));
+  if (playing.get(user) === bookId) heard.set(user, Date.now());
   // A place at the end of the last track means the book has been listened to, so
   // the tick says so — whoever moved it there, the player or Home Assistant. It is
   // only ever set here: taking it off again is unticking it, or starting the book
