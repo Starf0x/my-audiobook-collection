@@ -1543,3 +1543,7 @@ with PowerShell, so it needs Windows, and one drives a headless browser.
 
 The same run happens on GitHub for every push and pull request, on the node
 version the container is built with.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
