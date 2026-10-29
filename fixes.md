@@ -15,6 +15,16 @@ project shares.
 
 ## In the app
 
+### Discord missed most "stopped" messages (2.14.402)
+
+The stop was only said when the page sent one: on pause, at the end, or on
+`pagehide`. A closed tab or a phone put away sends nothing that arrives, and who
+was listening lived only in memory, so after a restart the next pause matched
+nobody. Now who is listening is kept in the `nowListening` setting, and a player
+that saves no place for three minutes (`QUIET_AFTER_MS`) is announced as stopped.
+Lesson: never let an announcement depend on a request from a page that is going
+away; track a heartbeat on the server instead.
+
 ### A place kept in a book outlived the book (2.1.72)
 
 A scan drops a book whose folder has gone: it deleted the rows in `books` and

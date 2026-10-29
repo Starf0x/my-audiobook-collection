@@ -30,6 +30,7 @@ process.env.DATA_DIR = DATA;
 process.env.PORT = String(PORT);
 process.env.ADMIN_USER = 'morgan';
 process.env.ADMIN_PASSWORD = 'a very good password';
+process.env.QUIET_AFTER_MS = '1500';
 
 // What would have gone to Discord. The address has to be a real Discord one —
 // the app refuses anything else — so the fetch is what is stood in for.
@@ -447,6 +448,11 @@ await post('/api/playing', { bookId: 3, playing: true }, bert.cookies);
 check('and saying it twice is not two starts', sent.length, before);
 await post('/api/playing', { bookId: 3, playing: false, how: 'finished' }, bert.cookies);
 check('stopping is announced too', /Bert.*finished.*A Book/s.test(sent[sent.length - 1].content), true);
+await post('/api/playing', { bookId: 3, playing: true }, bert.cookies);
+check('who is listening is kept, so a restart does not forget it',
+  JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'nowListening'").get().value), [['Bert', 3]]);
+await new Promise((r) => setTimeout(r, 2500));
+check('a player that goes quiet is taken to have stopped', /Bert.*stopped.*A Book/s.test(sent[sent.length - 1].content), true);
 
 // --- a place in a book belongs to whoever kept it -------------------------
 await post('/api/progress', { user: 'Someone Else', bookId: 3, trackIdx: 0, position: 30 }, bert.cookies);
