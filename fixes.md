@@ -1189,6 +1189,14 @@ Pages and scripts are sent `Cache-Control: no-cache`, so a proxy cannot hold on
 to last version's scripts. Lesson: test as the owner actually uses it — which
 page, which account, which address.
 
+## 2.14.402 shipped with the packaging suite red (2.14.413)
+
+2.14.402 added `QUIET_AFTER_MS`, a knob only the tests use, and only four suites
+were run before publishing. `tests/packaging.mjs` demands that every
+`process.env.X` the server reads is offered in the LXC settings file and in
+compose, so it failed. The knob is now named there as test-only. Lesson: run
+`node tests/run-all.mjs` before every publish, never a hand-picked few.
+
 ## How it is built and tested
 
 None of these is particular to this app, so they live in my cross-project notes

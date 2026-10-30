@@ -257,6 +257,11 @@ apart, because they are not equally certain: what is missing **between your own
 books** is counted here and exact, and what **Wikidata knows and you do not
 have** is a question asked of the world.
 
+A series you will never complete — or one Wikidata confuses with something else —
+can be put aside with **✕ ignore** beside its name. It leaves the list and is not
+asked of Wikidata again; the line at the foot of the pane names every ignored
+series, and clicking one there (↺) looks for it again.
+
 **It is browsed the way the library is**, in three columns like the rest of the
 app. The authors column fills with whoever is short of something, with a count
 each, and clicking a name narrows the pane to their series; it fills as the check

@@ -866,8 +866,8 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
   check('and the series is what carries the heading',
     [...document.querySelectorAll('#books .series-head')].map((h) => h.textContent.replace(/\s+/g, ' ').trim())
       .filter((t) => t.startsWith('Series')),
-    ['Series · The Dark Tower ⧉ copy on Goodreads ↗',
-      'Series · The Stormlight Archive ⧉ copy on Goodreads ↗']);
+    ['Series · The Dark Tower ⧉ copy on Goodreads ↗ ✕ ignore',
+      'Series · The Stormlight Archive ⧉ copy on Goodreads ↗ ✕ ignore']);
 
   // The series' name is the way to it, in both kinds of head: the genre, the
   // series selected under it, the author marked beside it, and its books.
