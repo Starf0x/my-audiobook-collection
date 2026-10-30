@@ -78,12 +78,17 @@ const seriesLink = (s) => `<button class="open-series linkish" data-genre="${esc
     data-series="${esc(s.name)}" data-author="${esc(s.author || '')}"
     title="${esc(s.name)}${s.author ? ` by ${esc(s.author)}` : ''}, in the library">${esc(s.name)}</button>`;
 
+// Put a series aside (2.14.413): it leaves this list and Wikidata is not asked
+// about it again, until it is taken back from the line at the foot.
+const ignoreButton = (s) => `<button class="ignore-series linkish" data-genre="${esc(s.genre || '')}"
+    data-series="${esc(s.name)}" title="Take ${esc(s.name)} off this list and stop looking for it">✕ ignore</button>`;
+
 // One series, headed the way the library heads a series, with its own copy
 // button: what you paste into a shop or a search is the series, not one volume.
 const missingSeries = (r) => `<div class="series-head">Series · ${seriesLink(r)}
     <button class="copy-search linkish" data-copy-text="${esc([r.author, r.name].filter(Boolean).join(' - '))}"
       title="Copy “author - series” to search for it">⧉ copy</button>
-    ${goodreadsLink([r.name, r.author], 'on Goodreads ↗')}</div>
+    ${goodreadsLink([r.name, r.author], 'on Goodreads ↗')} ${ignoreButton(r)}</div>
   <div class="series-gap missing">${r.missing.length} of ${r.volumes.length} volume(s) not here${r.byTitle
   ? ' — your books in it carry no numbers, so this was matched by title' : ''}
     <a class="linkish" href="${esc(r.url)}" target="_blank" rel="noopener">on Wikidata ↗</a></div>
@@ -96,7 +101,7 @@ const missingSeries = (r) => `<div class="series-head">Series · ${seriesLink(r)
 const ownGapSeries = (g, known = {}) => `<div class="series-head">Series · ${seriesLink(g)}
     <button class="copy-search linkish" data-copy-text="${esc([g.author, g.name].filter(Boolean).join(' - '))}"
       title="Copy “author - series” to search for it">⧉ copy</button>
-    ${goodreadsLink([g.name, g.author], 'on Goodreads ↗')}</div>
+    ${goodreadsLink([g.name, g.author], 'on Goodreads ↗')} ${ignoreButton(g)}</div>
   <div class="series-gap missing">${esc(g.says)}${g.unnumbered
   ? ` ${g.unnumbered} book(s) here carry no volume number, so one of these may be among them.`
   : ''}</div>
@@ -161,9 +166,13 @@ function drawSeriesPane(gaps, online, author = null) {
           <div class="sub">${esc(r.genre)}${r.author ? ` · ${esc(r.author)}` : ''}</div>
           <div class="sub">${esc(r.why)}</div></div></div>`).join('') : '');
 
+  const aside = author || !ignoredList.length ? '' : `<p class="hint">Ignored, not looked for:
+      ${ignoredList.map((s) => `<button class="unignore-series linkish" data-genre="${esc(s.genre)}"
+        data-series="${esc(s.name)}" title="Look for ${esc(s.name)} again">${esc(s.name)} ↺</button>`).join(', ')}</p>`;
+
   $('#books .list').innerHTML = header + own + cannotCount
     + '<div class="series-head">Volumes Wikidata knows and you do not have</div>'
-    + found + rest;
+    + found + rest + aside;
   $('#books #askWikidata').onclick = askWikidata;
 }
 
@@ -213,6 +222,7 @@ function drawSeriesBoth(gaps, online) {
 
 let onlineWatch = null;
 let lastGaps = { gaps: [], looked: 0 };
+let ignoredList = [];
 
 async function askWikidata() {
   try { await post('/api/series-online', {}); } catch (e) { return toast(e.message); }
@@ -244,6 +254,7 @@ async function loadSeriesCount() {
   const [gaps, online] = await Promise.all([
     api('/api/series-gaps').catch(() => ({ gaps: [], looked: 0 })),
     api('/api/series-online/status').catch(() => ({ series: [] })),
+    api('/api/series-ignored').then((l) => { ignoredList = l; }).catch(() => {}),
   ]);
   lastGaps = gaps;
   const names = new Set(gaps.gaps.map((g) => `${g.genre}/${g.name}`));
@@ -287,6 +298,17 @@ $('#books').addEventListener('click', async (e) => {
     // the series is what is selected, so this is said, not browsed to
     const who = [...document.querySelectorAll('#authors li')].find((l) => l.dataset.name === open.dataset.author);
     if (who) who.classList.add('active');
+    return;
+  }
+  const aside = e.target.closest('.ignore-series, .unignore-series');
+  if (aside) {
+    const on = aside.classList.contains('ignore-series');
+    try {
+      await post('/api/series-ignored', { genre: aside.dataset.genre, name: aside.dataset.series, on });
+    } catch (err) { toast(err.message); return; }
+    toast(on ? `${aside.dataset.series} is ignored and will not be looked for.` : `${aside.dataset.series} is looked for again.`);
+    const fresh = await loadSeriesCount();
+    drawSeriesBoth(fresh.gaps, fresh.online);
     return;
   }
   const button = e.target.closest('.copy-search');

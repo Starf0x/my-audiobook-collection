@@ -73,8 +73,9 @@ const reads = [...new Set([...fs.readdirSync(path.join(ROOT, 'server'))
   .flatMap((f) => [...read(`server/${f}`).matchAll(/process\.env\.([A-Z_]+)/g)].map((m) => m[1]))])]
   .sort();
 // `NODE_ENV` and friends belong to the runtime, not to this app; nothing here
-// sets them and nobody installing it should be offered one.
-const OURS = reads.filter((n) => !['NODE_ENV', 'npm_package_version'].includes(n));
+// sets them and nobody installing it should be offered one. `QUIET_AFTER_MS` is
+// only how tests/accounts.mjs makes three minutes of silence last a second.
+const OURS = reads.filter((n) => !['NODE_ENV', 'npm_package_version', 'QUIET_AFTER_MS'].includes(n));
 const offered = (text) => OURS.filter((n) => new RegExp(`^#?\\s*${n}=`, 'm').test(text));
 check('every setting the server reads can be set in the LXC settings file',
   OURS.filter((n) => !offered(envExample).includes(n)), []);
