@@ -187,6 +187,20 @@ try {
     all.gaps.map((s) => s.author), ['Dana Digger', 'Robin Hobb', 'Cora Coauthor', 'Stephen King']);
   check('a gap row carries what a row needs to open the series',
     [all.gaps[0].genre, all.gaps[0].books, all.gaps[0].highest], ['Fantasy', 2, 4]);
+
+  // --- a series put aside --------------------------------------------------
+  const ignore = (body) => fetch(`${BASE}/api/series-ignored`, {
+    method: 'POST', headers: { Cookie: asAdmin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  check('only the administrator can put a series aside',
+    (await fetch(`${BASE}/api/series-ignored`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ genre: 'Fantasy', name: 'Wide Gap' }) })).status, 401);
+  await ignore({ genre: 'Fantasy', name: 'Wide Gap' });
+  const after = await (await fetch(`${BASE}/api/series-gaps`, { headers: { Cookie: asAdmin } })).json();
+  check('an ignored series is no longer listed as missing', after.gaps.map((s) => s.name), ['Farseer', 'Late Start', 'The Dark Tower']);
+  check('nor looked at', after.looked, 7);
+  await ignore({ genre: 'Fantasy', name: 'Wide Gap', on: false });
+  check('and taken back it is listed again',
+    (await (await fetch(`${BASE}/api/series-gaps`, { headers: { Cookie: asAdmin } })).json()).gaps.length, 4);
 } finally {
   // Gone before this process is, or it is orphaned still holding the port and
   // the next run of this suite meets it instead of its own server.

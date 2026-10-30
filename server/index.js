@@ -867,10 +867,28 @@ app.get('/api/genres', (req, res) => {
 // Three groups come back, because "we cannot say" is an answer and hiding it
 // would read as "nothing missing": the series with a gap, a count of those whose
 // books carry no volume numbers at all, and the total looked at.
+// A series the owner has put aside (2.14.413): no longer listed as missing and no
+// longer asked of Wikidata, until it is taken back. Kept by genre and name, the way
+// both lists name a series.
+const IGNORED_SERIES = 'ignoredSeries';
+const ignoredSeries = () => { try { return JSON.parse(getSetting(IGNORED_SERIES) || '[]'); } catch { return []; } };
+const seriesKey = (s) => `${s.genre}\u0000${s.name}`;
+const notIgnored = () => { const out = new Set(ignoredSeries().map(seriesKey)); return (s) => !out.has(seriesKey(s)); };
+
+app.get('/api/series-ignored', requireAdmin, (req, res) => res.json(ignoredSeries()));
+app.post('/api/series-ignored', requireAdmin, (req, res) => {
+  const { genre, name, on } = req.body || {};
+  if (typeof genre !== 'string' || typeof name !== 'string' || !name) return res.status(400).json({ error: 'Say which series.' });
+  const rest = ignoredSeries().filter((s) => seriesKey(s) !== seriesKey({ genre, name }));
+  if (on !== false) rest.push({ genre, name });
+  setSetting(IGNORED_SERIES, JSON.stringify(rest));
+  return res.json(rest);
+});
+
 app.get('/api/series-gaps', requireAdmin, (req, res) => {
   const all = db.prepare(`SELECT b.genre, ${SERIES} AS name FROM books b
                           WHERE ${SERIES} IS NOT NULL
-                          GROUP BY b.genre, name`).all();
+                          GROUP BY b.genre, name`).all().filter(notIgnored());
   const states = all.map((s) => ({ genre: s.genre, ...seriesState(s.genre, s.name) }));
   res.json({
     looked: states.length,
@@ -893,7 +911,7 @@ app.post('/api/series-online', requireAdmin, (req, res) => {
   const all = db.prepare(`SELECT b.genre, ${SERIES} AS name FROM books b
                           WHERE ${SERIES} IS NOT NULL
                           GROUP BY b.genre, name
-                          ORDER BY b.genre, name`).all();
+                          ORDER BY b.genre, name`).all().filter(notIgnored());
   // the titles go with each series: they are how the right Wikidata entry is
   // told from the film of the same name
   const asking = all.map((s) => {
@@ -924,7 +942,7 @@ app.post('/api/series-online', requireAdmin, (req, res) => {
 });
 
 app.get('/api/series-online/status', requireAdmin, (req, res) =>
-  res.json({ ...onlineProgress, lastAt: lastOnlineAt() }));
+  res.json({ ...onlineProgress, series: (onlineProgress.series || []).filter(notIgnored()), lastAt: lastOnlineAt() }));
 
 // The authors within one genre. Asking without naming it reached SQLite with
 // `undefined` to bind and threw, the same way `/api/books` did — an empty genre
