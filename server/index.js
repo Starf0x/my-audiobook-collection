@@ -38,7 +38,7 @@ import { toolsWhy, toolAt, convertible, convertBook, convertProgress,
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
 import { coverFile, browseRoots, mayBrowse } from './safepath.js';
 import { alone } from './onejob.js';
-import { reportDaily } from './appusage.js';
+import { reportDaily } from './usage.js';
 import { enabled as absEnabled, listener as absListener } from './abs.js';
 import { mountMusicAssistant } from './routes/music-assistant.js';
 import { mountFolders } from './routes/folders.js';
