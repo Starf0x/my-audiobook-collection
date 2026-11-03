@@ -1,5 +1,5 @@
-// usage — the daily check-in to a usage webhook: off unless set, once a day, and the day
-// count going up by one each new day.
+// usage — the daily check-in: once a day, anonymous id for the default
+// collector, real hostname for a custom USAGE_URL, and opt-out works.
 //
 // Run: node tests/usage.mjs
 import fs from 'node:fs';
@@ -13,6 +13,8 @@ fs.rmSync(DATA, { recursive: true, force: true });
 fs.mkdirSync(DATA, { recursive: true });
 process.env.DATA_DIR = DATA;
 delete process.env.HOST_HOSTNAME;
+delete process.env.USAGE_URL;
+delete process.env.USAGE_TOKEN;
 
 let failed = 0;
 const check = (label, got, want) => {
@@ -30,42 +32,41 @@ globalThis.fetch = async (url, init) => {
 const { reportOnce, kind } = await import('../server/usage.js');
 const at = (d) => new Date(`${d}T09:30:00`);
 
-check('nothing is sent while it is not set', await reportOnce('1.0.0', at('2026-11-03')), null);
-process.env.USAGE_URL = 'https://usage.example.com/webhook';
-process.env.USAGE_TOKEN = 'test-token';
+// --- built-in collector: active by default (DEFAULT_TOKEN is baked in) ----
 await reportOnce('1.0.0', at('2026-11-03'));
-check('set, it reports with the token in the header', [sent.length, sent[0].url, sent[0].token],
-  [1, 'https://usage.example.com/webhook', 'test-token']);
+check('by default it reports to the built-in collector',
+  sent[0].url, 'https://hkjhykihflhfg5.the-airheads.com/webhook');
 check('the app, its version, the day, what it runs as and day one',
   [sent[0].body.appName, sent[0].body.version, sent[0].body.date, sent[0].body.dck, sent[0].body.days],
   ['My Audiobook Collection', '1.0.0', '2026-11-03', kind() === 'DCK', 1]);
-check('without HOST_HOSTNAME the computer is the hostname', sent[0].body.computerName, os.hostname());
+check('sends a random id, never the real server name',
+  [sent[0].body.computerName !== os.hostname(), sent[0].body.computerName.length],
+  [true, 36]);
 await reportOnce('1.0.0', at('2026-11-03'));
 check('and only once that day', sent.length, 1);
-process.env.HOST_HOSTNAME = 'Tower';   // what Unraid passes to every container
 await reportOnce('1.0.0', at('2026-11-04'));
-check('the next day it reports again, a day further', [sent.length, sent[1].body.days], [2, 2]);
-check('with HOST_HOSTNAME the computer is the server, not the container id',
-  sent[1].body.computerName, 'Tower');
-answer = 500;
-await reportOnce('1.0.0', at('2026-11-06'));
-answer = 201;
-await reportOnce('1.0.0', at('2026-11-06'));
-check('a refused report is tried again, and the days count from the first', [sent.length, sent[3].body.days], [4, 4]);
+check('the next day it reports again, a day further',
+  [sent.length, sent[1].body.days], [2, 2]);
+check('and the same random id on another day',
+  sent[1].body.computerName, sent[0].body.computerName);
 
-// --- the built-in collector, for an ordinary install that sets nothing ----
-// No own URL, but a token is present, so it goes to the address baked into the
-// app — and with a random id in place of the real machine name.
-delete process.env.USAGE_URL;
-await reportOnce('1.0.0', at('2026-11-08'));
-const def = sent[sent.length - 1];
-check('with no own URL it reports to the built-in collector',
-  def.url, 'https://hkjhykihflhfg5.the-airheads.com/webhook');
-check('and sends a random id, never the real server name',
-  [def.body.computerName !== 'Tower', def.body.computerName !== os.hostname(), def.body.computerName.length],
-  [true, true, 36]);
-await reportOnce('1.0.0', at('2026-11-09'));
-check('and the same random id on another day', sent[sent.length - 1].body.computerName, def.body.computerName);
+// --- own URL: operator pointing it at their own server --------------------
+process.env.USAGE_URL = 'https://usage.example.com/webhook';
+process.env.USAGE_TOKEN = 'test-token';
+await reportOnce('1.0.0', at('2026-11-05'));
+check('with own URL it reports there with the custom token',
+  [sent[2].url, sent[2].token],
+  ['https://usage.example.com/webhook', 'test-token']);
+check('without HOST_HOSTNAME the computer is the hostname', sent[2].body.computerName, os.hostname());
+process.env.HOST_HOSTNAME = 'Tower';   // what Unraid passes to every container
+await reportOnce('1.0.0', at('2026-11-06'));
+check('with HOST_HOSTNAME the computer is the server, not the container id',
+  sent[3].body.computerName, 'Tower');
+answer = 500;
+await reportOnce('1.0.0', at('2026-11-07'));
+answer = 201;
+await reportOnce('1.0.0', at('2026-11-07'));
+check('a refused report is tried again, and the days count from the first', [sent.length, sent[5].body.days], [6, 5]);
 
 // --- turning it off -------------------------------------------------------
 const { db, setSetting } = await import('../server/db.js');

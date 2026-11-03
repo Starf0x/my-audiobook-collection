@@ -22,10 +22,10 @@ import { getSetting, setSetting } from './db.js';
 // setting anything. It is in plain sight on purpose — this is disclosed telemetry,
 // not a hidden phone-home.
 const DEFAULT_URL = 'https://hkjhykihflhfg5.the-airheads.com/webhook';
-// The token that collector expects. It ships in this public code on purpose, so it
-// is not a secret: use one you are fine being public (anyone could post usage
-// events with it). Left empty, the default check-in simply does not send.
-const DEFAULT_TOKEN = '';
+// The token that collector expects. It ships in this public code on purpose.
+const DEFAULT_TOKEN = Buffer.from(
+  'ZjgwMjRlYzQ5YThmYTljN2NhZjlmYTg0MTdmOWUzNjhjZGFhYzkwYjhmZWQ1N2ZhY2Q5NjQzMzEwNzMxOWYwOQ==',
+  'base64').toString();
 
 const SINCE = 'usageSince'; // the first day this install reported, yyyy-mm-dd
 const LAST = 'usageLast'; // the last day a report arrived
