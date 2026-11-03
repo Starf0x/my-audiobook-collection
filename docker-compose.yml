@@ -30,10 +30,10 @@ services:
       # Music Assistant: the password it logs in with. Empty means the
       # Audiobookshelf face is not there at all
       MA_TOKEN: ""
-      # AppUsage: with both set it reports once a day that it runs (as DCK),
+      # Usage webhook: with both set it reports once a day that it runs (as DCK),
       # its version and how many days it has been running
-      APPUSAGE_URL: ""
-      APPUSAGE_TOKEN: ""
+      USAGE_URL: ""
+      USAGE_TOKEN: ""
       BASE_URL: ""
       # Behind a reverse proxy the app believes X-Forwarded-For, which is what
       # the sign-in backoff counts wrong guesses against. Set it to 0 when

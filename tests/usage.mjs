@@ -1,13 +1,13 @@
-// appusage — the daily line to AppUsage: off unless set, once a day, and the day
+// usage — the daily check-in to a usage webhook: off unless set, once a day, and the day
 // count going up by one each new day.
 //
-// Run: node tests/appusage.mjs
+// Run: node tests/usage.mjs
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DATA = path.join(ROOT, 'fixtures', 'appusage-test', 'data');
+const DATA = path.join(ROOT, 'fixtures', 'usage-test', 'data');
 fs.rmSync(DATA, { recursive: true, force: true });
 fs.mkdirSync(DATA, { recursive: true });
 process.env.DATA_DIR = DATA;
@@ -25,12 +25,12 @@ globalThis.fetch = async (url, init) => {
   sent.push({ url, token: init.headers['X-Webhook-Token'], body: JSON.parse(init.body) });
   return { ok: answer < 300, status: answer };
 };
-const { reportOnce, kind } = await import('../server/appusage.js');
+const { reportOnce, kind } = await import('../server/usage.js');
 const at = (d) => new Date(`${d}T09:30:00`);
 
 check('nothing is sent while it is not set', await reportOnce('1.0.0', at('2026-11-03')), null);
-process.env.APPUSAGE_URL = 'https://usage.example.com/webhook';
-process.env.APPUSAGE_TOKEN = 'test-token';
+process.env.USAGE_URL = 'https://usage.example.com/webhook';
+process.env.USAGE_TOKEN = 'test-token';
 await reportOnce('1.0.0', at('2026-11-03'));
 check('set, it reports with the token in the header', [sent.length, sent[0].url, sent[0].token],
   [1, 'https://usage.example.com/webhook', 'test-token']);
