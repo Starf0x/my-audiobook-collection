@@ -74,8 +74,9 @@ const reads = [...new Set([...fs.readdirSync(path.join(ROOT, 'server'))
   .sort();
 // `NODE_ENV` and friends belong to the runtime, not to this app; nothing here
 // sets them and nobody installing it should be offered one. `QUIET_AFTER_MS` is
-// only how tests/accounts.mjs makes three minutes of silence last a second.
-const OURS = reads.filter((n) => !['NODE_ENV', 'npm_package_version', 'QUIET_AFTER_MS'].includes(n));
+// only how tests/accounts.mjs makes three minutes of silence last a second, and
+// `HOST_HOSTNAME` is read, never set: Unraid hands every container its own name.
+const OURS = reads.filter((n) => !['NODE_ENV', 'npm_package_version', 'QUIET_AFTER_MS', 'HOST_HOSTNAME'].includes(n));
 const offered = (text) => OURS.filter((n) => new RegExp(`^#?\\s*${n}=`, 'm').test(text));
 check('every setting the server reads can be set in the LXC settings file',
   OURS.filter((n) => !offered(envExample).includes(n)), []);

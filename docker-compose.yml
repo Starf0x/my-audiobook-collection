@@ -34,9 +34,6 @@ services:
       # its version and how many days it has been running
       USAGE_URL: ""
       USAGE_TOKEN: ""
-      # The computer name in that report. Unraid sets it itself; without it the
-      # report gives the container id, which changes with every update
-      # HOST_HOSTNAME: ""
       BASE_URL: ""
       # Behind a reverse proxy the app believes X-Forwarded-For, which is what
       # the sign-in backoff counts wrong guesses against. Set it to 0 when
