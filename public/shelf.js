@@ -181,7 +181,7 @@ const cardFor = (b, apart = false, extra = '') => `<div class="card${apart ? ' a
         </div>
         <div class="desc">${esc(b.description) || 'No description.'}</div>
       </div>
-      <div class="actions"><button onclick="playBook(${b.id})" data-resume="${b.started || b.done ? 1 : 0}"${b.finished ? ' data-again="1"' : ''}>${b.finished ? '▶ Play again' : b.started || b.done ? '▶ Resume' : '▶ Play'}</button></div>
+      <div class="actions"><button onclick="playBook(${b.id})" data-resume="${b.started || b.done ? 1 : 0}"${b.finished ? ' data-again="1"' : ''}${b.started && !b.finished ? ` data-togo="${100 - (b.percent || 0)}"` : ''}>${b.finished ? '▶ Play again' : b.started ? `▶ ${100 - (b.percent || 0)}% to go` : b.done ? '▶ Resume' : '▶ Play'}</button></div>
     </div>`;
 
 function drawBooks(books, heading, kind = 'Series', states = []) {

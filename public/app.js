@@ -285,7 +285,7 @@ const cardFor = (b, apart = false, extra = '') => `<div class="card${apart ? ' a
         <div class="desc">${esc(b.description) || 'No description.'}</div>
       </div>
       <div class="actions">
-        <button onclick="playBook(${b.id})" data-resume="${b.started || b.done ? 1 : 0}"${b.finished ? ' data-again="1"' : ''}>${b.finished ? '▶ Play again' : b.started || b.done ? '▶ Resume' : '▶ Play'}</button>
+        <button onclick="playBook(${b.id})" data-resume="${b.started || b.done ? 1 : 0}"${b.finished ? ' data-again="1"' : ''}${b.started && !b.finished ? ` data-togo="${100 - (b.percent || 0)}"` : ''}>${b.finished ? '▶ Play again' : b.started ? `▶ ${100 - (b.percent || 0)}% to go` : b.done ? '▶ Resume' : '▶ Play'}</button>
         <button class="ghost" onclick="findMeta(${b.id})">Find metadata</button>
         <button class="ghost" onclick="writeTags(${b.id}, this)">Write into MP3s</button>
         <button class="ghost" onclick="editMeta(${b.id})">Edit metadata</button>
