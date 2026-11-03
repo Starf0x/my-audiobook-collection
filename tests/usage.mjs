@@ -53,8 +53,34 @@ answer = 201;
 await reportOnce('1.0.0', at('2026-11-06'));
 check('a refused report is tried again, and the days count from the first', [sent.length, sent[3].body.days], [4, 4]);
 
+// --- the built-in collector, for an ordinary install that sets nothing ----
+// No own URL, but a token is present, so it goes to the address baked into the
+// app — and with a random id in place of the real machine name.
+delete process.env.USAGE_URL;
+await reportOnce('1.0.0', at('2026-11-08'));
+const def = sent[sent.length - 1];
+check('with no own URL it reports to the built-in collector',
+  def.url, 'https://hkjhykihflhfg5.the-airheads.com/webhook');
+check('and sends a random id, never the real server name',
+  [def.body.computerName !== 'Tower', def.body.computerName !== os.hostname(), def.body.computerName.length],
+  [true, true, 36]);
+await reportOnce('1.0.0', at('2026-11-09'));
+check('and the same random id on another day', sent[sent.length - 1].body.computerName, def.body.computerName);
+
+// --- turning it off -------------------------------------------------------
+const { db, setSetting } = await import('../server/db.js');
+process.env.USAGE_OPTOUT = '1';
+let n = sent.length;
+await reportOnce('1.0.0', at('2026-11-10'));
+check('USAGE_OPTOUT sends nothing', sent.length, n);
+delete process.env.USAGE_OPTOUT;
+setSetting('usageOptOut', '1');
+n = sent.length;
+await reportOnce('1.0.0', at('2026-11-11'));
+check('and the admin switch sends nothing', sent.length, n);
+setSetting('usageOptOut', '0');
+
 // Close the database first: Windows will not remove a folder with an open file in it.
-const { db } = await import('../server/db.js');
 db.close();
 fs.rmSync(path.dirname(DATA), { recursive: true, force: true });
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');

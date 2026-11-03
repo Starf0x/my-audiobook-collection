@@ -1195,6 +1195,21 @@ $('#hookForget').onclick = () => work($('#hookForget'), 'Forgetting the webhook'
   return loadHook();
 });
 
+// --- anonymous usage ------------------------------------------------------
+async function loadUsage() {
+  const d = await api('/api/usage').catch(() => ({ optOut: false, forced: false }));
+  $('#usageOn').checked = !d.optOut;
+  $('#usageOn').disabled = d.forced;
+  $('#usageState').innerHTML = d.forced
+    ? '<span class="missing">Turned off on the container with USAGE_OPTOUT.</span>'
+    : d.optOut ? 'Off — nothing is sent.' : 'On — a daily line, as described above.';
+}
+
+$('#usageOn').onchange = () => work($('#usageOn'), 'Saving', async () => {
+  try { await post('/api/usage', { optOut: !$('#usageOn').checked }); } catch (e) { return toast(e.message); }
+  return loadUsage();
+});
+
 // --- Series to complete: series.js
 
 
@@ -1381,6 +1396,8 @@ $('#openSettings').onclick = async () => {
   await showTagAll();
   // whether a Discord webhook is saved, and how the last line went
   await loadHook();
+  // and whether the anonymous usage check-in is on
+  await loadUsage();
   // and when the database was last copied, which is the one thing nobody thinks
   // to look at until the day it matters
   await loadBackups();
