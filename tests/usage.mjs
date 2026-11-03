@@ -3,6 +3,7 @@
 //
 // Run: node tests/usage.mjs
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +12,7 @@ const DATA = path.join(ROOT, 'fixtures', 'usage-test', 'data');
 fs.rmSync(DATA, { recursive: true, force: true });
 fs.mkdirSync(DATA, { recursive: true });
 process.env.DATA_DIR = DATA;
+delete process.env.HOST_HOSTNAME;
 
 let failed = 0;
 const check = (label, got, want) => {
@@ -37,16 +39,23 @@ check('set, it reports with the token in the header', [sent.length, sent[0].url,
 check('the app, its version, the day, what it runs as and day one',
   [sent[0].body.appName, sent[0].body.version, sent[0].body.date, sent[0].body.dck, sent[0].body.days],
   ['My Audiobook Collection', '1.0.0', '2026-11-03', kind() === 'DCK', 1]);
+check('without HOST_HOSTNAME the computer is the hostname', sent[0].body.computerName, os.hostname());
 await reportOnce('1.0.0', at('2026-11-03'));
 check('and only once that day', sent.length, 1);
+process.env.HOST_HOSTNAME = 'Tower';   // what Unraid passes to every container
 await reportOnce('1.0.0', at('2026-11-04'));
 check('the next day it reports again, a day further', [sent.length, sent[1].body.days], [2, 2]);
+check('with HOST_HOSTNAME the computer is the server, not the container id',
+  sent[1].body.computerName, 'Tower');
 answer = 500;
 await reportOnce('1.0.0', at('2026-11-06'));
 answer = 201;
 await reportOnce('1.0.0', at('2026-11-06'));
 check('a refused report is tried again, and the days count from the first', [sent.length, sent[3].body.days], [4, 4]);
 
+// Close the database first: Windows will not remove a folder with an open file in it.
+const { db } = await import('../server/db.js');
+db.close();
 fs.rmSync(path.dirname(DATA), { recursive: true, force: true });
 console.log(failed ? `${failed} check(s) FAILED` : 'all checks passed');
 process.exit(failed ? 1 : 0);

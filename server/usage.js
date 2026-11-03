@@ -31,7 +31,10 @@ export async function reportOnce(version, now = new Date()) {
     version,
     date: today,
     time: now.toLocaleTimeString('sv-SE'),
-    computerName: os.hostname(),
+    // In Docker, os.hostname() is the container id, which changes with every update, so
+    // the webhook would see a new computer each time. Unraid passes the server's own name
+    // as HOST_HOSTNAME; use that when it is there.
+    computerName: process.env.HOST_HOSTNAME || os.hostname(),
     dck: kind() === 'DCK', // true in a Docker container
     days: daysSince(since, today),
   };
