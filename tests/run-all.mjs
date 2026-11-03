@@ -19,6 +19,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const PORTABLE = [
   'series-complete',
+  'appusage',
   'series-online',
   'abs-contract',
   'ma-accounts',

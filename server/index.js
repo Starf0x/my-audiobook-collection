@@ -38,6 +38,7 @@ import { toolsWhy, toolAt, convertible, convertBook, convertProgress,
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
 import { coverFile, browseRoots, mayBrowse } from './safepath.js';
 import { alone } from './onejob.js';
+import { reportDaily } from './appusage.js';
 import { enabled as absEnabled, listener as absListener } from './abs.js';
 import { mountMusicAssistant } from './routes/music-assistant.js';
 import { mountFolders } from './routes/folders.js';
@@ -1681,6 +1682,7 @@ keepHaLinked();
 const port = process.env.PORT || 8523;
 app.listen(port, () => {
   console.log(`My Audiobook Collection on :${port} (data: ${DATA_DIR})`);
+  reportDaily(VERSION);
   if (weakContainerPassword()) {
     console.warn(`ADMIN_PASSWORD is shorter than ${PASSWORD_FLOOR} characters — every other password here `
       + 'must be at least that. Set a longer one on the container and restart.');
