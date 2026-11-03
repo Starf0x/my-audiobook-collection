@@ -38,7 +38,7 @@ import { toolsWhy, toolAt, convertible, convertBook, convertProgress,
 import { checkSeriesOnline, onlineProgress, lastOnlineAt } from './wikidata.js';
 import { coverFile, browseRoots, mayBrowse } from './safepath.js';
 import { alone } from './onejob.js';
-import { reportDaily } from './usage.js';
+import { reportDaily, optedOut } from './usage.js';
 import { enabled as absEnabled, listener as absListener } from './abs.js';
 import { mountMusicAssistant } from './routes/music-assistant.js';
 import { mountFolders } from './routes/folders.js';
@@ -463,6 +463,15 @@ const claimed = (req) => {
 const claim = (res, names) => res.setHeader('Set-Cookie',
   `${WHO}=${Buffer.from(JSON.stringify(names)).toString('base64url')}`
   + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=34560000');
+
+// The anonymous usage check-in: whether it is on, and the switch to turn it off.
+// USAGE_OPTOUT forced off in the environment wins over the toggle and says so.
+app.get('/api/usage', requireAdmin, (req, res) =>
+  res.json({ optOut: optedOut(), forced: process.env.USAGE_OPTOUT === '1' }));
+app.post('/api/usage', requireAdmin, (req, res) => {
+  setSetting('usageOptOut', (req.body || {}).optOut ? '1' : '0');
+  res.json({ optOut: optedOut(), forced: process.env.USAGE_OPTOUT === '1' });
+});
 
 // --- settings ----------------------------------------------------------
 app.get('/api/settings', requireAdmin, (req, res) => res.json({
