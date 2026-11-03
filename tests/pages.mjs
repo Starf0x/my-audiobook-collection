@@ -1764,6 +1764,7 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
       cardTitles: [...list.querySelectorAll('.card h3')].map((h) => h.textContent.replace(/\s+/g, ' ').trim()),
       tiles: [...list.querySelectorAll('.tile .t')].map((t) => t.textContent),
       headings: [...list.querySelectorAll('.shelf-title')].map((s) => s.textContent),
+      resumeText: list.querySelector('.card.carry-on .actions button[onclick^="playBook"]')?.textContent || '',
       broke: p.broke,
     };
   };
@@ -1777,6 +1778,8 @@ const NO_IMPORT = { __status: 400, error: 'No import folder set yet. Add one in 
     // Drawn twice — once as the card, again as the first tile — would be the
     // obvious way to get this wrong, and it reads as two different books.
     check('and that book is not also a tile below it', full.tiles, ['Also Going', 'And A Third']);
+    // the owner wanted the resume button to say how much of the book is left
+    check('and its button says how much is still to go', full.resumeText, '▶ 60% to go');
     check('the rest keep their shelf', full.headings, ['Continue listening']);
     check('and nothing throws drawing it', full.broke, []);
 

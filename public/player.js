@@ -108,9 +108,11 @@ function markPlaying() {
     // means "carry on with this"
     const kept = button.dataset.resume === '1';
     const again = button.dataset.again === '1';
+    // on a card that knows how far in the book is, Resume says how much is left
+    const resume = button.dataset.togo != null ? `▶ ${button.dataset.togo}% to go` : '▶ Resume';
     button.textContent = mine
-      ? (!sounding() ? '▶ Resume' : '⏸ Pause')
-      : (again ? '▶ Play again' : kept ? '▶ Resume' : '▶ Play');
+      ? (!sounding() ? resume : '⏸ Pause')
+      : (again ? '▶ Play again' : kept ? resume : '▶ Play');
     button.classList.toggle('playing', mine && sounding());
     // it has a place kept in it from now on, so it stays a Resume when another
     // book takes over — and it is not a finished book any more either
