@@ -35,8 +35,8 @@ await reportOnce('1.0.0', at('2026-11-03'));
 check('set, it reports with the token in the header', [sent.length, sent[0].url, sent[0].token],
   [1, 'https://usage.example.com/webhook', 'test-token']);
 check('the app, its version, the day, what it runs as and day one',
-  [sent[0].body.appName, sent[0].body.version, sent[0].body.date, sent[0].body.type, sent[0].body.days],
-  ['My Audiobook Collection', '1.0.0', '2026-11-03', kind(), 1]);
+  [sent[0].body.appName, sent[0].body.version, sent[0].body.date, sent[0].body.dck, sent[0].body.days],
+  ['My Audiobook Collection', '1.0.0', '2026-11-03', kind() === 'DCK', 1]);
 await reportOnce('1.0.0', at('2026-11-03'));
 check('and only once that day', sent.length, 1);
 await reportOnce('1.0.0', at('2026-11-04'));

@@ -375,7 +375,7 @@ would otherwise lose every library on it.
 | `BROWSE_ROOTS` | empty | more places the folder browser in Settings may look, comma-separated, besides `/audiobooks`, `/import`, `/mnt`, `/media`, `/srv` and the folders already set |
 | `FRAME_ANCESTORS` | `'self'` | who may show the app inside a frame. Set it to add a Home Assistant dashboard that embeds it in a webpage card, e.g. `'self' http://192.168.2.200:8123` |
 | `MA_TOKEN` | empty | the password Music Assistant logs in with (§7.9d). **Empty means the whole Audiobookshelf face is not there**: every one of its addresses answers 404, so a default install grows no new surface |
-| `APPUSAGE_URL`, `APPUSAGE_TOKEN` | empty | both set → once a day (looked at hourly, kept in settings `appUsageLast`/`appUsageSince`) a POST to AppUsage with `X-Webhook-Token`: appName, version, date, time, computerName, `type` `DCK`/`LXC`, `days` running since the first report (day one is 1). Failures are logged and retried next hour |
+| `APPUSAGE_URL`, `APPUSAGE_TOKEN` | empty | both set → once a day (looked at hourly, kept in settings `appUsageLast`/`appUsageSince`) a POST to AppUsage with `X-Webhook-Token`: appName, version, date, time, computerName, `dck` (true in Docker; AppUsage reads only that and counts days itself), `days` running since the first report (day one is 1). Failures are logged and retried next hour |
 | `BASE_URL` | empty | the address other machines reach the app on, when that is not the one they asked at (a reverse proxy). Every URL inside the Home Assistant answers is built from it |
 | `GOOGLE_COUNTRY` | `US` | which country's Google catalogue answers. Series data belongs to a country's Play catalogue, and left to the server's own address Google can answer with a record that has none |
 

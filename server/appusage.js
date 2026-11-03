@@ -32,7 +32,7 @@ export async function reportOnce(version, now = new Date()) {
     date: today,
     time: now.toLocaleTimeString('sv-SE'),
     computerName: os.hostname(),
-    type: kind(),
+    dck: kind() === 'DCK', // AppUsage reads dck (true for a Docker container) and counts days itself
     days: daysSince(since, today),
   };
   try {
