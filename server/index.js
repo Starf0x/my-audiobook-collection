@@ -29,7 +29,7 @@ import { placeholderCover, dayIndex, untilTomorrow } from './placeholder.js';
 import { uniqueNames, zipLength, writeZipTo } from './zip.js';
 import { guessFor, fileSkipped } from './skipped.js';
 import { haState, bookPlaylist, tokenOk, playerSigOk, inboundToken, baseUrl as baseUrlOf, saveHaSettings, haPing, haPlayers,
-  haEntities, listenedSeconds, haSpeed, haSetSpeed, tempo, haPushSoon, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy } from './ha.js';
+  haEntities, listenedSeconds, haSpeed, haSetSpeed, tempo, haPushSoon, haPush, haPlay, haControl, haLink, haConnect, keepHaLinked, haSpeaker, haSettings, lastPush, rememberRequest, scheduleHaPush, trustProxy, nowOnState } from './ha.js';
 import { validateAll, recheck, listBroken, forget, checkProgress } from './validate.js';
 import { startTagAll, stopTagAll, tagStatus, settleTagAll } from './tagall.js';
 import { moveBook, deleteToTrash, listTrash, restoreFromTrash, purge, emptyTrash, purgeExpired, KEEP_DAYS } from './trash.js';
@@ -1428,6 +1428,7 @@ app.get('/api/ha/config', requireAdmin, (req, res) => {
     lastPush,
     listeners: db.prepare('SELECT name FROM users ORDER BY name').all().map((u) => u.name),
     base: baseUrlOf(req),
+    speakers: nowOnState(),
   });
 });
 
