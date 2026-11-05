@@ -734,8 +734,13 @@ function keepPlaces() {
       // this app's: every look was taken for other music and no place was kept, so
       // the button resumed from long ago (2.14.369). The address first seen after
       // this app started the track is that track; a different one is not the book.
+      // Between tracks, `follow` resets `own` to '' and stores the old URL in
+      // `prevOwn`. If this poll runs during that window and the player briefly still
+      // shows the old proxy URL, skip it rather than locking `own` to the old URL —
+      // the new track's proxy URL is always different.
       if (playing) was.own = id;
       else if (id) {
+        if (!was.own && id === was.prevOwn) continue;
         was.own ||= id;
         if (id !== was.own) continue;
       }
@@ -825,7 +830,7 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
     since = 0;
     quiet = 0;
     const on = nowOn.get(entity);
-    if (on) Object.assign(on, { i, at: 0, since: Date.now(), heard: 0, lastPoll: Date.now(), own: '' });
+    if (on) Object.assign(on, { i, at: 0, since: Date.now(), heard: 0, lastPoll: Date.now(), prevOwn: on.own, own: '' });
     saveNowOn();
     try { await playTrack(entity, base, tracks[i], '', rate === 1 ? {} : { speed: rate }); } catch { stop(); }
   }, FOLLOW_EVERY.ms);
