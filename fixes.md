@@ -4,6 +4,30 @@ Every entry here is something that was actually wrong — in the app or in the w
 was built and tested — with what it cost and what to do instead. It is written to
 be read before making the same kind of change again.
 
+---
+
+## v2.14.490 — proxy-URL speaker loses progress after second track
+
+**Symptom:** 3Reality/ESPHome speaker (plays via HA ffmpeg proxy, not `/api/stream`)
+stops reporting progress after the first track ends. HA sensor goes stale.
+
+**Root cause:** Race condition between `keepPlaces` (polls every 30s) and `follow`
+(polls every 5s). When `follow` advances to the next track it resets `own: ''`.
+If `keepPlaces` runs at that moment it still sees the old proxy URL in
+`media_content_id`, re-locks `own` to that stale URL, then every subsequent poll
+sees `id !== was.own` and skips the entity entirely.
+
+**Fix:** Added `prevOwn` field. `follow` saves the old URL as `prevOwn` before
+clearing `own`. `keepPlaces` skips `id === was.prevOwn` when `own` is empty.
+
+**Lesson:** When two pollers share mutable state and one resets a field, the other
+can re-lock it to stale data before the new value arrives. Use a "previous value"
+guard so the reset window is not exploitable.
+
+**Files:** `server/ha.js` (keepPlaces ~line 733, follow ~line 828),
+`tests/ha-play.mjs` (new test: "a proxy-URL speaker tracks progress on the second
+track after follow advances").
+
 `docs/SPEC.md` §9 holds the invariants: the short rules that must stay true.
 This file is longer and blunter: it says what went wrong.
 
