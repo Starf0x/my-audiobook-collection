@@ -664,7 +664,7 @@ const saveNowOn = () => setSetting(NOW_ON, JSON.stringify([...nowOn]));
 setTimeout(() => {
   try {
     for (const [entity, was] of JSON.parse(getSetting(NOW_ON) || '[]')) {
-      nowOn.set(entity, { ...was, lastPoll: Date.now() });
+      nowOn.set(entity, { ...was, lastPoll: Date.now(), own: undefined, prevOwn: undefined });
       // a player that cannot queue is handed the next track by this app: carry on
       // doing that, from the track it is on
       const base = getSetting(KEY.base);
@@ -855,6 +855,12 @@ export async function haControl({ player, action } = {}) {
 }
 
 export const stopFollowing = () => { for (const e of [...following.keys()]) { clearInterval(following.get(e)); following.delete(e); } };
+
+export const nowOnState = () => [...nowOn].map(([entity, was]) => ({
+  entity, bookId: was.bookId, listener: was.listener,
+  track: was.from + was.i, own: was.own || null, prevOwn: was.prevOwn || null,
+  lastPoll: was.lastPoll, single: was.single,
+}));
 
 // The push that runs on its own. It needs a request to build URLs from — a URL in
 // HA that only works from one browser is no use — so the last real one is kept,
