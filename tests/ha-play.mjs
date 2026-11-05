@@ -195,6 +195,41 @@ asked.length = 0;
   db.prepare('UPDATE tracks SET duration = 0.05').run();
 }
 
+// A proxy-URL speaker (3Reality/ESPHome) must keep tracking progress after the
+// second track starts: between tracks, follow resets the own-URL anchor, and a
+// poll arriving in that window must not re-lock onto the old proxy URL and cause
+// all subsequent keepPlaces checks to skip the entity (2.14.490).
+asked.length = 0;
+{
+  const proxyA = 'http://ha:8123/api/ffmpeg_proxy/0.mp3';
+  const proxyB = 'http://ha:8123/api/ffmpeg_proxy/1.mp3';
+  // short duration so follow can advance quickly (tracks is captured at haPlay time)
+  players['media_player.3reality'] = { state: 'idle', attributes: { supported_features: 512 } };
+  await haPlay(req, { player: 'media_player.3reality', bookId: 1, from: 0, listener: 'Car' });
+  // track 0 plays through HA's proxy; keepPlaces locks own to proxyA
+  players['media_player.3reality'] = { state: 'playing',
+    attributes: { supported_features: 512, media_content_id: proxyA, media_position: 10 } };
+  await wait(80);
+  // track 0 ends — follow detects idle, advances, sets own:'' and prevOwn:proxyA
+  players['media_player.3reality'].state = 'idle';
+  await wait(80);
+  // lengthen duration so positions won't be capped to 0 when keepPlaces checks the DB
+  db.prepare('UPDATE tracks SET duration = 600').run();
+  // simulate the race: player briefly still shows old proxy URL while own is ''
+  players['media_player.3reality'] = { state: 'playing',
+    attributes: { supported_features: 512, media_content_id: proxyA, media_position: 10 } };
+  await wait(60);
+  // track 1 now plays with a different proxy URL
+  players['media_player.3reality'] = { state: 'playing',
+    attributes: { supported_features: 512, media_content_id: proxyB, media_position: 7 } };
+  await wait(80);
+  const p = db.prepare("SELECT track_idx, position FROM progress WHERE user = 'Car' AND book_id = 1").get();
+  check('a proxy-URL speaker tracks progress on the second track after follow advances',
+    p && [p.track_idx, p.position], [1, 7]);
+  stopFollowing();
+  db.prepare('UPDATE tracks SET duration = 0.05').run();
+}
+
 // Started from Home Assistant there is no speed in the call: the owner played
 // on the speaker through HA and it stayed at 1× (2.14.336). The listener's own
 // choice, kept by the app, is used — and a new one restarts what is playing.
