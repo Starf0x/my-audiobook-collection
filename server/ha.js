@@ -805,22 +805,32 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
   clearInterval(following.get(entity));
   let i = 0;
   let since = 0; // when the current track was first seen playing
+  let pausedAt = 0; // when the speaker entered pause state (0 = not paused)
+  let pausedMs = 0; // total milliseconds spent paused for the current track
   let quiet = 0; // polls with nothing playing yet
   const stop = () => { clearInterval(following.get(entity)); following.delete(entity); };
   const timer = setInterval(async () => {
     const st = await call(`/states/${entity}`).catch(() => null);
     if (!st) return;
     if (['off', 'unavailable'].includes(st.state)) return stop();
-    if (st.state === 'playing' || st.state === 'paused') {
+    if (st.state === 'playing') {
       if (!since) since = Date.now();
+      if (pausedAt) { pausedMs += Date.now() - pausedAt; pausedAt = 0; }
       return;
     }
+    if (st.state === 'paused') {
+      if (!since) since = Date.now();
+      if (!pausedAt) pausedAt = Date.now();
+      return;
+    }
+    // speaker is idle/stopped — close out any open pause window
+    if (pausedAt) { pausedMs += Date.now() - pausedAt; pausedAt = 0; }
     if (!since) {
       // never started: give it two minutes, then stop watching
       if (++quiet * FOLLOW_EVERY.ms > 120000) stop();
       return;
     }
-    const heard = (Date.now() - since) / 1000;
+    const heard = (Date.now() - since - pausedMs) / 1000;
     // the first track was started `skipped` seconds in, so less of it is left to hear
     // and at another speed it takes that much more or less time
     const left = ((Number(tracks[i].duration) || 0) - (i === 0 ? skipped : 0)) / rate;
@@ -828,6 +838,8 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
     i++;
     if (i >= tracks.length) return stop();
     since = 0;
+    pausedAt = 0;
+    pausedMs = 0;
     quiet = 0;
     const on = nowOn.get(entity);
     if (on) Object.assign(on, { i, at: 0, since: Date.now(), heard: 0, lastPoll: Date.now(), prevOwn: on.own, own: '' });
