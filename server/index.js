@@ -44,6 +44,7 @@ import { mountMusicAssistant } from './routes/music-assistant.js';
 import { mountFolders } from './routes/folders.js';
 import { mountUpdates } from './routes/updates.js';
 import { mountLookup } from './routes/lookup.js';
+import { fetchBookPopularity, popularityStatus, updateAllPopularity, stopPopularityUpdate } from './popularity.js';
 
 
 // --- what nothing else caught (2.14.144) ------------------------------------
@@ -805,7 +806,7 @@ const KEPT = `p.track_idx, p.position, p.done, p.via, p.updated,
 // they are done with it. Two views read this: the shelf of what you are in the
 // middle of, and the Listened section in the column.
 const keptBooks = (user) => db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${KEPT},
-                                               b.narrator, b.year, b.description, b.duration, b.tagged, b.unabridged,
+                                               b.narrator, b.year, b.description, b.duration, b.tagged, b.unabridged, b.popularity_stars,
                                                ${SERIES} AS series, b.series_no
                                         FROM progress p JOIN books b ON b.id = p.book_id
                                         WHERE p.user = ? AND (p.position > 0 OR p.done = 1)
@@ -835,7 +836,7 @@ app.get('/api/home', (req, res) => {
   const kept = keptBooks(whoReads(req));
   res.json({
     continue: kept.filter((b) => !b.finished).slice(0, 12),
-    recent: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${SERIES} AS series, b.series_no
+    recent: db.prepare(`SELECT b.id, b.title, b.author, b.genre, b.cover, ${SERIES} AS series, b.series_no, b.popularity_stars
                         FROM books b ORDER BY b.id DESC LIMIT 12`).all()
       .map((b) => ({ ...b, coverV: coverV(b) })),
   });
@@ -1017,7 +1018,7 @@ app.get('/api/books', (req, res) => {
   if (req.query.parent) {
     if (!req.query.genre) return res.status(400).json({ error: 'Say which genre.' });
     const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                    b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
+                                    b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged, b.popularity_stars,
                                     p.position > 0 AS started, ${KEPT}
                              FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                              WHERE b.genre = ? AND b.parent_series = ?
@@ -1036,7 +1037,7 @@ app.get('/api/books', (req, res) => {
     return res.status(400).json({ error: 'Say which genre, and which author or series in it.' });
   }
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
+                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged, b.popularity_stars,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE b.genre = ? AND ${bySeries ? `${SERIES} = ?` : 'b.author = ?'}
@@ -1060,7 +1061,7 @@ app.get('/api/search', (req, res) => {
   const words = (req.query.q || '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
   if (!words.length || words.join('').length < 2) return res.json([]);
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
+                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged, b.popularity_stars,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE ${words.map(() => `${HAYSTACK} LIKE ?`).join(' AND ')}
@@ -1087,7 +1088,7 @@ app.get('/api/year', (req, res) => {
   // this is what keeps "2015 OR 1=1" from being a year.
   if (!/^\d{4}$/.test(year)) return res.json([]);
   const rows = db.prepare(`SELECT b.id, b.title, ${SERIES} AS series, COALESCE(b.parent_series, '') AS parent, b.series_no, b.author, b.narrator, b.year,
-                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged,
+                                  b.genre, b.description, b.cover, b.duration, b.tagged, b.unabridged, b.popularity_stars,
                                   p.position > 0 AS started, ${KEPT}
                            FROM books b LEFT JOIN progress p ON p.book_id = b.id AND p.user = ?
                            WHERE b.year = ?
@@ -1675,6 +1676,23 @@ for (const row of db.prepare(`SELECT p.user, p.book_id, p.track_idx, p.position,
     FROM progress p WHERE p.done = 0`).all()) {
   if (countsAsRead(row)) tickIt.run(row.user, row.book_id);
 }
+
+// --- book popularity (Google Books / Open Library) -------------------------
+app.get('/api/popularity/status', requireAdmin, (req, res) => {
+  res.json(popularityStatus());
+});
+
+app.post('/api/popularity/update', requireAdmin, (req, res) => {
+  const status = popularityStatus();
+  if (status.running) return res.json({ ok: false, message: 'Already running' });
+  updateAllPopularity().catch((e) => console.error('[popularity]', e));
+  res.json({ ok: true });
+});
+
+app.post('/api/popularity/stop', requireAdmin, (req, res) => {
+  stopPopularityUpdate();
+  res.json({ ok: true });
+});
 
 // a container that was already set up keeps pushing to Home Assistant on its own,
 // and connects to it at once rather than when somebody next opens a page

@@ -67,6 +67,13 @@ const placedBy = (b) => {
   return said ? `<div class="a via" title="${esc(said[1])}">↷ ${esc(said[0])}</div>` : '';
 };
 
+// Render 1–5 filled stars for a popularity score (null = no data).
+const starsHtml = (n) => {
+  if (!n || n < 1) return '';
+  const filled = Math.round(n);
+  return `<span class="pop-stars" title="Popularity: ${filled} out of 5">${'★'.repeat(filled)}${'☆'.repeat(5 - filled)}</span>`;
+};
+
 const tile = (b, resumable) => {
   const at = Math.min(b.track_idx + 1, b.tracks || 1);
   // how far in, in time: counting tracks would stand full from the first minute
@@ -83,6 +90,7 @@ const tile = (b, resumable) => {
     <div class="t">${esc(b.title)}</div>
     <div class="a">${byLine(b)}</div>
     ${b.series ? `<div class="a series-of">${esc(b.series)}${b.series_no ? ' · book ' + b.series_no : ''}</div>` : ''}
+    ${starsHtml(b.popularity_stars)}
     ${resumable ? `<div class="tbar"><div style="width:${pct}%"></div></div>
       <div class="a">${how}</div>
       ${placedBy(b)}

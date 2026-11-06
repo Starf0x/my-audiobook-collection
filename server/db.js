@@ -170,6 +170,8 @@ try { db.exec("ALTER TABLE progress ADD COLUMN started TEXT NOT NULL DEFAULT ''"
 // Carried here when the book is finished, because a progress row does not
 // survive un-ticking a book and a completion is meant to.
 try { db.exec("ALTER TABLE completions ADD COLUMN started TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
+try { db.exec('ALTER TABLE books ADD COLUMN popularity_stars REAL'); } catch { /* already there */ }
+try { db.exec("ALTER TABLE books ADD COLUMN popularity_fetched_at TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
 
 // A listener became an account in 2.7.0. Every name that was already there is
 // approved — locking the household out of its own listening history to add a
