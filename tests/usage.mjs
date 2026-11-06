@@ -15,6 +15,7 @@ process.env.DATA_DIR = DATA;
 delete process.env.HOST_HOSTNAME;
 delete process.env.USAGE_URL;
 delete process.env.USAGE_TOKEN;
+delete process.env.USAGE_OPTOUT;   // run-all switches it off for every other suite
 
 let failed = 0;
 const check = (label, got, want) => {
@@ -67,6 +68,16 @@ await reportOnce('1.0.0', at('2026-11-07'));
 answer = 201;
 await reportOnce('1.0.0', at('2026-11-07'));
 check('a refused report is tried again, and the days count from the first', [sent.length, sent[5].body.days], [6, 5]);
+await reportOnce('1.0.1', at('2026-11-07'));
+check('an update reports the same day, with the new version and the same day count',
+  [sent.length, sent[6]?.body.version, sent[6]?.body.days], [7, '1.0.1', 5]);
+await reportOnce('1.0.1', at('2026-11-07'));
+check('and only once for that version', sent.length, 7);
+answer = 500;
+await reportOnce('1.0.2', at('2026-11-07'));
+answer = 201;
+await reportOnce('1.0.2', at('2026-11-07'));
+check('a refused update report is tried again', [sent.length, sent[8]?.body.version], [9, '1.0.2']);
 
 // --- turning it off -------------------------------------------------------
 const { db, setSetting } = await import('../server/db.js');
