@@ -143,6 +143,8 @@ main li.active .count { color: #e8e2ff; }
   border-radius: 999px; padding: 1px 8px; font-size: 11px; color: var(--dim); margin-right: 6px;
 }
 .empty { color: var(--dim); padding: 16px; }
+.pop-stars { display: inline-block; color: #f5c518; font-size: 12px; margin-right: 6px; letter-spacing: 1px; }
+.tile .pop-stars { display: block; font-size: 11px; margin: 2px 0 0; color: #f5c518; letter-spacing: 1px; }
 
 footer {
   display: flex; align-items: center; gap: 12px; padding: 10px 16px;

@@ -334,6 +334,14 @@
     <button id="tagAll" class="ghost">Write tags into all MP3s</button>
     <button id="tagAllStop" class="ghost danger" hidden>Stop</button>
   </div>
+  <label>Book popularity</label>
+  <p class="hint">Looks up each book on Google Books (or Open Library as fallback) and stores a star rating (1–5). No API key needed. Rate-limited to one request per second — a large collection takes a while.</p>
+  <p class="hint" id="popularityState"></p>
+  <div class="row">
+    <button id="popularityUpdate" class="ghost">Update all book popularity</button>
+    <button id="popularityStop" class="ghost danger" hidden>Stop</button>
+  </div>
+
   <div class="row end"><button id="closeSettings" class="ghost">Close</button><button id="saveSettings">Save</button></div>
 </dialog>
 

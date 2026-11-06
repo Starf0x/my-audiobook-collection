@@ -281,6 +281,7 @@ const cardFor = (b, apart = false, extra = '') => `<div class="card${apart ? ' a
           ${b.tagged
             ? `<span class="badge tagged" title="Tags found in the MP3 files"><span class="wide">In MP3: ${esc(b.tagged.split(',').join(', '))}</span><span class="narrow">In MP3: ${b.tagged.split(',').length} tags</span></span>`
             : '<span class="badge untagged" title="The MP3 files carry none of these tags">Not in MP3</span>'}
+          ${starsHtml(b.popularity_stars)}
         </div>
         <div class="desc">${esc(b.description) || 'No description.'}</div>
       </div>
@@ -604,6 +605,34 @@ $('#tagAll').onclick = async () => {
 $('#tagAllStop').onclick = async () => {
   await post('/api/tagall/stop', {}).catch((e) => toast(e.message));
   await showTagAll();
+};
+
+// --- book popularity -------------------------------------------------------
+async function showPopularity() {
+  const s = await api('/api/popularity/status').catch(() => null);
+  if (!s) return;
+  const el = $('#popularityState');
+  if (s.running) {
+    el.textContent = `Fetching… ${s.done} of ${s.total} done.`;
+    $('#popularityUpdate').disabled = true;
+    $('#popularityStop').hidden = false;
+    setTimeout(showPopularity, 3000);
+  } else {
+    el.textContent = s.lastDone ? `Last updated: ${s.lastDone}.` : 'Not fetched yet.';
+    $('#popularityUpdate').disabled = false;
+    $('#popularityStop').hidden = true;
+  }
+}
+
+$('#popularityUpdate').onclick = async () => {
+  if (!confirm('Look up popularity for all books? This contacts Google Books (and Open Library as fallback) at one request per second.')) return;
+  await post('/api/popularity/update', {}).catch((e) => toast(e.message));
+  showPopularity();
+};
+
+$('#popularityStop').onclick = async () => {
+  await post('/api/popularity/stop', {}).catch((e) => toast(e.message));
+  await showPopularity();
 };
 
 // --- import: file a folder from the import path under a genre and author ---
@@ -1380,6 +1409,7 @@ $('#openSettings').onclick = async () => {
     .map((c) => `<option value="${esc(c.code)}"${c.code === (s.googleCountry || '') ? ' selected' : ''}>`
       + `${esc(c.name)}${c.code ? ` (${esc(c.code)})` : ''}</option>`).join('');
   await showTagAll();
+  showPopularity();
   // whether a Discord webhook is saved, and how the last line went
   await loadHook();
   // and when the database was last copied, which is the one thing nobody thinks
