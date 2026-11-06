@@ -15,7 +15,7 @@ function toStars(avg, count) {
 async function fetchFromGoogle(title, author) {
   const q = encodeURIComponent(`intitle:${title} inauthor:${author}`);
   const url = `https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=5&printType=books`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(8000) });
   if (!r.ok) return null;
   const d = await r.json();
   if (!d.items || !d.items.length) return null;
@@ -29,7 +29,7 @@ async function fetchFromGoogle(title, author) {
 async function fetchFromOpenLibrary(title, author) {
   const q = encodeURIComponent(`${title} ${author}`);
   const url = `https://openlibrary.org/search.json?q=${q}&limit=5&fields=ratings_average,ratings_count`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(10000) });
   if (!r.ok) return null;
   const d = await r.json();
   if (!d.docs || !d.docs.length) return null;
