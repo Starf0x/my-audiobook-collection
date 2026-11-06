@@ -1,6 +1,7 @@
 // A daily usage check-in (2.14.468): once a day the app says it is running — the
 // version, Docker or not, and how many days it has been going — so the author can
-// see whether the app is worth developing further.
+// see whether the app is worth developing further. An update reports straight away,
+// also when today's check-in has already gone out.
 //
 // It is disclosed, not hidden: the admin page says it happens and lets you turn it
 // off, and so does the README. It can be switched off with the toggle there or with
@@ -29,6 +30,7 @@ const DEFAULT_TOKEN = Buffer.from(
 
 const SINCE = 'usageSince'; // the first day this install reported, yyyy-mm-dd
 const LAST = 'usageLast'; // the last day a report arrived
+const LAST_VERSION = 'usageLastVersion'; // the version that report carried
 const OPT_OUT = 'usageOptOut'; // '1' when the admin has switched the check-in off
 const INSTALL_ID = 'usageInstallId'; // a random id, made once, for the default collector
 const EVERY = 60 * 60 * 1000;
@@ -55,7 +57,7 @@ export async function reportOnce(version, now = new Date()) {
   const token = process.env.USAGE_TOKEN || (ownUrl ? '' : DEFAULT_TOKEN);
   if (!url || !token) return null;
   const today = day(now);
-  if (getSetting(LAST) === today) return null;
+  if (getSetting(LAST) === today && getSetting(LAST_VERSION) === version) return null;
   const since = getSetting(SINCE) || today;
   const body = {
     appName: 'My Audiobook Collection',
@@ -81,6 +83,7 @@ export async function reportOnce(version, now = new Date()) {
     if (!res.ok) throw new Error(`answered ${res.status}`);
     setSetting(SINCE, since);
     setSetting(LAST, today);
+    setSetting(LAST_VERSION, version);
     return body;
   } catch (e) {
     console.warn(`Usage check-in: not sent — ${e.message}`);

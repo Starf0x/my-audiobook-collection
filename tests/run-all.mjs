@@ -17,6 +17,10 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+// Every suite that starts the server would otherwise check in with the real usage
+// collector as a brand-new install. The usage suite turns it back on, against a stub.
+process.env.USAGE_OPTOUT = '1';
+
 const PORTABLE = [
   'series-complete',
   'usage',
