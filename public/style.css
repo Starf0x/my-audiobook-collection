@@ -761,12 +761,14 @@ button.playing {
   width: 100%; margin-top: 6px; padding: 6px 8px; font-size: 12.5px;
 }
 
-.spk-on {
-  margin-top: 5px; padding: 4px 0; border-top: 1px solid var(--line);
-  font-size: 11px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 3px; align-items: center;
+#spk-panel { margin-bottom: 8px; }
+.spk-entry {
+  padding: 6px 10px; margin-bottom: 4px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--line);
+  font-size: 12px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
 }
-.spk-on span { width: 100%; }
-.spk-btn { font-size: 11px !important; padding: 2px 5px !important; }
+.spk-entry strong { color: var(--text); }
+.spk-btn { font-size: 11px !important; padding: 2px 6px !important; }
 
 /* the name of the app leads back to the shelves */
 @media (hover: hover) {
