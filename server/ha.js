@@ -576,6 +576,8 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed, l
   const rate = tempo(speed ?? speedOf(who));
   const startAt = Math.max(0, Number(seek) || 0);
   const sped = (extra = {}) => (rate === 1 ? {} : { speed: rate, ...extra });
+  clearInterval(following.get(entity));
+  following.delete(entity);
   const st = await call(`/states/${entity}`).catch(() => null);
   const queues = (Number(st?.attributes?.supported_features) || 0) & MEDIA_ENQUEUE;
   const first = await playTrack(entity, base, tracks[0], '', sped(startAt ? { at: Math.round(startAt) } : {}));

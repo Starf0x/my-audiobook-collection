@@ -104,7 +104,7 @@ async function loadHome(opts) {
   // back for, so it is what the page opens with.
   const [carryOn, ...alsoGoing] = d.continue;
   const html = (carryOn ? cardFor(carryOn, false, 'carry-on') : '')
-    + shelf('Continue listening', alsoGoing, true) + shelf('Recently added', d.recent, false);
+    + shelf('Continue listening', alsoGoing, true) + '<div id="spk-panel"></div>' + shelf('Recently added', d.recent, false);
   $('#books .list').innerHTML = html
     || '<div class="empty">Nothing here yet — add a library folder in Settings and scan.</div>';
   show('books');
@@ -1593,46 +1593,50 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
 
 async function showSpeakers() {
   if (!perm.admin) return;
-  // Remove any existing speaker overlays first
-  document.querySelectorAll('.spk-on').forEach((el) => el.remove());
+  const panel = document.querySelector('#spk-panel');
+  if (!panel) return;
   const c = await api('/api/ha/config').catch(() => null);
   const active = (c && c.speakers || []).filter((s) => s.bookId);
-  if (!active.length) return;
+  if (!active.length) { panel.innerHTML = ''; return; }
   const books = await Promise.all(active.map((s) => api(`/api/books/${s.bookId}`).catch(() => null)));
-  active.forEach((s, i) => {
+  panel.innerHTML = active.map((s, i) => {
     const b = books[i];
     const total = b && b.tracks ? b.tracks.length : 0;
     const pct = total ? Math.round((s.track / total) * 100) : null;
-    const target = document.querySelector(`.tile[data-id="${s.bookId}"], .card[data-id="${s.bookId}"]`);
-    if (!target) return;
-    const bar = document.createElement('div');
-    bar.className = 'spk-on';
-    bar.innerHTML = `<span>🔊 track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}</span>`
-      + `<button class="ghost spk-btn" data-play="${s.bookId}" data-track="${s.track}">▶ Play here</button>`
-      + `<button class="ghost spk-btn" data-prev="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${s.track === 0 ? ' disabled' : ''}>◀ Prev</button>`
-      + `<button class="ghost spk-btn" data-next="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${total && s.track >= total - 1 ? ' disabled' : ''}>Next ▶▶</button>`
-      + (s.listener ? `<button class="ghost spk-btn" data-done="${s.bookId}" data-listener="${esc(s.listener)}">✓ Done</button>` : '');
-    bar.querySelector('[data-play]').onclick = (e) => {
+    const title = b ? esc(b.title) : `Book ${s.bookId}`;
+    const author = b ? esc(b.author) : '';
+    return `<div class="spk-entry">`
+      + `<span>🔊 <strong>${title}</strong>${author ? ` · ${author}` : ''} · track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}</span>`
+      + `<button class="ghost spk-btn" data-play data-track="${s.track}">▶ Play here</button>`
+      + `<button class="ghost spk-btn" data-prev data-track="${s.track}"${s.track === 0 ? ' disabled' : ''}>◀ Prev</button>`
+      + `<button class="ghost spk-btn" data-next data-track="${s.track}"${total && s.track >= total - 1 ? ' disabled' : ''}>Next ▶▶</button>`
+      + (s.listener ? `<button class="ghost spk-btn" data-done>✓ Done</button>` : '')
+      + `</div>`;
+  }).join('');
+  panel.querySelectorAll('.spk-entry').forEach((entry, i) => {
+    const s = active[i];
+    const b = books[i];
+    const total = b && b.tracks ? b.tracks.length : 0;
+    entry.querySelector('[data-play]').onclick = (e) => {
       e.stopPropagation();
       playBook(Number(s.bookId), { track: s.track, position: 0 });
     };
-    bar.querySelectorAll('[data-prev],[data-next]').forEach((btn) => {
+    entry.querySelectorAll('[data-prev],[data-next]').forEach((btn) => {
       btn.onclick = async (e) => {
         e.stopPropagation();
-        const from = s.track + (btn.dataset.next !== undefined ? 1 : -1);
+        const from = Number(btn.dataset.track) + (btn.dataset.next !== undefined ? 1 : -1);
         btn.disabled = true;
         await post('/api/ha/play', { player: s.entity, bookId: s.bookId, from, seek: 0 }).catch(() => null);
         await showSpeakers();
       };
     });
-    const doneBtn = bar.querySelector('[data-done]');
+    const doneBtn = entry.querySelector('[data-done]');
     if (doneBtn) doneBtn.onclick = async (e) => {
       e.stopPropagation();
       doneBtn.disabled = true;
       await post('/api/listened', { bookId: s.bookId, done: true, for: s.listener }).catch(() => null);
       await showSpeakers();
     };
-    target.appendChild(bar);
   });
 }
 
@@ -1646,7 +1650,6 @@ window.begin = async () => {
   // "it worked" down with it — which is the one moment they were needed.
   sayIfUpdated();
   await loadPerm();
-  showSpeakers();
   updateMark();
   await loadGenres();
   await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
