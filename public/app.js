@@ -1607,9 +1607,13 @@ async function showSpeakers() {
       return `<li style="padding:.35rem .75rem;line-height:1.4">`
         + `<strong>${esc(b ? b.title : `Book #${s.bookId}`)}</strong>`
         + (b && b.author ? `<div class="hint">${esc(b.author)}</div>` : '')
-        + `<div class="hint">track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}</div>`
+        + `<div class="hint">track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}`
+        + ` <button class="ghost" style="font-size:.8em;padding:0 .4rem" data-play="${s.bookId}" data-track="${s.track}">▶ Play here</button></div>`
         + `</li>`;
     }).join('') + `</ul>`;
+  el.querySelectorAll('button[data-play]').forEach((btn) => {
+    btn.onclick = () => playBook(Number(btn.dataset.play), { track: Number(btn.dataset.track), position: 0 });
+  });
 }
 
 // Nothing is drawn until somebody is signed in: `account.js` calls this once it
