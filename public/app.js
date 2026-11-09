@@ -1590,6 +1590,28 @@ for (const id of MAINTENANCE_ROWS) {
 
 $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
 
+async function showSpeakers() {
+  if (!perm.admin) return;
+  const c = await api('/api/ha/config').catch(() => null);
+  const el = $('#haSpeakerNow');
+  if (!el) return;
+  const active = (c && c.speakers || []).filter((s) => s.bookId);
+  if (!active.length) { el.hidden = true; return; }
+  const books = await Promise.all(active.map((s) => api(`/api/books/${s.bookId}`).catch(() => null)));
+  el.hidden = false;
+  el.innerHTML = `<div class="col-title">On speaker</div><ul>`
+    + active.map((s, i) => {
+      const b = books[i];
+      const total = b && b.tracks ? b.tracks.length : 0;
+      const pct = total ? Math.round((s.track / total) * 100) : null;
+      return `<li style="padding:.35rem .75rem;line-height:1.4">`
+        + `<strong>${esc(b ? b.title : `Book #${s.bookId}`)}</strong>`
+        + (b && b.author ? `<div class="hint">${esc(b.author)}</div>` : '')
+        + `<div class="hint">track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}</div>`
+        + `</li>`;
+    }).join('') + `</ul>`;
+}
+
 // Nothing is drawn until somebody is signed in: `account.js` calls this once it
 // knows who is asking. This page is the admin's, so it also sends anybody who is
 // merely a listener back to the shelves — that check is `loadPerm`.
@@ -1600,6 +1622,7 @@ window.begin = async () => {
   // "it worked" down with it — which is the one moment they were needed.
   sayIfUpdated();
   await loadPerm();
+  showSpeakers();
   updateMark();
   await loadGenres();
   await Promise.all([loadScanChoices(), loadStats(), loadUntagged(), importCountOnly(), loadTrash(),
