@@ -134,12 +134,15 @@ async function showNowPlaying(speakers) {
   if (!active.length) { el.innerHTML = ''; return; }
   const books = await Promise.all(active.map((s) => api(`/api/books/${s.bookId}`).catch(() => null)));
   el.innerHTML = `<p class="hint" style="margin-top:.75rem"><strong>Now on speaker${active.length > 1 ? 's' : ''}:</strong></p>`
-    + `<table class="cmp"><tr><th>Player</th><th>Book</th><th>Track</th></tr>`
+    + `<table class="cmp"><tr><th>Player</th><th>Book</th><th>Progress</th></tr>`
     + active.map((s, i) => {
       const b = books[i];
+      const total = b && b.tracks ? b.tracks.length : 0;
+      const pct = total ? Math.round((s.track / total) * 100) : null;
       const title = b ? `<strong>${esc(b.title)}</strong><div class="hint">${esc(b.author || '')}</div>` : `book #${s.bookId}`;
+      const progress = `track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}`;
       return `<tr><td class="mono hint">${esc(s.entity)}</td><td>${title}</td>`
-        + `<td>track ${s.track + 1}${s.listener ? `<div class="hint">${esc(s.listener)}</div>` : ''}</td></tr>`;
+        + `<td>${progress}${s.listener ? `<div class="hint">${esc(s.listener)}</div>` : ''}</td></tr>`;
     }).join('') + '</table>';
 }
 
