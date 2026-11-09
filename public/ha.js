@@ -118,8 +118,29 @@ async function load(tries = 0) {
     $('#haPlayer').innerHTML = `<option value="${esc(c.player)}">${esc(c.player)}</option>`;
     $('#haPlayer').value = c.player;
   }
+  await showNowPlaying(c.speakers || []);
   await loadQueue();
   await loadSensors();
+}
+
+// What the app has last started on each speaker, from the in-memory nowOn state.
+// Shown above the Continue queue so the owner can see which book is on the speaker
+// even when it differs from what the web interface shows (e.g. the web copy was
+// already marked done, or the speaker was started via an HA automation).
+async function showNowPlaying(speakers) {
+  const el = $('#haNowPlaying');
+  if (!el) return;
+  const active = speakers.filter((s) => s.bookId);
+  if (!active.length) { el.innerHTML = ''; return; }
+  const books = await Promise.all(active.map((s) => api(`/api/books/${s.bookId}`).catch(() => null)));
+  el.innerHTML = `<p class="hint" style="margin-top:.75rem"><strong>Now on speaker${active.length > 1 ? 's' : ''}:</strong></p>`
+    + `<table class="cmp"><tr><th>Player</th><th>Book</th><th>Track</th></tr>`
+    + active.map((s, i) => {
+      const b = books[i];
+      const title = b ? `<strong>${esc(b.title)}</strong><div class="hint">${esc(b.author || '')}</div>` : `book #${s.bookId}`;
+      return `<tr><td class="mono hint">${esc(s.entity)}</td><td>${title}</td>`
+        + `<td>track ${s.track + 1}${s.listener ? `<div class="hint">${esc(s.listener)}</div>` : ''}</td></tr>`;
+    }).join('') + '</table>';
 }
 
 // --- the sensors, ready to copy ------------------------------------------------
