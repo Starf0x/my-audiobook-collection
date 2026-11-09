@@ -117,6 +117,7 @@ async function loadHome(opts) {
     b.onclick = (e) => { e.stopPropagation(); playBook(Number(b.dataset.play)); };
   });
   markPlaying();
+  showSpeakers();
   // the card has an author, a year and maybe a genre on it, like any other
   wireCardLinks();
 }
@@ -1592,49 +1593,46 @@ $('#scan').onclick = () => work($('#scan'), 'The scan', startScan);
 
 async function showSpeakers() {
   if (!perm.admin) return;
+  // Remove any existing speaker overlays first
+  document.querySelectorAll('.spk-on').forEach((el) => el.remove());
   const c = await api('/api/ha/config').catch(() => null);
-  const el = $('#haSpeakerNow');
-  if (!el) return;
   const active = (c && c.speakers || []).filter((s) => s.bookId);
-  if (!active.length) { el.hidden = true; return; }
+  if (!active.length) return;
   const books = await Promise.all(active.map((s) => api(`/api/books/${s.bookId}`).catch(() => null)));
-  el.hidden = false;
-  el.innerHTML = `<div class="col-title">On speaker</div><ul>`
-    + active.map((s, i) => {
-      const b = books[i];
-      const total = b && b.tracks ? b.tracks.length : 0;
-      const pct = total ? Math.round((s.track / total) * 100) : null;
-      const btnStyle = 'font-size:.8em;padding:0 .4rem';
-      return `<li style="padding:.35rem .75rem;line-height:1.4">`
-        + `<strong>${esc(b ? b.title : `Book #${s.bookId}`)}</strong>`
-        + (b && b.author ? `<div class="hint">${esc(b.author)}</div>` : '')
-        + `<div class="hint">track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}</div>`
-        + `<div style="margin-top:.25rem;display:flex;gap:.25rem;flex-wrap:wrap">`
-        + `<button class="ghost" style="${btnStyle}" data-play="${s.bookId}" data-track="${s.track}">▶ Play here</button>`
-        + `<button class="ghost" style="${btnStyle}" data-prev="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${s.track === 0 ? ' disabled' : ''}>◀ Prev</button>`
-        + `<button class="ghost" style="${btnStyle}" data-next="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${total && s.track >= total - 1 ? ' disabled' : ''}>Next ▶▶</button>`
-        + (s.listener ? `<button class="ghost" style="${btnStyle}" data-done="${s.bookId}" data-listener="${esc(s.listener)}">✓ Done</button>` : '')
-        + `</div>`
-        + `</li>`;
-    }).join('') + `</ul>`;
-  el.querySelectorAll('button[data-play]').forEach((btn) => {
-    btn.onclick = () => playBook(Number(btn.dataset.play), { track: Number(btn.dataset.track), position: 0 });
-  });
-  el.querySelectorAll('button[data-prev],button[data-next]').forEach((btn) => {
-    btn.onclick = async () => {
-      const bookId = Number(btn.dataset.prev || btn.dataset.next);
-      const from = Number(btn.dataset.track) + (btn.dataset.next !== undefined ? 1 : -1);
-      btn.disabled = true;
-      await post('/api/ha/play', { player: btn.dataset.entity, bookId, from, seek: 0 }).catch(() => null);
+  active.forEach((s, i) => {
+    const b = books[i];
+    const total = b && b.tracks ? b.tracks.length : 0;
+    const pct = total ? Math.round((s.track / total) * 100) : null;
+    const target = document.querySelector(`.tile[data-id="${s.bookId}"], .card[data-id="${s.bookId}"]`);
+    if (!target) return;
+    const bar = document.createElement('div');
+    bar.className = 'spk-on';
+    bar.innerHTML = `<span>🔊 track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}</span>`
+      + `<button class="ghost spk-btn" data-play="${s.bookId}" data-track="${s.track}">▶ Play here</button>`
+      + `<button class="ghost spk-btn" data-prev="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${s.track === 0 ? ' disabled' : ''}>◀ Prev</button>`
+      + `<button class="ghost spk-btn" data-next="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${total && s.track >= total - 1 ? ' disabled' : ''}>Next ▶▶</button>`
+      + (s.listener ? `<button class="ghost spk-btn" data-done="${s.bookId}" data-listener="${esc(s.listener)}">✓ Done</button>` : '');
+    bar.querySelector('[data-play]').onclick = (e) => {
+      e.stopPropagation();
+      playBook(Number(s.bookId), { track: s.track, position: 0 });
+    };
+    bar.querySelectorAll('[data-prev],[data-next]').forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const from = s.track + (btn.dataset.next !== undefined ? 1 : -1);
+        btn.disabled = true;
+        await post('/api/ha/play', { player: s.entity, bookId: s.bookId, from, seek: 0 }).catch(() => null);
+        await showSpeakers();
+      };
+    });
+    const doneBtn = bar.querySelector('[data-done]');
+    if (doneBtn) doneBtn.onclick = async (e) => {
+      e.stopPropagation();
+      doneBtn.disabled = true;
+      await post('/api/listened', { bookId: s.bookId, done: true, for: s.listener }).catch(() => null);
       await showSpeakers();
     };
-  });
-  el.querySelectorAll('button[data-done]').forEach((btn) => {
-    btn.onclick = async () => {
-      btn.disabled = true;
-      await post('/api/listened', { bookId: Number(btn.dataset.done), done: true, for: btn.dataset.listener }).catch(() => null);
-      await showSpeakers();
-    };
+    target.appendChild(bar);
   });
 }
 
