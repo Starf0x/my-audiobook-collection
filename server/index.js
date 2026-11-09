@@ -1100,7 +1100,8 @@ app.get('/api/year', (req, res) => {
 });
 
 app.post('/api/listened', (req, res) => {
-  const user = whoWrites(req);
+  const forUser = req.isAdmin && req.body.for ? String(req.body.for) : null;
+  const user = forUser || whoWrites(req);
   const bookId = Number(req.body.bookId);
   const done = !!req.body.done;
   if (!user) return res.status(400).json({ error: 'No user' });

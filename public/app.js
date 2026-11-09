@@ -1604,15 +1604,37 @@ async function showSpeakers() {
       const b = books[i];
       const total = b && b.tracks ? b.tracks.length : 0;
       const pct = total ? Math.round((s.track / total) * 100) : null;
+      const btnStyle = 'font-size:.8em;padding:0 .4rem';
       return `<li style="padding:.35rem .75rem;line-height:1.4">`
         + `<strong>${esc(b ? b.title : `Book #${s.bookId}`)}</strong>`
         + (b && b.author ? `<div class="hint">${esc(b.author)}</div>` : '')
-        + `<div class="hint">track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}`
-        + ` <button class="ghost" style="font-size:.8em;padding:0 .4rem" data-play="${s.bookId}" data-track="${s.track}">▶ Play here</button></div>`
+        + `<div class="hint">track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}</div>`
+        + `<div style="margin-top:.25rem;display:flex;gap:.25rem;flex-wrap:wrap">`
+        + `<button class="ghost" style="${btnStyle}" data-play="${s.bookId}" data-track="${s.track}">▶ Play here</button>`
+        + `<button class="ghost" style="${btnStyle}" data-prev="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${s.track === 0 ? ' disabled' : ''}>◀ Prev</button>`
+        + `<button class="ghost" style="${btnStyle}" data-next="${s.bookId}" data-entity="${esc(s.entity)}" data-track="${s.track}"${total && s.track >= total - 1 ? ' disabled' : ''}>Next ▶▶</button>`
+        + (s.listener ? `<button class="ghost" style="${btnStyle}" data-done="${s.bookId}" data-listener="${esc(s.listener)}">✓ Done</button>` : '')
+        + `</div>`
         + `</li>`;
     }).join('') + `</ul>`;
   el.querySelectorAll('button[data-play]').forEach((btn) => {
     btn.onclick = () => playBook(Number(btn.dataset.play), { track: Number(btn.dataset.track), position: 0 });
+  });
+  el.querySelectorAll('button[data-prev],button[data-next]').forEach((btn) => {
+    btn.onclick = async () => {
+      const bookId = Number(btn.dataset.prev || btn.dataset.next);
+      const from = Number(btn.dataset.track) + (btn.dataset.next !== undefined ? 1 : -1);
+      btn.disabled = true;
+      await post('/api/ha/play', { player: btn.dataset.entity, bookId, from, seek: 0 }).catch(() => null);
+      await showSpeakers();
+    };
+  });
+  el.querySelectorAll('button[data-done]').forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      await post('/api/listened', { bookId: Number(btn.dataset.done), done: true, for: btn.dataset.listener }).catch(() => null);
+      await showSpeakers();
+    };
   });
 }
 
