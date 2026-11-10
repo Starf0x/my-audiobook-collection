@@ -134,15 +134,12 @@ async function showNowPlaying(speakers) {
   if (!active.length) { el.innerHTML = ''; return; }
   const books = await Promise.all(active.map((s) => api(`/api/books/${s.bookId}`).catch(() => null)));
   el.innerHTML = `<p class="hint" style="margin-top:.75rem"><strong>Now on speaker${active.length > 1 ? 's' : ''}:</strong></p>`
-    + `<table class="cmp"><tr><th>Player</th><th>Book</th><th>Progress</th></tr>`
+    + `<table class="cmp"><tr><th>Player</th><th>Book</th><th>Track</th></tr>`
     + active.map((s, i) => {
       const b = books[i];
-      const total = b && b.tracks ? b.tracks.length : 0;
-      const pct = total ? Math.round((s.track / total) * 100) : null;
       const title = b ? `<strong>${esc(b.title)}</strong><div class="hint">${esc(b.author || '')}</div>` : `book #${s.bookId}`;
-      const progress = `track ${s.track + 1}${total ? ` of ${total}` : ''}${pct !== null ? ` · ${pct}%` : ''}`;
       return `<tr><td class="mono hint">${esc(s.entity)}</td><td>${title}</td>`
-        + `<td>${progress}${s.listener ? `<div class="hint">${esc(s.listener)}</div>` : ''}</td></tr>`;
+        + `<td>track ${s.track + 1}${s.listener ? `<div class="hint">${esc(s.listener)}</div>` : ''}</td></tr>`;
     }).join('') + '</table>';
 }
 
@@ -161,7 +158,7 @@ async function loadSensors() {
   $('#haSensors').innerHTML = rows.map((r) => `<li>
       <code class="mono">${esc(r.entity)}</code>
       <span class="hint">${esc(r.attributes.friendly_name || '')}</span>
-      <button class="ghost copy-one" data-copy="${esc(r.entity)}" title="Copy ${esc(r.entity)}">⧉</button>
+      <button class="ghost copy-one" data-copy="${esc(r.entity)}" title="Copy ${esc(r.entity)}">&#8999;</button>
     </li>`).join('') || '<li class="hint">Nothing to send yet.</li>';
   $('#haCopyAll').hidden = !rows.length;
   $('#haCopyAll').dataset.copy = rows.map((r) => r.entity).join('\n');
@@ -245,7 +242,7 @@ async function refreshPlayers() {
   const chosen = $('#haPlayer').value || (state.config && state.config.player) || '';
   $('#haPlayer').innerHTML = players.length
     ? players.map((p) => `<option value="${esc(p.entity_id)}"${p.entity_id === chosen ? ' selected' : ''}>`
-      + `${esc(p.name)} — ${esc(p.state)}${p.playing ? ` · ${esc(p.playing)}` : ''}</option>`).join('')
+      + `${esc(p.name)} — ${p.state === 'unavailable' ? '(unavailable in HA)' : esc(p.state)}${p.playing ? ` · ${esc(p.playing)}` : ''}</option>`).join('')
     : '<option value="">— Home Assistant knows no media players —</option>';
   await loadQueue();
 }
