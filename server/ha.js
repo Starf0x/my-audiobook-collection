@@ -810,11 +810,17 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
   let pausedAt = 0; // when the speaker entered pause state (0 = not paused)
   let pausedMs = 0; // total milliseconds spent paused for the current track
   let quiet = 0; // polls with nothing playing yet
+  let unavailCount = 0; // consecutive polls with state 'unavailable'
   const stop = () => { clearInterval(following.get(entity)); following.delete(entity); };
   const timer = setInterval(async () => {
     const st = await call(`/states/${entity}`).catch(() => null);
     if (!st) return;
-    if (['off', 'unavailable'].includes(st.state)) return stop();
+    if (st.state === 'off') return stop();
+    if (st.state === 'unavailable') {
+      if (++unavailCount >= 3) return stop();
+      return;
+    }
+    unavailCount = 0;
     if (st.state === 'playing') {
       if (!since) since = Date.now();
       if (pausedAt) { pausedMs += Date.now() - pausedAt; pausedAt = 0; }
