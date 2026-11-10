@@ -814,6 +814,7 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
   const stop = () => { clearInterval(following.get(entity)); following.delete(entity); };
   const timer = setInterval(async () => {
     const st = await call(`/states/${entity}`).catch(() => null);
+    if (following.get(entity) !== timer) return; // cancelled by haPlay() while awaiting HA
     if (!st) return;
     if (st.state === 'off') return stop();
     if (st.state === 'unavailable') {
@@ -852,6 +853,7 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
     const on = nowOn.get(entity);
     if (on) Object.assign(on, { i, at: 0, since: Date.now(), heard: 0, lastPoll: Date.now(), prevOwn: on.own, own: '' });
     saveNowOn();
+    if (following.get(entity) !== timer) return; // cancelled by haPlay() before sending next track
     try { await playTrack(entity, base, tracks[i], '', rate === 1 ? {} : { speed: rate }); } catch { stop(); }
   }, FOLLOW_EVERY.ms);
   timer.unref?.();
