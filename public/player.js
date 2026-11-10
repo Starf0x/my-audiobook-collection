@@ -409,21 +409,21 @@ maybe('#trackSelect', (el) => {
   el.onchange = async (e) => {
     const idx = Number(e.target.value);
     if (remote.player && state.book) {
-      state.track = idx;
-      drawSteps();
-      const t = state.book.tracks[idx];
-      if (t) $('#pTrack').textContent = `${idx + 1}/${state.book.tracks.length} · ${t.title}`;
+      // In speaker mode: update the UI without playing in the browser (which
+      // would trigger the play interceptor and pause the speaker), then send
+      // the new track directly to the HA speaker.
+      playTrack(idx, 0, false);
       try {
         await post('/api/ha/speaker/play', {
           player: remote.player, bookId: state.book.id, from: idx, seek: 0, speed: speedWanted(),
         });
         remote.book = state.book.id;
         remote.state = 'playing';
-        drawRemote();
       } catch (err) { toast(err.message); }
-    } else {
-      playTrack(idx);
+      drawRemote();
+      return;
     }
+    playTrack(idx);
   };
 });
 
@@ -816,23 +816,9 @@ function useWhere(player) {
 const tellSpeed = (apply) => (state.user || remote.player
   ? post('/api/speed', { speed: speedWanted(), apply, player: remote.player }).catch(() => null) : null);
 maybe('#pSpeed', (el) => el.addEventListener('change', async () => {
-  if (remote.player && state.book && remote.state === 'playing') {
-    try {
-      await post('/api/ha/speaker/play', {
-        player: remote.player, bookId: state.book.id, from: state.track,
-        seek: Math.round(audio.currentTime || 0), speed: speedWanted(),
-      });
-      remote.book = state.book.id;
-      remote.state = 'playing';
-      toast(`The speaker plays at ${speedWanted().toFixed(1)}× now.`);
-      drawRemote();
-    } catch (err) { toast(err.message); }
-    tellSpeed(false);
-  } else {
-    const r = await tellSpeed(true);
-    // said, with how long it took: a switch that is slow shows up here (2.14.380)
-    if (r?.restarted?.length) toast(`The speaker plays at ${r.speed}× now (switched in ${Math.round(r.took / 1000)} s).`);
-  }
+  const r = await tellSpeed(true);
+  // said, with how long it took: a switch that is slow shows up here (2.14.380)
+  if (r?.restarted?.length) toast(`The speaker plays at ${r.speed}× now (switched in ${Math.round(r.took / 1000)} s).`);
 }));
 // and once on opening, for a speed chosen before the server kept it — kept only,
 // so opening the page on another device does not change what a speaker is doing
