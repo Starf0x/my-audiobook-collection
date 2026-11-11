@@ -30,7 +30,7 @@ globalThis.fetch = async (url, init) => {
   sent.push({ url, token: init.headers['X-Webhook-Token'], body: JSON.parse(init.body) });
   return { ok: answer < 300, status: answer };
 };
-const { reportOnce, kind } = await import('../server/usage.js');
+const { reportOnce, platform } = await import('../server/usage.js');
 const at = (d) => new Date(`${d}T09:30:00`);
 
 // --- built-in collector: active by default (DEFAULT_TOKEN is baked in) ----
@@ -38,8 +38,25 @@ await reportOnce('1.0.0', at('2026-11-03'));
 check('by default it reports to the built-in collector',
   sent[0].url, 'https://hkjhykihflhfg5.the-airheads.com/webhook');
 check('the app, its version, the day, what it runs as and day one',
-  [sent[0].body.appName, sent[0].body.version, sent[0].body.date, sent[0].body.dck, sent[0].body.days],
-  ['My Audiobook Collection', '1.0.0', '2026-11-03', kind() === 'DCK', 1]);
+  [sent[0].body.appName, sent[0].body.version, sent[0].body.date, sent[0].body.platform, sent[0].body.dck, sent[0].body.days],
+  ['My Audiobook Collection', '1.0.0', '2026-11-03', platform(), platform() === 'docker', 1]);
+
+// what it runs in, from fake roots: Docker's marker, LXC's two, and none
+const FAKE = path.join(ROOT, 'fixtures', 'usage-test', 'roots');
+const fake = (name, files) => {
+  const root = path.join(FAKE, name) + path.sep;
+  for (const [f, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(root + f), { recursive: true });
+    fs.writeFileSync(root + f, text);
+  }
+  return root;
+};
+check('Docker is told by /.dockerenv', platform(fake('docker', { '.dockerenv': '' })), 'docker');
+check('LXC by container=lxc for process 1',
+  platform(fake('lxc-env', { 'proc/1/environ': 'PATH=/bin\0container=lxc\0' })), 'lxc');
+check('or by /run/systemd/container', platform(fake('lxc-systemd', { 'run/systemd/container': 'lxc\n' })), 'lxc');
+check('another container is not LXC', platform(fake('podman', { 'run/systemd/container': 'podman\n' })), 'other');
+check('and a plain machine is other', platform(fake('plain', {})), 'other');
 check('sends a random id, never the real server name',
   [sent[0].body.computerName !== os.hostname(), sent[0].body.computerName.length],
   [true, 36]);

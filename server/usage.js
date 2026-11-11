@@ -36,7 +36,16 @@ const INSTALL_ID = 'usageInstallId'; // a random id, made once, for the default 
 const EVERY = 60 * 60 * 1000;
 
 const day = (d = new Date()) => d.toLocaleDateString('sv-SE'); // yyyy-mm-dd, local
-export const kind = () => (fs.existsSync('/.dockerenv') ? 'DCK' : 'LXC');
+// What it runs in: 'docker', 'lxc' or 'other' (a plain machine or VM). Docker leaves
+// /.dockerenv; LXC (and Proxmox) set container=lxc for process 1, and systemd copies
+// that to /run/systemd/container. `root` is only there so the test can fake one.
+export function platform(root = '/') {
+  const read = (p) => { try { return fs.readFileSync(root + p, 'utf8'); } catch { return ''; } };
+  if (fs.existsSync(root + '.dockerenv')) return 'docker';
+  if (read('proc/1/environ').split('\0').includes('container=lxc')
+    || read('run/systemd/container').trim() === 'lxc') return 'lxc';
+  return 'other';
+}
 // days counted from the first one, that one included: day one is 1
 export const daysSince = (since, today) =>
   Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${since}T00:00:00Z`)) / 86400000) + 1;
@@ -69,7 +78,8 @@ export async function reportOnce(version, now = new Date()) {
     // their own URL asked for their own numbers, so they get their own machine's name
     // (Unraid passes the server's name as HOST_HOSTNAME; the container id would churn).
     computerName: ownUrl ? (process.env.HOST_HOSTNAME || os.hostname()) : installId(),
-    dck: kind() === 'DCK', // true in a Docker container
+    platform: platform(),
+    dck: platform() === 'docker', // kept for collectors that only know this field
     days: daysSince(since, today),
   };
   try {
