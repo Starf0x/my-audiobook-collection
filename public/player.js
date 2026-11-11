@@ -405,7 +405,27 @@ audio.addEventListener('play', markPlaying);
 audio.addEventListener('pause', markPlaying);
 audio.addEventListener('ended', markPlaying);
 
-maybe('#trackSelect', (el) => { el.onchange = (e) => playTrack(Number(e.target.value)); });
+maybe('#trackSelect', (el) => {
+  el.onchange = async (e) => {
+    const idx = Number(e.target.value);
+    if (remote.player && state.book) {
+      // In speaker mode: update the UI without playing in the browser (which
+      // would trigger the play interceptor and pause the speaker), then send
+      // the new track directly to the HA speaker.
+      playTrack(idx, 0, false);
+      try {
+        await post('/api/ha/speaker/play', {
+          player: remote.player, bookId: state.book.id, from: idx, seek: 0, speed: speedWanted(),
+        });
+        remote.book = state.book.id;
+        remote.state = 'playing';
+      } catch (err) { toast(err.message); }
+      drawRemote();
+      return;
+    }
+    playTrack(idx);
+  };
+});
 
 // A chapter back and a chapter on, for the page that has no pulldown. Back from
 // the first and on from the last do nothing rather than wrapping round: a book
