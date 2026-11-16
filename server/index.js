@@ -1248,6 +1248,8 @@ const playing = new Map(); // user -> book id
 const NOW_LISTENING = 'nowListening';
 const heard = new Map(); // user -> when the page last saved a place
 const QUIET_AFTER = Number(process.env.QUIET_AFTER_MS) || 3 * 60 * 1000;
+const START_DEBOUNCE = 30 * 1000;
+const pendingStart = new Map(); // user -> timer
 const keepListening = () => setSetting(NOW_LISTENING, JSON.stringify([...playing]));
 try {
   for (const [user, id] of JSON.parse(getSetting(NOW_LISTENING) || '[]')) { playing.set(user, id); heard.set(user, Date.now()); }
@@ -1273,12 +1275,26 @@ app.post('/api/playing', (req, res) => {
   if (!book) return res.json({ ok: true });
   const was = playing.get(user);
   if (on && was !== id) {
+    const prev = pendingStart.get(user);
+    if (prev) { clearTimeout(prev); pendingStart.delete(user); }
     playing.set(user, id);
     heard.set(user, Date.now());
     keepListening();
-    startedListening(user, book.title, book.author);
+    pendingStart.set(user, setTimeout(() => {
+      pendingStart.delete(user);
+      startedListening(user, book.title, book.author);
+    }, START_DEBOUNCE));
   } else if (!on && was === id) {
-    stopped(user, id, (req.body || {}).how);
+    const pend = pendingStart.get(user);
+    if (pend) {
+      clearTimeout(pend);
+      pendingStart.delete(user);
+      playing.delete(user);
+      heard.delete(user);
+      keepListening();
+    } else {
+      stopped(user, id, (req.body || {}).how);
+    }
   }
   return res.json({ ok: true });
 });
