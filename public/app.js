@@ -1619,7 +1619,7 @@ async function showSpeakers() {
     const total = b && b.tracks ? b.tracks.length : 0;
     entry.querySelector('[data-play]').onclick = (e) => {
       e.stopPropagation();
-      playBook(Number(s.bookId), { track: s.track, position: 0 });
+      playBook(Number(s.bookId));
     };
     entry.querySelectorAll('[data-prev],[data-next]').forEach((btn) => {
       btn.onclick = async (e) => {
