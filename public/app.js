@@ -672,7 +672,7 @@ $('#importList').onclick = async (e) => {
   $('#authors ul').innerHTML = '';
   if (e !== 'keep') importPage = 0;
   $('#books .list').innerHTML = '<div class="empty">Looking in the import folder…</div>';
-  const { d, error } = await loadImport(true);
+  const { d, error } = await loadImport(true, e !== 'keep');
   if (error) {
     $('#books .list').innerHTML = `<div class="empty missing">${esc(error)}</div>`;
     return;

@@ -1678,6 +1678,7 @@ app.use((err, req, res, next) => {
 settleTagAll();
 purgeExpired(Date.now());
 setInterval(() => purgeExpired(Date.now()), 24 * 60 * 60 * 1000).unref();
+setInterval(() => lookAgain(), 5 * 60 * 1000).unref();
 
 // A copy of the database, beside it, once a day. The books survive anything;
 // where everybody is in them does not, and lived in one file with no second
