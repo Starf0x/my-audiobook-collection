@@ -389,11 +389,18 @@ const drawVol = () => {
   maybe('#vol', (el) => paint(el, audio.muted ? 0 : audio.volume));
 };
 maybe('#vol', (el) => {
+  let volTimer = null;
   el.oninput = () => {
     audio.muted = false;
     audio.volume = Number(el.value) / 100;
     localStorage[VOL] = String(audio.volume);
     drawVol();
+    if (remote.player) {
+      clearTimeout(volTimer);
+      volTimer = setTimeout(() => {
+        post('/api/ha/speaker/control', { player: remote.player, action: 'volume', volume: audio.volume }).catch(() => {});
+      }, 300);
+    }
   };
 });
 maybe('#pVolBtn', (el) => { el.onclick = () => { audio.muted = !audio.muted; drawVol(); }; });

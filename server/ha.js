@@ -861,9 +861,14 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
 }
 // Pause, carry on or stop what a player is playing. Stop also ends the app handing
 // it the next track, or the next track would start the moment it went quiet.
-export async function haControl({ player, action } = {}) {
+export async function haControl({ player, action, volume } = {}) {
   const entity = String(player || haSettings().player || '').trim();
   if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
+  if (action === 'volume') {
+    const level = Math.min(1, Math.max(0, Number(volume)));
+    await call('/services/media_player/volume_set', { method: 'POST', body: { entity_id: entity, volume_level: level } });
+    return { player: entity, action, volume: level };
+  }
   const service = { pause: 'media_pause', play: 'media_play', stop: 'media_stop' }[action];
   if (!service) throw new Error('Pause, play or stop.');
   if (action === 'stop') {
