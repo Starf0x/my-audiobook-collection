@@ -1671,4 +1671,6 @@ window.begin = async () => {
   // reloaded during one far more often than during anything else here
   const converting = await api('/api/convert/status').catch(() => null);
   if (converting && converting.running) window.followConvert?.();
+  setInterval(importCountOnly, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) importCountOnly(); });
 };
