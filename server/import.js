@@ -184,7 +184,7 @@ function checkInBackground(root) {
   importState.checking = true;
   setImmediate(async () => {
     try {
-      if (signature(bookFolders(root)) !== cache.sig) {
+      if (!cache || signature(bookFolders(root)) !== cache.sig) {
         await build(root, true);
         importState.changed++;
       }
