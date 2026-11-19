@@ -1504,8 +1504,8 @@ app.post('/api/ha/speaker/speed', wrap(async (req, res) => {
   res.json(await haSpeed(req, { player, speed, version: VERSION }));
 }));
 app.post('/api/ha/speaker/control', wrap(async (req, res) => {
-  const { player, action } = req.body || {};
-  res.json(await haControl({ player, action }));
+  const { player, action, volume } = req.body || {};
+  res.json(await haControl({ player, action, volume }));
 }));
 app.get('/api/ha/players', requireAdmin, wrap(async (req, res) => res.json(await haPlayers())));
 
