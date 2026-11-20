@@ -627,13 +627,15 @@ const handOver = (id, track, position) => {
 window.addEventListener('pagehide', () => {
   saveProgress(true);
   if (handingOver || !state.book) return;
-  sessionStorage[CARRY] = JSON.stringify({
-    who: state.user,
-    id: state.book.id,
-    track: state.track,
-    position: audio.currentTime,
-    playing: !audio.paused && !audio.ended,
-  });
+  try {
+    sessionStorage[CARRY] = JSON.stringify({
+      who: state.user,
+      id: state.book.id,
+      track: state.track,
+      position: audio.currentTime,
+      playing: !audio.paused && !audio.ended,
+    });
+  } catch { /* private mode / storage blocked */ }
 });
 
 // Whose carry it is, asked of the **server** rather than of this tab.

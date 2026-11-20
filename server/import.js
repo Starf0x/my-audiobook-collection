@@ -295,7 +295,8 @@ export function destinationFor({ genre, author, series, title }) {
 // What a folder of audio adds up to, in the terms that decide which of two
 // copies of the same book is the better one to keep.
 export async function qualityOf(dir) {
-  const files = audioFiles(dir).length ? audioFiles(dir) : (discFiles(dir) || []);
+  const af = audioFiles(dir);
+  const files = af.length ? af : (discFiles(dir) || []);
   const out = {
     files: files.length, bytes: 0, duration: 0, bitrate: 0,
     sampleRate: 0, channels: 0, codec: '', lossless: false,
@@ -367,6 +368,7 @@ export async function importBook({ source, genre, author, series, seriesNo, titl
 
   beginFileWork();
   let replacedPath = '';
+  let moved = false;
   try {
     if (fs.existsSync(dest)) {
       // step the old copy aside under its own name; the new one takes the path,
@@ -382,6 +384,7 @@ export async function importBook({ source, genre, author, series, seriesNo, titl
              `${quality.bitrate} kbps`, new Date().toISOString());
     }
     await moveFolder(source, dest);
+    moved = true;
     pruneEmptyParents(source);
     // put it in the library now: a full rescan of a big share takes minutes
     // force: a replacement lands on the very same file names, and "unchanged"
@@ -398,10 +401,15 @@ export async function importBook({ source, genre, author, series, seriesNo, titl
     return { dest, replacedPath, ...row };
   } catch (err) {
     const e = explainFileError(err, `The import of ${path.basename(source)}`);
-    // The copy that was there has been stepped aside but the new one never
-    // arrived: put it back, or the library points at a folder that is not there.
-    if (replacedPath && !fs.existsSync(dest) && fs.existsSync(replacedPath)) {
+    // Restore the old copy when one was stepped aside. Two cases:
+    // (a) moveFolder failed — dest is empty, source still has the book;
+    // (b) moveFolder succeeded but addOne failed — the new book is at dest but
+    //     not yet in the DB. Move it out of the way before restoring the old one.
+    if (replacedPath && fs.existsSync(replacedPath)) {
       try {
+        if (moved && fs.existsSync(dest)) {
+          fs.renameSync(dest, prefixed(dest, NOT_IMPORTED));
+        }
         fs.renameSync(replacedPath, dest);
         db.prepare('DELETE FROM replaced WHERE path = ?').run(replacedPath);
       } catch { /* leave it on the Replaced list to be put back by hand */ }

@@ -717,10 +717,14 @@ const placeOn = (was, st) => {
 // minute under the listener who pressed Play, and HA is told soon after.
 export const KEEP_EVERY = { ms: 30000 };
 let keeping = null;
+let keepingBusy = false;
 function keepPlaces() {
   if (keeping) return;
   keeping = setInterval(async () => {
     if (!nowOn.size) { clearInterval(keeping); keeping = null; return; }
+    if (keepingBusy) return;
+    keepingBusy = true;
+    try {
     for (const [entity, was] of nowOn) {
       const st = await call(`/states/${entity}`).catch(() => null);
       const now = Date.now();
@@ -766,6 +770,7 @@ function keepPlaces() {
         .run(was.listener, was.bookId, idx, position);
       haPushSoon();
     }
+    } finally { keepingBusy = false; }
   }, KEEP_EVERY.ms);
   keeping.unref?.();
 }

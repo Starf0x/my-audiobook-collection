@@ -299,7 +299,10 @@ async function loadQueue() {
     });
   });
 }
-$('#haListener').onchange = () => { save({ listener: $('#haListener').value }); loadQueue(); };
-$('#haEvery').onchange = () => save({ every: $('#haEvery').value }).then(() => toast('Saved.'));
+$('#haListener').onchange = async () => {
+  await save({ listener: $('#haListener').value }).catch(() => {});
+  loadQueue();
+};
+$('#haEvery').onchange = () => save({ every: $('#haEvery').value }).then(() => toast('Saved.')).catch(() => toast('Save failed.'));
 
 load();
