@@ -905,12 +905,17 @@ function importForm(d, c) {
     // Never overwrite a book unseen: if one is already there, the two copies are
     // compared first and it is the admin who decides which one the library keeps.
     // That reads every file of both, so it is not instant on a share.
-    const bar = newBar('Looking at what is already there…');
-    const clash = await api('/api/import/compare?' + new URLSearchParams(body)).catch(() => ({ exists: false }));
-    bar.done(0);
-    if (clash.exists) return askConflict(body, clash);
-    $('#importDlg').close();
-    await work($('#iGo'), 'The import', () => runImport(body));
+    $('#iGo').disabled = true;
+    try {
+      const bar = newBar('Looking at what is already there…');
+      const clash = await api('/api/import/compare?' + new URLSearchParams(body)).catch(() => ({ exists: false }));
+      bar.done(0);
+      if (clash.exists) return askConflict(body, clash);
+      $('#importDlg').close();
+      await work($('#iGo'), 'The import', () => runImport(body));
+    } finally {
+      $('#iGo').disabled = false;
+    }
   };
   $('#importDlg').showModal();
 }
@@ -930,7 +935,7 @@ async function runImport(body) {
     : `Imported into ${r.dest}`);
   await refreshLibrary();
   if (r.genre && r.author) await openInLibrary(r.genre, r.author);
-  toast(`${r.title} is now under ${r.genre} / ${r.author}. Import is in the left column for the next one.`);
+  toast(`${r.title || body.title} is now under ${r.genre || body.genre} / ${r.author || body.author}. Import is in the left column for the next one.`);
 }
 
 // --- two copies of the same book ---------------------------------------
