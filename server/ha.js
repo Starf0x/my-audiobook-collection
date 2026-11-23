@@ -567,6 +567,7 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed, l
   const base = baseUrl(req);
   const tracks = db.prepare('SELECT id, path, duration FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx')
     .all(id, Number(from) || 0);
+  if (!tracks.length) throw new Error('No tracks found for that book and position.');
   // HA has no way to tell a speaker how fast to play (2.14.325): a speed other
   // than 1× is played by this app, the track sent through ffmpeg's atempo — and
   // then from the second to start at, since a seek into a stream cannot be asked.

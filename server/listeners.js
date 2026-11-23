@@ -65,7 +65,7 @@ const q = {
   all: db.prepare('SELECT * FROM users ORDER BY name'),
   add: db.prepare(`INSERT INTO users (name, state, pass, salt, reason, knows_admin, requested_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)`),
-  setPass: db.prepare('UPDATE users SET pass = ?, salt = ? WHERE name = ?'),
+  setPass: db.prepare('UPDATE users SET pass = ?, salt = ? WHERE name = ? AND pass IS NULL'),
   setState: db.prepare('UPDATE users SET state = ?, decided_at = ? WHERE name = ?'),
   seen: db.prepare('UPDATE users SET last_seen = ?, first_seen = COALESCE(NULLIF(first_seen, %s), ?) WHERE name = ?'
     .replace('%s', "''")),
@@ -219,7 +219,8 @@ export async function signIn({ name, password, from = '' }) {
     if (row.state === 'pending') throw new Error('That account is waiting for the administrator to approve it.');
     if (row.state !== 'approved') throw new Error('That account cannot sign in.');
     const salt = crypto.randomBytes(16).toString('hex');
-    q.setPass.run((await scrypt(said, salt)).toString('hex'), salt, row.name);
+    const written = q.setPass.run((await scrypt(said, salt)).toString('hex'), salt, row.name);
+    if (!written.changes) throw new Error('That name has already been claimed. Sign in with your password.');
   } else {
     const key = await scrypt(said, row.salt);
     const kept = Buffer.from(row.pass, 'hex');
@@ -334,9 +335,9 @@ export function finishedABook(user, bookId) {
   // start date on a dashboard is worse than a blank one.
   const began = db.prepare('SELECT started FROM progress WHERE user = ? AND book_id = ?')
     .get(who, Number(bookId));
-  db.prepare('INSERT INTO completions (user, book_id, title, at, started) VALUES (?, ?, ?, ?, ?)')
+  const changed = db.prepare('INSERT OR IGNORE INTO completions (user, book_id, title, at, started) VALUES (?, ?, ?, ?, ?)')
     .run(who, Number(bookId), book?.title || '', new Date().toISOString(), began?.started || '');
-  return true;
+  return changed.changes > 0;
 }
 
 export const finishedCount = (user) =>

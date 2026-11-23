@@ -152,6 +152,8 @@ export async function claim(name, password, who = '') {
   }
   const salt = crypto.randomBytes(16).toString('hex');
   const key = await hashWith(String(password), salt);
+  // Re-check after the await — a concurrent call may have written between then and now.
+  if (!unclaimed()) throw new Error('This app already has an administrator.');
   setSetting(NAME, wanted);
   setSetting(SALT, salt);
   setSetting(HASH, key.toString('hex'));
@@ -178,6 +180,7 @@ export async function unlock(password, who = '') {
     want = storedHash;
     given = await hash(String(password || ''));
   } else {
+    // scrypt runs on every attempt — the input changes each time so there is nothing to cache
     const kept = storedPass();
     want = Buffer.from(kept.hash, 'hex');
     given = await hashWith(String(password || ''), kept.salt);

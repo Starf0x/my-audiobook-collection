@@ -147,7 +147,7 @@ const fileMeta = (t) => {
 const metadata = (b) => ({
   title: b.title,
   subtitle: null,
-  genres: b.genre ? [b.genre] : [],
+  genres: b.genre ? [{ id: `ge-${b64(b.genre)}`, name: b.genre }] : [],
   publishedYear: b.year || null,
   publishedDate: null,
   publisher: null,
@@ -157,7 +157,7 @@ const metadata = (b) => ({
   language: null,
   explicit: false,
   authors: [{ id: `au-${b64(b.author || '')}`, name: b.author || '' }],
-  narrators: b.narrator ? [b.narrator] : [],
+  narrators: b.narrator ? [{ id: `na-${b64(b.narrator)}`, name: b.narrator }] : [],
   // the sequence is a string in ABS, and a book with no number has none rather
   // than a nought, which would sort it in front of book one
   series: b.series ? [{ id: `se-${b64(b.series)}`, name: b.series,
@@ -577,7 +577,7 @@ export function playbackSession(b, who, req, version) {
     },
     serverVersion: version,
     date: when.toISOString().slice(0, 10),
-    dayOfWeek: DAYS[when.getDay()],
+    dayOfWeek: DAYS[when.getUTCDay()],
     timeListening: 0,
     // where this listener already is, so a session opened on a book in progress
     // does not describe it as starting from nought
