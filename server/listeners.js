@@ -206,8 +206,6 @@ export async function signIn({ name, password, from = '' }) {
     return new Error('That name and password do not go together.');
   };
   if (!row) throw no();
-  if (row.state === 'pending') throw new Error('That account is waiting for the administrator to approve it.');
-  if (row.state !== 'approved') throw new Error('That account cannot sign in.');
 
   if (!row.pass) {
     // a name from before accounts existed: it is claimed by choosing a password
@@ -223,6 +221,9 @@ export async function signIn({ name, password, from = '' }) {
     const kept = Buffer.from(row.pass, 'hex');
     if (key.length !== kept.length || !crypto.timingSafeEqual(key, kept)) throw no();
   }
+  // State checks come after credential verification — avoids revealing which names exist.
+  if (row.state === 'pending') throw new Error('That account is waiting for the administrator to approve it.');
+  if (row.state !== 'approved') throw new Error('That account cannot sign in.');
   right(from);
   return { name: row.name, token: openSession(row.name), claimed: !row.pass };
 }

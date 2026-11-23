@@ -848,6 +848,7 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
     // the first track was started `skipped` seconds in, so less of it is left to hear
     // and at another speed it takes that much more or less time
     const left = ((Number(tracks[i].duration) || 0) - (i === 0 ? skipped : 0)) / rate;
+    if (left <= 0) return; // duration unknown — do not auto-advance
     if (heard < left * 0.9) return stop(); // stopped by hand
     i++;
     if (i >= tracks.length) return stop();
