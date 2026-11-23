@@ -235,6 +235,7 @@ async function convertOne(src, startNo, onSeconds, mark) {
       const m = /^out_time=(\d+):(\d\d):(\d\d(?:\.\d+)?)/.exec(line.trim());
       if (!m) continue;
       const secs = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+      if (isNaN(secs)) continue;
       if (secs > seen) { onSeconds(secs - seen); seen = secs; }
     }
   }, { quiet: QUIET });

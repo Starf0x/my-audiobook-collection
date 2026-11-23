@@ -111,7 +111,8 @@ const overlap = (theirs, ours) => {
   const mine = ours.map(plain).filter(Boolean);
   return theirs.filter((t) => {
     const them = plain(t);
-    return them && mine.some((m) => m === them || m.includes(them) || them.includes(m));
+    return them && mine.some((m) => m === them
+      || (them.length >= 3 && m.length >= 3 && (m.includes(them) || them.includes(m))));
   }).length;
 };
 
@@ -248,6 +249,7 @@ export const ONLINE_ROWS = 'seriesOnlineRows';
 })();
 
 export async function checkSeriesOnline(all, { ask = defaultAsk } = {}) {
+  const savedSeries = onlineProgress.series.slice();
   Object.assign(onlineProgress, {
     running: true, done: 0, total: all.length, current: '', found: 0, error: '', series: [],
   });
@@ -288,6 +290,7 @@ export async function checkSeriesOnline(all, { ask = defaultAsk } = {}) {
     return onlineProgress.series;
   } catch (e) {
     onlineProgress.error = e.message;
+    onlineProgress.series = savedSeries;
     throw e;
   } finally {
     onlineProgress.running = false;

@@ -26,11 +26,19 @@ import { insideAny } from './safepath.js';
 
 const AUDIO = /\.(mp3|m4a|m4b|ogg|flac|opus)$/i;
 
-const dirsIn = (dir) => fs.readdirSync(dir, { withFileTypes: true })
-  .filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name));
-const audioIn = (dir) => fs.readdirSync(dir, { withFileTypes: true })
-  .filter((e) => e.isFile() && AUDIO.test(e.name)).map((e) => path.join(dir, e.name))
-  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+const dirsIn = (dir) => {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name));
+  } catch { return []; }
+};
+const audioIn = (dir) => {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && AUDIO.test(e.name)).map((e) => path.join(dir, e.name))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  } catch { return []; }
+};
 
 // Every audio file under a folder, with the sub-folder it came from, deepest last
 // so a two disc book keeps its order.
@@ -161,18 +169,29 @@ export async function fileSkipped({ source, reason, genre, author, series, title
   // or every book of one disc would end up with "Disc 01 - " on every file
   const discs = new Set(found.map((f) => f.from).filter(Boolean));
   const moved = [];
-  for (const { file, from } of found) {
-    const base = path.basename(file);
-    const wanted = discs.size > 1 && from ? `${from.replace(/[\\/]/g, ' - ')} - ${base}` : base;
-    const to = path.join(dest, freeName(dest, wanted));
-    try {
-      fs.renameSync(file, to);
-    } catch (e) {
-      if (e.code !== 'EXDEV') throw e;
-      fs.copyFileSync(file, to);
-      fs.rmSync(file);
+  try {
+    for (const { file, from } of found) {
+      const base = path.basename(file);
+      const wanted = discs.size > 1 && from ? `${from.replace(/[\\/]/g, ' - ')} - ${base}` : base;
+      const to = path.join(dest, freeName(dest, wanted));
+      try {
+        fs.renameSync(file, to);
+      } catch (e) {
+        if (e.code !== 'EXDEV') throw e;
+        fs.copyFileSync(file, to);
+        try {
+          fs.rmSync(file);
+        } catch (rmErr) {
+          console.warn(`fileSkipped: could not remove original after cross-device copy: ${file} — ${rmErr.message}`);
+        }
+      }
+      moved.push({ from: file, to });
     }
-    moved.push(to);
+  } catch (e) {
+    for (const { from: src, to } of moved) {
+      try { fs.renameSync(to, src); } catch { /* best effort rollback */ }
+    }
+    throw e;
   }
   // what is left of where it came from: the disc folders it emptied, and then the
   // folders above them, but never the genre folder
@@ -183,6 +202,6 @@ export async function fileSkipped({ source, reason, genre, author, series, title
   }
 
   await addOne({ genre, author: clean(author), series: clean(series), dir: dest, force: true });
-  const row = db.prepare('SELECT id, genre, author, series, title FROM books WHERE path = ?').get(dest) || {};
+  const row = db.prepare('SELECT id, genre, author, series, title FROM books WHERE path = ?').get(path.resolve(dest)) || {};
   return { dest, files: moved.length, ...row };
 }

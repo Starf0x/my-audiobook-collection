@@ -160,7 +160,7 @@ export async function claim(name, password, who = '') {
   // Signed in at once: having just chosen the password, being asked for it is
   // a question with no purpose.
   const token = crypto.randomBytes(24).toString('hex');
-  sessions.set(token, Date.now());
+  sessions.set(token);
   wrong.delete(who);
   return { token, admin: true, name: wanted };
 }
@@ -195,7 +195,7 @@ export async function unlock(password, who = '') {
   }
   wrong.delete(who);
   const token = crypto.randomBytes(24).toString('hex');
-  sessions.set(token, Date.now());
+  sessions.set(token);
   return { token, admin: true };
 }
 

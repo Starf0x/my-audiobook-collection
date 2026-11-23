@@ -50,14 +50,22 @@ const dirBytes = (name, size, offset) => {
 // Every name in one archive has to be unique, and two discs can both hold a
 // "01.mp3": the second one becomes "01 (2).mp3" rather than overwriting the first.
 export function uniqueNames(files) {
-  const seen = new Map();
+  const seen = new Set();
   return files.map((file) => {
     const base = path.basename(file);
-    const n = (seen.get(base.toLowerCase()) || 0) + 1;
-    seen.set(base.toLowerCase(), n);
-    if (n === 1) return base;
+    if (!seen.has(base.toLowerCase())) {
+      seen.add(base.toLowerCase());
+      return base;
+    }
     const dot = base.lastIndexOf('.');
-    return dot > 0 ? `${base.slice(0, dot)} (${n})${base.slice(dot)}` : `${base} (${n})`;
+    let n = 2;
+    let name;
+    do {
+      name = dot > 0 ? `${base.slice(0, dot)} (${n})${base.slice(dot)}` : `${base} (${n})`;
+      n++;
+    } while (seen.has(name.toLowerCase()));
+    seen.add(name.toLowerCase());
+    return name;
   });
 }
 
