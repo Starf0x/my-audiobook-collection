@@ -280,6 +280,9 @@ export async function convertBook(id) {
     const out = await convert_(id);
     Object.assign(convertProgress, { files: out.files, kept: out.kept });
     return out;
+  } catch (e) {
+    convertProgress.error = e.message;
+    throw e;
   } finally {
     convertProgress.finishedAt = new Date().toISOString();
     convertProgress.running = false;

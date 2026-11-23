@@ -326,6 +326,7 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
   // thing that answers "whose book is this?" when one turns up on somebody's
   // shelf: Music Assistant signs in as one listener and writes every position
   // against that name, whoever is actually listening.
+  const position = Math.min(left, tracks[tracks.length - 1]?.duration || 0);
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, done, via)
               VALUES (?, ?, ?, ?, ?, COALESCE(?, 0), 'music-assistant')
               ON CONFLICT(user, book_id) DO UPDATE SET
@@ -333,7 +334,7 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
                 updated = excluded.updated, via = excluded.via,
                 -- said nothing: leave the tick alone. Said something: it decides.
                 done = COALESCE(?, progress.done)`)
-    .run(user || '', bookId, idx, left, new Date().toISOString(), said, said);
+    .run(user || '', bookId, idx, position, new Date().toISOString(), said, said);
   // and HA hears of it within seconds, as it does of a place kept by the page (2.14.336)
   haPushSoon();
 }
@@ -719,7 +720,8 @@ export const filteredBooks = (filter) => {
   const dot = said.indexOf('.');
   if (dot < 0) return all;
   const [group, value] = [said.slice(0, dot), said.slice(dot + 1)];
-  const name = nameIn(decodeURIComponent(value));
+  let name;
+  try { name = nameIn(decodeURIComponent(value)); } catch { return all; }
   if (group === 'narrators') return all.filter((b) => b.narrator === name);
   if (group === 'authors') return all.filter((b) => b.author === name);
   if (group === 'series') return all.filter((b) => b.series === name);
