@@ -246,7 +246,7 @@ async function convertOne(src, startNo, onSeconds, mark) {
     const title = chapters[i]?.title || (made.length > 1 ? `Chapter ${i + 1}` : stem);
     const no = String(startNo + i).padStart(2, '0');
     let dest = path.join(dir, `${no} - ${safeName(title) || stem}.mp3`);
-    if (fs.existsSync(dest)) dest = path.join(dir, `${no} - ${safeName(title) || stem} (${Date.now()}).mp3`);
+    if (fs.existsSync(dest)) dest = path.join(dir, `${no} - ${safeName(title) || stem} (${randomUUID().slice(0, 8)}).mp3`);
     fs.renameSync(path.join(dir, file), dest);
     named.push({ file: dest, title });
   });
@@ -300,6 +300,16 @@ async function convert_(id) {
                               ORDER BY idx`).all(book.id).map((t) => t.path)
     .filter((p) => fs.existsSync(p));
   if (!sources.length) throw new Error('Every file of that book is already an MP3.');
+
+  // Remove orphaned temp files from any previous failed run before touching anything.
+  for (const src of sources) {
+    const dir = path.dirname(src);
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (f.startsWith('.converting-')) fs.rmSync(path.join(dir, f), { force: true });
+      }
+    } catch { /* folder unreadable — skip */ }
+  }
 
   let seconds = 0;
   for (const src of sources) seconds += (await probe(src)).duration;

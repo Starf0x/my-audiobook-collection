@@ -531,7 +531,7 @@ export async function haPush(req, version) {
       written.push(entity);
     }
   } catch (e) {
-    Object.assign(lastPush, { error: e.message });
+    Object.assign(lastPush, { at: new Date().toISOString(), entities: written.length, error: e.message });
     throw e;
   }
   Object.assign(lastPush, { at: new Date().toISOString(), entities: written.length, error: '' });
@@ -674,7 +674,7 @@ setTimeout(() => {
         const tracks = db.prepare('SELECT id, path, duration FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx')
           .all(was.bookId, was.from + was.i);
         Object.assign(nowOn.get(entity), { from: was.from + was.i, i: 0 });
-        if (tracks.length > 1) follow(entity, base, tracks, was.at, was.speed);
+        if (tracks.length > 1) follow(entity, base, tracks, 0, was.speed);
       }
     }
     if (nowOn.size) keepPlaces();
@@ -871,7 +871,9 @@ export async function haControl({ player, action, volume } = {}) {
   const entity = String(player || haSettings().player || '').trim();
   if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
   if (action === 'volume') {
-    const level = Math.min(1, Math.max(0, Number(volume)));
+    const raw = Number(volume);
+    if (!Number.isFinite(raw)) throw new Error('Volume must be a finite number.');
+    const level = Math.min(1, Math.max(0, raw));
     await call('/services/media_player/volume_set', { method: 'POST', body: { entity_id: entity, volume_level: level } });
     return { player: entity, action, volume: level };
   }

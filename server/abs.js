@@ -279,7 +279,7 @@ export const expandedItem = (b, req) => {
 // ABS keeps a progress row per item; this app keeps one per user and book, which
 // is the same thing said differently.
 export const progressOf = (user, b) => {
-  const p = db.prepare(`SELECT p.position, p.track_idx, p.done, p.updated
+  const p = db.prepare(`SELECT p.position, p.track_idx, p.done, p.updated, p.started
                         FROM progress p WHERE p.user = ? AND p.book_id = ?`).get(user || '', b.id);
   if (!p) return null;
   const behind = db.prepare(`SELECT COALESCE(SUM(duration), 0) AS s FROM tracks
@@ -297,7 +297,7 @@ export const progressOf = (user, b) => {
     isFinished: !!p.done,
     hideFromContinueListening: false,
     lastUpdate: ms(p.updated) || now(),
-    startedAt: ms(p.updated) || now(),
+    startedAt: ms(p.started) || ms(p.updated) || now(),
     finishedAt: p.done ? (ms(p.updated) || now()) : null,
   };
 };
@@ -548,7 +548,7 @@ export function playbackSession(b, who, req, version) {
   const when = new Date();
   const place = progressOf(who, b);
   const id = `pl-${b.id}-${when.getTime().toString(36)}`;
-  for (const [old, s] of sessions) if (when.getTime() - s.at > KEEP) sessions.delete(old);
+  for (const old of [...sessions.keys()]) if (when.getTime() - sessions.get(old).at > KEEP) sessions.delete(old);
   sessions.set(id, { book: b.id, user: who || '', at: when.getTime() });
   return {
     id,

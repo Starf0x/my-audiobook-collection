@@ -1105,14 +1105,14 @@ app.post('/api/listened', (req, res) => {
   const done = !!req.body.done;
   if (!user) return res.status(400).json({ error: 'No user' });
   if (!Number.isInteger(bookId)) return res.status(400).json({ error: 'No such book' });
+  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
+    return res.status(404).json({ error: 'No such book' });
+  }
   // Unticking it says "I have not listened to this", so the place kept in it goes
   // with the tick: the book leaves Continue listening and starts from the top.
   if (!done) {
     db.prepare('DELETE FROM progress WHERE user = ? AND book_id = ?').run(user, bookId);
     return res.json({ ok: true, cleared: true });
-  }
-  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
-    return res.status(404).json({ error: 'No such book' });
   }
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated, via)
     VALUES (?, ?, 0, 0, 1, datetime('now'), ?)
