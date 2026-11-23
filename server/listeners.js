@@ -214,6 +214,10 @@ export async function signIn({ name, password, from = '' }) {
       e.claim = true;
       throw e;
     }
+    // State checks before writing the password — a pending/unapproved account
+    // must not have its password set just because the user chose one.
+    if (row.state === 'pending') throw new Error('That account is waiting for the administrator to approve it.');
+    if (row.state !== 'approved') throw new Error('That account cannot sign in.');
     const salt = crypto.randomBytes(16).toString('hex');
     q.setPass.run((await scrypt(said, salt)).toString('hex'), salt, row.name);
   } else {

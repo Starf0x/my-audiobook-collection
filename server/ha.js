@@ -419,7 +419,7 @@ const tookThem = (started, at) => {
   if (!started || !at) return null;
   const from = new Date(started.includes('T') ? started : `${started.replace(' ', 'T')}Z`);
   const to = new Date(at);
-  if (Number.isNaN(from) || Number.isNaN(to)) return null;
+  if (!isFinite(+from) || !isFinite(+to)) return null;
   const days = Math.max(0, Math.round((to - from) / DAY));
   return { started, finished: at, days, took: days === 0 ? 'the same day' : days === 1 ? '1 day' : `${days} days` };
 };
