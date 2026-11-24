@@ -465,6 +465,9 @@ audio.onended = () => {
 
 async function finishedListening() {
   const id = state.book.id;
+  // Signal before closePlayer clears state.book — otherwise the ended listener
+  // cannot see the book any more and nowPlaying(false, 'finished') is never sent.
+  nowPlaying(false, 'finished');
   // it has run out: there is nothing left to carry on with, so the bar goes the
   // same way it does when it is put away by hand. This saves the place too, and
   // it happens before the returns below, so a book that runs out with nobody
@@ -759,6 +762,8 @@ async function followSpeaker({ bookId, track = 0, position = 0 }) {
 async function pressRemote() {
   if (!state.book) return;
   const id = state.book.id;
+  const prevBook = remote.book;
+  const prevState = remote.state;
   try {
     if (remote.book === id && remote.state === 'playing') {
       await post('/api/ha/speaker/control', { player: remote.player, action: 'pause' });
@@ -779,6 +784,8 @@ async function pressRemote() {
       toast(`Playing on ${$('#pWhere').selectedOptions[0]?.dataset.name || r.player}.`);
     }
   } catch (e) {
+    remote.book = prevBook;
+    remote.state = prevState;
     toast(e.message);
   }
   drawRemote();

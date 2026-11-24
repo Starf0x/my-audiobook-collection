@@ -147,7 +147,7 @@ const fileMeta = (t) => {
 const metadata = (b) => ({
   title: b.title,
   subtitle: null,
-  genres: b.genre ? [b.genre] : [],
+  genres: b.genre ? [{ id: `ge-${b64(b.genre)}`, name: b.genre }] : [],
   publishedYear: b.year || null,
   publishedDate: null,
   publisher: null,
@@ -157,7 +157,7 @@ const metadata = (b) => ({
   language: null,
   explicit: false,
   authors: [{ id: `au-${b64(b.author || '')}`, name: b.author || '' }],
-  narrators: b.narrator ? [b.narrator] : [],
+  narrators: b.narrator ? [{ id: `na-${b64(b.narrator)}`, name: b.narrator }] : [],
   // the sequence is a string in ABS, and a book with no number has none rather
   // than a nought, which would sort it in front of book one
   series: b.series ? [{ id: `se-${b64(b.series)}`, name: b.series,
@@ -279,7 +279,7 @@ export const expandedItem = (b, req) => {
 // ABS keeps a progress row per item; this app keeps one per user and book, which
 // is the same thing said differently.
 export const progressOf = (user, b) => {
-  const p = db.prepare(`SELECT p.position, p.track_idx, p.done, p.updated
+  const p = db.prepare(`SELECT p.position, p.track_idx, p.done, p.updated, p.started
                         FROM progress p WHERE p.user = ? AND p.book_id = ?`).get(user || '', b.id);
   if (!p) return null;
   const behind = db.prepare(`SELECT COALESCE(SUM(duration), 0) AS s FROM tracks
@@ -297,7 +297,7 @@ export const progressOf = (user, b) => {
     isFinished: !!p.done,
     hideFromContinueListening: false,
     lastUpdate: ms(p.updated) || now(),
-    startedAt: ms(p.updated) || now(),
+    startedAt: ms(p.started) || ms(p.updated) || now(),
     finishedAt: p.done ? (ms(p.updated) || now()) : null,
   };
 };
@@ -326,6 +326,7 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
   // thing that answers "whose book is this?" when one turns up on somebody's
   // shelf: Music Assistant signs in as one listener and writes every position
   // against that name, whoever is actually listening.
+  const position = Math.min(left, tracks[tracks.length - 1]?.duration || 0);
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, done, via)
               VALUES (?, ?, ?, ?, ?, COALESCE(?, 0), 'music-assistant')
               ON CONFLICT(user, book_id) DO UPDATE SET
@@ -333,7 +334,7 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
                 updated = excluded.updated, via = excluded.via,
                 -- said nothing: leave the tick alone. Said something: it decides.
                 done = COALESCE(?, progress.done)`)
-    .run(user || '', bookId, idx, left, new Date().toISOString(), said, said);
+    .run(user || '', bookId, idx, position, new Date().toISOString(), said, said);
   // and HA hears of it within seconds, as it does of a place kept by the page (2.14.336)
   haPushSoon();
 }
@@ -547,7 +548,7 @@ export function playbackSession(b, who, req, version) {
   const when = new Date();
   const place = progressOf(who, b);
   const id = `pl-${b.id}-${when.getTime().toString(36)}`;
-  for (const [old, s] of sessions) if (when.getTime() - s.at > KEEP) sessions.delete(old);
+  for (const old of [...sessions.keys()]) if (when.getTime() - sessions.get(old).at > KEEP) sessions.delete(old);
   sessions.set(id, { book: b.id, user: who || '', at: when.getTime() });
   return {
     id,
@@ -576,7 +577,7 @@ export function playbackSession(b, who, req, version) {
     },
     serverVersion: version,
     date: when.toISOString().slice(0, 10),
-    dayOfWeek: DAYS[when.getDay()],
+    dayOfWeek: DAYS[when.getUTCDay()],
     timeListening: 0,
     // where this listener already is, so a session opened on a book in progress
     // does not describe it as starting from nought
@@ -719,7 +720,8 @@ export const filteredBooks = (filter) => {
   const dot = said.indexOf('.');
   if (dot < 0) return all;
   const [group, value] = [said.slice(0, dot), said.slice(dot + 1)];
-  const name = nameIn(decodeURIComponent(value));
+  let name;
+  try { name = nameIn(decodeURIComponent(value)); } catch { return all; }
   if (group === 'narrators') return all.filter((b) => b.narrator === name);
   if (group === 'authors') return all.filter((b) => b.author === name);
   if (group === 'series') return all.filter((b) => b.series === name);

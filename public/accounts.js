@@ -159,7 +159,7 @@ const row = (a0) => ((a) => `<div class="account" data-name="${esc(a.name)}">
       <label class="pick" title="The approval. Off means they cannot sign in.">
         <input type="checkbox" data-may-listen ${a.state === 'approved' ? 'checked' : ''}> May listen
       </label>
-      <label class="pick" title="${a.level.at >= 100
+      <label class="pick" title="${a.level.next && a.level.next.at <= a.level.at
     ? 'They have earned this at the top level; this tick is beside that, not instead of it.'
     : 'Let them download whole books before they have earned it.'}">
         <input type="checkbox" data-may-download ${a.granted ? 'checked' : ''}> May download

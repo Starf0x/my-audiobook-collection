@@ -700,11 +700,10 @@ app.post('/api/scan', requireAdmin, (req, res) => {
   // against what this scan added: a book can also arrive by an import or by
   // hand, and "what is here now" is the honest question. It is a pass over the
   // books table with a handful of open requests, and only when there are any.
-  if (!progress.running) {
-    scan(req.body.path || '')
-      .then(() => fillFrom([], { heart: heartFor }))
-      .catch(() => {});
-  }
+  if (progress.running) return res.json({ started: false, reason: 'already running' });
+  scan(req.body.path || '')
+    .then(() => fillFrom([], { heart: heartFor }))
+    .catch(() => {});
   res.json({ started: true });
 });
 app.get('/api/scan/status', (req, res) => res.json(progress));
@@ -1106,14 +1105,14 @@ app.post('/api/listened', (req, res) => {
   const done = !!req.body.done;
   if (!user) return res.status(400).json({ error: 'No user' });
   if (!Number.isInteger(bookId)) return res.status(400).json({ error: 'No such book' });
+  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
+    return res.status(404).json({ error: 'No such book' });
+  }
   // Unticking it says "I have not listened to this", so the place kept in it goes
   // with the tick: the book leaves Continue listening and starts from the top.
   if (!done) {
     db.prepare('DELETE FROM progress WHERE user = ? AND book_id = ?').run(user, bookId);
     return res.json({ ok: true, cleared: true });
-  }
-  if (!db.prepare('SELECT 1 FROM books WHERE id = ?').get(bookId)) {
-    return res.status(404).json({ error: 'No such book' });
   }
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, done, updated, via)
     VALUES (?, ?, 0, 0, 1, datetime('now'), ?)
@@ -1592,6 +1591,7 @@ app.get('/api/stream/:trackId', (req, res) => {
   const ff = spawn(toolAt('ffmpeg'), ['-hide_banner', '-nostdin', '-loglevel', 'error',
     ...(at ? ['-ss', String(at)] : []), '-i', track.path, '-vn', '-filter:a', `atempo=${speed}`,
     '-c:a', 'libmp3lame', '-b:a', '128k', '-f', 'mp3', 'pipe:1'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  ff.stdout.on('error', () => {});
   ff.stdout.pipe(res);
   ff.on('error', () => (res.headersSent ? res.destroy() : res.status(500).end()));
   res.on('close', () => ff.kill('SIGKILL'));

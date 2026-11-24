@@ -37,7 +37,8 @@ export function listBackups() {
       .sort()
       .map((f) => {
         const full = path.join(dir(), f);
-        return { name: f, bytes: fs.statSync(full).size, at: fs.statSync(full).mtime.toISOString() };
+        const st = fs.statSync(full);
+        return { name: f, bytes: st.size, at: st.mtime.toISOString() };
       });
   } catch {
     return [];

@@ -5,7 +5,7 @@
 // tiles, the search, Listened, the cover menu — is in browse.js, which loads
 // first. What is here is what only this page decides: its own shelves, its own
 // cards, and the columns beside them.
-const state = { user: localStorage.user || '', genre: null, author: null, book: null, track: 0 };
+const state = { user: localStorage.user || '', genre: null, author: null, series: null, book: null, track: 0 };
 
 // --- admin button -------------------------------------------------------
 // One way in for everybody now: the sign-in card asks for a name as well as a
@@ -43,10 +43,12 @@ async function loadHome(opts) {
   // tile says the title and a sliver of progress; this is what you actually
   // came back for, so it is what the page opens with.
   const [carryOn, ...alsoGoing] = d.continue;
-  $('#books .list').innerHTML = (carryOn ? cardFor(carryOn, false, 'carry-on') : '')
-    + shelf('Continue listening', alsoGoing, true)
-    + shelf('Recently added', d.recent, false)
-    || '<div class="empty">Nothing here yet.</div>';
+  const totalCount = d.continue.length + d.recent.length;
+  $('#books .list').innerHTML = totalCount === 0
+    ? '<div class="empty">Nothing here yet.</div>'
+    : (carryOn ? cardFor(carryOn, false, 'carry-on') : '')
+      + shelf('Continue listening', alsoGoing, true)
+      + shelf('Recently added', d.recent, false);
   $('#books .list').querySelectorAll('.tile').forEach((t) => {
     t.onclick = () => (t.dataset.resume === '1'
       ? playBook(Number(t.dataset.id))
@@ -99,6 +101,7 @@ async function loadGenres() {
 async function selectSeries(genre, series, li) {
   state.genre = genre;
   state.author = null;
+  state.series = series;
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
   const authors = await api('/api/authors?genre=' + encodeURIComponent(genre));
@@ -116,6 +119,7 @@ async function selectSeries(genre, series, li) {
 async function selectWholeSeries(genre, parent, li) {
   state.genre = genre;
   state.author = null;
+  state.series = null;
   document.querySelectorAll('#genres li, #authors li').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
   const authors = await api('/api/authors?genre=' + encodeURIComponent(genre));
@@ -129,6 +133,7 @@ async function selectWholeSeries(genre, parent, li) {
 
 async function selectGenre(genre, li) {
   state.genre = genre;
+  state.series = null;
   document.querySelectorAll('#genres li').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
   const list = await api('/api/authors?genre=' + encodeURIComponent(genre));
@@ -141,6 +146,7 @@ async function selectGenre(genre, li) {
 
 async function selectAuthor(author, li) {
   state.author = author;
+  state.series = null;
   document.querySelectorAll('#authors li').forEach((e) => e.classList.remove('active'));
   if (li) li.classList.add('active');
   const r = await api(`/api/books?genre=${encodeURIComponent(state.genre)}&author=${encodeURIComponent(author)}`

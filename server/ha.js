@@ -419,7 +419,7 @@ const tookThem = (started, at) => {
   if (!started || !at) return null;
   const from = new Date(started.includes('T') ? started : `${started.replace(' ', 'T')}Z`);
   const to = new Date(at);
-  if (Number.isNaN(from) || Number.isNaN(to)) return null;
+  if (!isFinite(+from) || !isFinite(+to)) return null;
   const days = Math.max(0, Math.round((to - from) / DAY));
   return { started, finished: at, days, took: days === 0 ? 'the same day' : days === 1 ? '1 day' : `${days} days` };
 };
@@ -531,7 +531,7 @@ export async function haPush(req, version) {
       written.push(entity);
     }
   } catch (e) {
-    Object.assign(lastPush, { error: e.message });
+    Object.assign(lastPush, { at: new Date().toISOString(), entities: written.length, error: e.message });
     throw e;
   }
   Object.assign(lastPush, { at: new Date().toISOString(), entities: written.length, error: '' });
@@ -567,6 +567,7 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed, l
   const base = baseUrl(req);
   const tracks = db.prepare('SELECT id, path, duration FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx')
     .all(id, Number(from) || 0);
+  if (!tracks.length) throw new Error('No tracks found for that book and position.');
   // HA has no way to tell a speaker how fast to play (2.14.325): a speed other
   // than 1× is played by this app, the track sent through ffmpeg's atempo — and
   // then from the second to start at, since a seek into a stream cannot be asked.
@@ -674,7 +675,7 @@ setTimeout(() => {
         const tracks = db.prepare('SELECT id, path, duration FROM tracks WHERE book_id = ? AND idx >= ? ORDER BY idx')
           .all(was.bookId, was.from + was.i);
         Object.assign(nowOn.get(entity), { from: was.from + was.i, i: 0 });
-        if (tracks.length > 1) follow(entity, base, tracks, was.at, was.speed);
+        if (tracks.length > 1) follow(entity, base, tracks, 0, was.speed);
       }
     }
     if (nowOn.size) keepPlaces();
@@ -848,6 +849,7 @@ function follow(entity, base, tracks, skipped = 0, rate = 1) {
     // the first track was started `skipped` seconds in, so less of it is left to hear
     // and at another speed it takes that much more or less time
     const left = ((Number(tracks[i].duration) || 0) - (i === 0 ? skipped : 0)) / rate;
+    if (left <= 0) return; // duration unknown — do not auto-advance
     if (heard < left * 0.9) return stop(); // stopped by hand
     i++;
     if (i >= tracks.length) return stop();
@@ -870,7 +872,9 @@ export async function haControl({ player, action, volume } = {}) {
   const entity = String(player || haSettings().player || '').trim();
   if (!entity.startsWith('media_player.')) throw new Error('Pick a media player first.');
   if (action === 'volume') {
-    const level = Math.min(1, Math.max(0, Number(volume)));
+    const raw = Number(volume);
+    if (!Number.isFinite(raw)) throw new Error('Volume must be a finite number.');
+    const level = Math.min(1, Math.max(0, raw));
     await call('/services/media_player/volume_set', { method: 'POST', body: { entity_id: entity, volume_level: level } });
     return { player: entity, action, volume: level };
   }

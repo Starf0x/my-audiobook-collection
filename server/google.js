@@ -293,7 +293,11 @@ const ask = async (url) => {
     }
     const again = waitBefore(res.status, res.headers, attempt);
     if (again === null) {
-      const answer = { status: res.status, body: res.ok ? await res.json() : null };
+      let body = null;
+      try {
+        if (res.ok) body = await res.json();
+      } catch { /* non-JSON response treated as empty */ }
+      const answer = { status: res.status, body };
       // only an answer worth keeping: a refusal may be over in a moment
       if (res.ok) {
         forget();

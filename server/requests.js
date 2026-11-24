@@ -8,8 +8,8 @@
 //
 // **Matching is the whole of the difficulty.** The person asking types what
 // they remember; the book arrives named whatever the file was named. So the two
-// are compared normalised — case, punctuation, a leading article and the word
-// "the" inside a name all taken off — and even then it will miss: *Mistborn*
+// are compared normalised — case, punctuation, and a leading article stripped —
+// and even then it will miss: *Mistborn*
 // asked for, *Mistborn: The Final Empire* delivered. So the administrator can
 // tie a request to a book by hand, and that is not a fallback bolted on but
 // half of the design: an automatic match that silently never happens is worse

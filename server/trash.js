@@ -62,14 +62,16 @@ async function relocate(book, dest, { genre, author, series, title }) {
 
   beginFileWork();
   try {
+    db.transaction(() => {
+      db.prepare('UPDATE books SET path = ?, genre = ?, author = ?, series = ?, title = ? WHERE id = ?')
+        .run(dest, genre, author, series || null, title, book.id);
+      // one prepared statement, not one per track: a book can hold hundreds
+      const move = db.prepare('UPDATE tracks SET path = ? WHERE id = ?');
+      for (const t of db.prepare('SELECT id, path FROM tracks WHERE book_id = ?').all(book.id)) {
+        move.run(path.join(dest, path.relative(book.path, t.path)), t.id);
+      }
+    })();
     await moveFolder(book.path, dest);
-    db.prepare('UPDATE books SET path = ?, genre = ?, author = ?, series = ?, title = ? WHERE id = ?')
-      .run(dest, genre, author, series || null, title, book.id);
-    // one prepared statement, not one per track: a book can hold hundreds
-    const move = db.prepare('UPDATE tracks SET path = ? WHERE id = ?');
-    for (const t of db.prepare('SELECT id, path FROM tracks WHERE book_id = ?').all(book.id)) {
-      move.run(path.join(dest, path.relative(book.path, t.path)), t.id);
-    }
     dropEmptyParents(book.path);
     return { dest };
   } catch (err) {
@@ -106,13 +108,15 @@ export async function deleteToTrash(id, stamp) {
   try {
     const files = audioFiles(book.path).length
       || db.prepare('SELECT COUNT(*) AS n FROM tracks WHERE book_id = ?').get(book.id).n;
+    db.transaction(() => {
+      db.prepare(`INSERT INTO trash (was_path, trash_path, genre, author, series, title, files, deleted_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(book.path, dest, book.genre, book.author, book.series, book.title, files, new Date(stamp).toISOString());
+      db.prepare('DELETE FROM tracks WHERE book_id = ?').run(book.id);
+      db.prepare('DELETE FROM progress WHERE book_id = ?').run(book.id);
+      db.prepare('DELETE FROM books WHERE id = ?').run(book.id);
+    })();
     await moveFolder(book.path, dest);
-    db.prepare(`INSERT INTO trash (was_path, trash_path, genre, author, series, title, files, deleted_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(book.path, dest, book.genre, book.author, book.series, book.title, files, new Date(stamp).toISOString());
-    db.prepare('DELETE FROM tracks WHERE book_id = ?').run(book.id);
-    db.prepare('DELETE FROM progress WHERE book_id = ?').run(book.id);
-    db.prepare('DELETE FROM books WHERE id = ?').run(book.id);
     // a restore recreates whatever folders it needs, so these may go
     dropEmptyParents(book.path);
     return { dest };
@@ -168,8 +172,15 @@ export function purge(id) {
 
 export function emptyTrash() {
   let purged = 0;
-  for (const t of db.prepare('SELECT id FROM trash').all()) purged += purge(t.id).purged;
-  return { purged };
+  const errors = [];
+  for (const t of db.prepare('SELECT id FROM trash').all()) {
+    try {
+      purged += purge(t.id).purged;
+    } catch (e) {
+      errors.push(e.message);
+    }
+  }
+  return { purged, errors };
 }
 
 // Anything past its keep-days is dropped; called at startup and after a scan.

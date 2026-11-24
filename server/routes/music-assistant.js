@@ -222,7 +222,7 @@ export function mountMusicAssistant(app, { VERSION, sendCover }) {
     (absSyncSession(req.params.id, req.body, req.listener) ? res.json({}) : res.status(404).end()));
 
   app.post('/api/session/:id/close', forMA, (req, res) =>
-    (absCloseSession(req.params.id, req.body, req.listener) ? res.json({}) : res.json({})));
+    (absCloseSession(req.params.id, req.body, req.listener) ? res.json({}) : res.status(404).end()));
 
   // Sessions a player kept while it was offline. This app has nothing to reconcile
   // — the position it is told is the position — so they are taken and answered.

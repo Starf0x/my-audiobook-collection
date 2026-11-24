@@ -85,7 +85,7 @@ export function say(what) {
   return queue;
 }
 
-async function post(url, content) {
+async function post(url, content, retries = 0) {
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -95,10 +95,14 @@ async function post(url, content) {
       signal: AbortSignal.timeout(TIMEOUT),
     });
     if (res.status === 429) {
+      if (retries >= 5) {
+        Object.assign(lastSaid, { error: 'Discord rate-limited after 5 retries.', at: new Date().toISOString() });
+        return { ok: false };
+      }
       // their own figure, believed within reason
       const said = Number((await res.json().catch(() => ({}))).retry_after) || 1;
       await new Promise((r) => setTimeout(r, Math.min(10000, said * 1000)));
-      return post(url, content);
+      return post(url, content, retries + 1);
     }
     if (!res.ok) {
       Object.assign(lastSaid, { error: `Discord answered ${res.status}.`, at: new Date().toISOString() });
