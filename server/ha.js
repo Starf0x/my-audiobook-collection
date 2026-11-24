@@ -577,11 +577,21 @@ export async function haPlay(req, { player, bookId, from = 0, seek = 0, speed, l
   const rate = tempo(speed ?? speedOf(who));
   const startAt = Math.max(0, Number(seek) || 0);
   const sped = (extra = {}) => (rate === 1 ? {} : { speed: rate, ...extra });
-  clearInterval(following.get(entity));
-  following.delete(entity);
+  // Block the existing follow timer from advancing tracks while we restart, but
+  // restore it if playTrack fails so the player keeps being tracked.
+  const prevTimer = following.get(entity);
+  following.set(entity, null);
   const st = await call(`/states/${entity}`).catch(() => null);
   const queues = (Number(st?.attributes?.supported_features) || 0) & MEDIA_ENQUEUE;
-  const first = await playTrack(entity, base, tracks[0], '', sped(startAt ? { at: Math.round(startAt) } : {}));
+  let first;
+  try {
+    first = await playTrack(entity, base, tracks[0], '', sped(startAt ? { at: Math.round(startAt) } : {}));
+  } catch (e) {
+    if (prevTimer) following.set(entity, prevTimer); else following.delete(entity);
+    throw e;
+  }
+  clearInterval(prevTimer);
+  following.delete(entity);
   nowOn.set(entity, { bookId: id, from: Number(from) || 0, i: 0, at: startAt, speed: rate, since: Date.now(),
     heard: 0, lastPoll: Date.now(), listener: who, single: !queues });
   saveNowOn();

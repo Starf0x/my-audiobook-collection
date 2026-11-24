@@ -76,14 +76,17 @@ async function loadGenres() {
   const list = await api('/api/genres');
   $('#genres ul').innerHTML = list.map((g) => {
     const has = (g.series || []).length;
+    const renameBtn = state.admin
+      ? `<button class="genre-rename ghost" data-name="${esc(g.name)}" title="Rename display label">✎</button>` : '';
     return `<li data-name="${esc(g.name)}">
-      <span class="who">${has ? '<span class="twist">▸</span>' : ''}${esc(g.name)}</span>
-      <span class="count">${g.books}</span></li>`
+      <span class="who">${has ? '<span class="twist">▸</span>' : ''}${esc(g.label || g.name)}</span>
+      ${renameBtn}<span class="count">${g.books}</span></li>`
       + seriesRows(g);
   }).join('')
     || '<li class="empty">Nothing here yet.</li>';
   $('#genres ul').querySelectorAll('li[data-name]').forEach((li) => {
     li.onclick = (e) => {
+      if (e.target.classList.contains('genre-rename')) return promptGenreRename(li.dataset.name);
       // only the arrow folds and unfolds; the name just selects the genre
       if (e.target.classList.contains('twist')) return showSeriesOf(li.dataset.name, !openGenres.has(li.dataset.name));
       selectGenre(li.dataset.name, li);
@@ -96,6 +99,14 @@ async function loadGenres() {
     li.onclick = () => selectWholeSeries(li.dataset.genre, li.dataset.whole, li);
   });
   for (const g of list) if (openGenres.has(g.name)) showSeriesOf(g.name, true);
+}
+
+async function promptGenreRename(folder) {
+  const current = $('#genres ul').querySelector(`li[data-name="${CSS.escape(folder)}"] .who`)?.textContent?.trim() || folder;
+  const label = prompt(`Display name for "${folder}" (leave empty to reset to folder name):`, current === folder ? '' : current);
+  if (label === null) return;
+  await post(`/api/genres/${encodeURIComponent(folder)}/rename`, { label: label.trim() });
+  loadGenres();
 }
 
 async function selectSeries(genre, series, li) {

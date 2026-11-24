@@ -539,6 +539,9 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
 }
 #genres .twist:hover { color: #fff; }
 #genres li.active .twist { color: #e8e2ff; }
+#genres .genre-rename { font-size: 11px; padding: 1px 4px; margin-left: auto; opacity: 0; flex: none; }
+#genres li:hover .genre-rename { opacity: 0.6; }
+#genres li:hover .genre-rename:hover { opacity: 1; }
 #genres li.series-in-genre {
   padding: 6px 12px 6px 30px;
   font-size: 13px;
