@@ -851,10 +851,29 @@ app.get('/api/genres', (req, res) => {
                                     COALESCE(b.parent_series, '') AS parent, COUNT(*) AS books
                              FROM books b WHERE ${SERIES} IS NOT NULL
                              GROUP BY b.genre, parent, name ORDER BY parent, name`).all();
+  const names = db.prepare('SELECT folder, display_name FROM genre_names').all();
+  const nameMap = Object.fromEntries(names.map((n) => [n.folder, n.display_name]));
   res.json(genres.map((g) => ({
     ...g,
+    label: nameMap[g.name] || g.name,
     series: series.filter((s) => s.genre === g.name).map(({ name, parent, books }) => ({ name, parent, books })),
   })));
+});
+
+// Rename a genre (display label only — the folder and book records are unchanged).
+app.post('/api/genres/:name/rename', requireAdmin, (req, res) => {
+  const folder = req.params.name;
+  const label = String(req.body.label || '').trim();
+  if (!db.prepare('SELECT 1 FROM books WHERE genre = ? LIMIT 1').get(folder)) {
+    return res.status(404).json({ error: 'No such genre.' });
+  }
+  if (label && label !== folder) {
+    db.prepare('INSERT INTO genre_names (folder, display_name) VALUES (?, ?) ON CONFLICT(folder) DO UPDATE SET display_name = excluded.display_name')
+      .run(folder, label);
+  } else {
+    db.prepare('DELETE FROM genre_names WHERE folder = ?').run(folder);
+  }
+  res.json({ ok: true });
 });
 
 // Every series the collection has a hole in, in one pass. It is the same count as

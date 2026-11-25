@@ -139,6 +139,11 @@ db.exec(`
   BEGIN DELETE FROM progress WHERE book_id = OLD.id; END;
   -- every book lookup, delete and tag write filters tracks by book_id
   CREATE INDEX IF NOT EXISTS tracks_book ON tracks (book_id);
+  -- display names for genres: folder name → label shown in the UI
+  CREATE TABLE IF NOT EXISTS genre_names (
+    folder TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL
+  );
 `);
 
 // columns added after the first release; harmless when they already exist
