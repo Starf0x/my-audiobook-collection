@@ -35,7 +35,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # the same suites as on every push, and nothing is built unless they pass
+  checks:
+    uses: ./.github/workflows/test.yml
+
   build:
+    needs: checks
     runs-on: ubuntu-latest
     steps:
       # the whole history, or the tag list below has only the tag being built

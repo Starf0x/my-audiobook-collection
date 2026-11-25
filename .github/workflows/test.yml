@@ -34,11 +34,16 @@ permissions:
 # commit its major tag points at now, change the sha and the comment together.
 #   gh api repos/actions/checkout/git/ref/tags/v4 --jq .object.sha
 
+# Tags are not listed here any more: docker.yml calls this workflow on every
+# `v*` tag and builds the image only once it passes. v2.14.732 and v2.14.776
+# both went to Docker Hub with these suites red, because the two workflows ran
+# side by side and neither waited for the other. Listing tags here as well
+# would only run the same suites twice on a release.
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+  workflow_call:
 
 jobs:
   suites:
