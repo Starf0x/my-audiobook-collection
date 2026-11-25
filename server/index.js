@@ -1266,7 +1266,9 @@ const playing = new Map(); // user -> book id
 const NOW_LISTENING = 'nowListening';
 const heard = new Map(); // user -> when the page last saved a place
 const QUIET_AFTER = Number(process.env.QUIET_AFTER_MS) || 3 * 60 * 1000;
-const START_DEBOUNCE = 30 * 1000;
+// a start is told to Discord only once it has lasted this long; a stop inside it
+// says nothing at all (2.14.633). The suites shorten it, as they do QUIET_AFTER.
+const START_DEBOUNCE = Number(process.env.START_DEBOUNCE_MS) || 30 * 1000;
 const pendingStart = new Map(); // user -> timer
 const keepListening = () => setSetting(NOW_LISTENING, JSON.stringify([...playing]));
 try {

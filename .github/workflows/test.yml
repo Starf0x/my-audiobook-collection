@@ -34,18 +34,23 @@ permissions:
 # commit its major tag points at now, change the sha and the comment together.
 #   gh api repos/actions/checkout/git/ref/tags/v4 --jq .object.sha
 
+# Tags are not listed here any more: docker.yml calls this workflow on every
+# `v*` tag and builds the image only once it passes. v2.14.732 and v2.14.776
+# both went to Docker Hub with these suites red, because the two workflows ran
+# side by side and neither waited for the other. Listing tags here as well
+# would only run the same suites twice on a release.
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+  workflow_call:
 
 jobs:
   suites:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           # the same major the image is built on, or a check can pass here and
           # fail in the container over something in node itself
@@ -81,8 +86,8 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '26'
       - run: npm ci --omit=dev

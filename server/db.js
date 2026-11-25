@@ -220,6 +220,20 @@ db.exec(`UPDATE books SET narrator = '' WHERE narrator <> '' AND narrator = auth
 // `ADMIN_PASSWORD` still wins where it is set, and that is the way back in after
 // a forgotten one: set it on the container and the stored pair is ignored.
 
+// node:sqlite has no db.transaction() (that is better-sqlite3's API): run fn
+// between BEGIN and COMMIT, and roll back if it throws.
+export function inTransaction(fn) {
+  db.exec('BEGIN');
+  try {
+    const out = fn();
+    db.exec('COMMIT');
+    return out;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+
 export const getSetting = (key, def = '') =>
   db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? def;
 

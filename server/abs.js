@@ -326,7 +326,10 @@ export function writeProgressFromWhole(user, bookId, seconds, finished) {
   // thing that answers "whose book is this?" when one turns up on somebody's
   // shelf: Music Assistant signs in as one listener and writes every position
   // against that name, whoever is actually listening.
-  const position = Math.min(left, tracks[tracks.length - 1]?.duration || 0);
+  // past the end of the book: the end of the last track, not some second beyond
+  // it. Only the track it landed on bounds it; any earlier one was walked past.
+  const landed = tracks.find((t) => t.idx === idx)?.duration || 0;
+  const position = landed ? Math.min(left, landed) : left;
   db.prepare(`INSERT INTO progress (user, book_id, track_idx, position, updated, done, via)
               VALUES (?, ?, ?, ?, ?, COALESCE(?, 0), 'music-assistant')
               ON CONFLICT(user, book_id) DO UPDATE SET

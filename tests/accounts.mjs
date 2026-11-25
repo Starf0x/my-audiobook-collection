@@ -31,6 +31,7 @@ process.env.PORT = String(PORT);
 process.env.ADMIN_USER = 'morgan';
 process.env.ADMIN_PASSWORD = 'a very good password';
 process.env.QUIET_AFTER_MS = '1500';
+process.env.START_DEBOUNCE_MS = '200';
 
 // What would have gone to Discord. The address has to be a real Discord one —
 // the app refuses anything else — so the fetch is what is stood in for.
@@ -440,7 +441,14 @@ check('and somebody with no account cannot heart anything',
   (await post('/api/favourites/3', { on: true })).status, 401);
 
 // --- what is playing -----------------------------------------------------
+const quiet = sent.length;
 await post('/api/playing', { bookId: 3, playing: true }, bert.cookies);
+check('a start is not announced at once', sent.length, quiet);
+await post('/api/playing', { bookId: 3, playing: false, how: 'stopped' }, bert.cookies);
+await new Promise((r) => setTimeout(r, 400));
+check('and a stop inside the wait says nothing at all', sent.length, quiet);
+await post('/api/playing', { bookId: 3, playing: true }, bert.cookies);
+await new Promise((r) => setTimeout(r, 400));
 check('starting a book is announced, with the book and the person',
   [/Bert/.test(sent[sent.length - 1].content), /A Book/.test(sent[sent.length - 1].content)], [true, true]);
 const before = sent.length;
