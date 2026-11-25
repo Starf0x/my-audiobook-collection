@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { db, getLibraries } from './db.js';
+import { db, getLibraries, inTransaction } from './db.js';
 import { audioFiles, addOne } from './scan.js';
 import { beginFileWork, fileProgress, moveFolder, destinationFor, genreFolders, clean,
   explainFileError } from './import.js';
@@ -62,16 +62,23 @@ async function relocate(book, dest, { genre, author, series, title }) {
 
   beginFileWork();
   try {
-    db.transaction(() => {
-      db.prepare('UPDATE books SET path = ?, genre = ?, author = ?, series = ?, title = ? WHERE id = ?')
-        .run(dest, genre, author, series || null, title, book.id);
-      // one prepared statement, not one per track: a book can hold hundreds
-      const move = db.prepare('UPDATE tracks SET path = ? WHERE id = ?');
-      for (const t of db.prepare('SELECT id, path FROM tracks WHERE book_id = ?').all(book.id)) {
-        move.run(path.join(dest, path.relative(book.path, t.path)), t.id);
-      }
-    })();
+    // the folder first: if the move fails the database still says where it is
     await moveFolder(book.path, dest);
+    try {
+      inTransaction(() => {
+        db.prepare('UPDATE books SET path = ?, genre = ?, author = ?, series = ?, title = ? WHERE id = ?')
+          .run(dest, genre, author, series || null, title, book.id);
+        // one prepared statement, not one per track: a book can hold hundreds
+        const move = db.prepare('UPDATE tracks SET path = ? WHERE id = ?');
+        for (const t of db.prepare('SELECT id, path FROM tracks WHERE book_id = ?').all(book.id)) {
+          move.run(path.join(dest, path.relative(book.path, t.path)), t.id);
+        }
+      });
+    } catch (e) {
+      // the rows were rolled back, so put the folder back where they say it is
+      await moveFolder(dest, book.path).catch(() => {});
+      throw e;
+    }
     dropEmptyParents(book.path);
     return { dest };
   } catch (err) {
@@ -108,15 +115,20 @@ export async function deleteToTrash(id, stamp) {
   try {
     const files = audioFiles(book.path).length
       || db.prepare('SELECT COUNT(*) AS n FROM tracks WHERE book_id = ?').get(book.id).n;
-    db.transaction(() => {
-      db.prepare(`INSERT INTO trash (was_path, trash_path, genre, author, series, title, files, deleted_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(book.path, dest, book.genre, book.author, book.series, book.title, files, new Date(stamp).toISOString());
-      db.prepare('DELETE FROM tracks WHERE book_id = ?').run(book.id);
-      db.prepare('DELETE FROM progress WHERE book_id = ?').run(book.id);
-      db.prepare('DELETE FROM books WHERE id = ?').run(book.id);
-    })();
     await moveFolder(book.path, dest);
+    try {
+      inTransaction(() => {
+        db.prepare(`INSERT INTO trash (was_path, trash_path, genre, author, series, title, files, deleted_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(book.path, dest, book.genre, book.author, book.series, book.title, files, new Date(stamp).toISOString());
+        db.prepare('DELETE FROM tracks WHERE book_id = ?').run(book.id);
+        db.prepare('DELETE FROM progress WHERE book_id = ?').run(book.id);
+        db.prepare('DELETE FROM books WHERE id = ?').run(book.id);
+      });
+    } catch (e) {
+      await moveFolder(dest, book.path).catch(() => {});
+      throw e;
+    }
     // a restore recreates whatever folders it needs, so these may go
     dropEmptyParents(book.path);
     return { dest };

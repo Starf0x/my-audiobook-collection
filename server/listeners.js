@@ -65,7 +65,7 @@ const q = {
   all: db.prepare('SELECT * FROM users ORDER BY name'),
   add: db.prepare(`INSERT INTO users (name, state, pass, salt, reason, knows_admin, requested_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)`),
-  setPass: db.prepare('UPDATE users SET pass = ?, salt = ? WHERE name = ? AND pass IS NULL'),
+  setPass: db.prepare("UPDATE users SET pass = ?, salt = ? WHERE name = ? AND (pass IS NULL OR pass = '')"),
   setState: db.prepare('UPDATE users SET state = ?, decided_at = ? WHERE name = ?'),
   seen: db.prepare('UPDATE users SET last_seen = ?, first_seen = COALESCE(NULLIF(first_seen, %s), ?) WHERE name = ?'
     .replace('%s', "''")),
