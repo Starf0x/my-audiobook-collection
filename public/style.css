@@ -561,6 +561,9 @@ body.writing #books .actions button[onclick^="writeTags"]:not(:disabled) { opaci
 #genres li.series-in-genre.is-parent { color: var(--text); }
 #genres li.series-in-genre.in-part { padding-left: 46px; font-size: 12.5px; }
 #genres li.series-in-genre.in-part::before { left: 31px; }
+#genres li[data-name] { cursor: grab; }
+#genres li[data-name].genre-dragging { opacity: .4; }
+#genres li[data-name].genre-drag-over { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* the series a book belongs to, on its card and on its shelf tile */
 .card .sub.series-of { color: var(--accent2); }
 

@@ -73,7 +73,8 @@ async function openInLibrary(genre, author) {
 
 // --- browsing -----------------------------------------------------------
 async function loadGenres() {
-  const list = await api('/api/genres');
+  const raw = await api('/api/genres');
+  const list = sortedByOrder(raw);
   $('#genres ul').innerHTML = list.map((g) => {
     const has = (g.series || []).length;
     const renameBtn = state.admin
@@ -99,6 +100,7 @@ async function loadGenres() {
     li.onclick = () => selectWholeSeries(li.dataset.genre, li.dataset.whole, li);
   });
   for (const g of list) if (openGenres.has(g.name)) showSeriesOf(g.name, true);
+  applyGenreDrag($('#genres ul'));
 }
 
 async function promptGenreRename(folder) {
