@@ -149,7 +149,8 @@ async function jumpToBook(id, genre, author) {
 
 // --- browsing ----------------------------------------------------------
 async function loadGenres() {
-  const list = await api('/api/genres');
+  const raw = await api('/api/genres');
+  const list = sortedByOrder(raw);
   $('#genres ul').innerHTML = list.map((g) => {
     const has = (g.series || []).length;
     return `<li data-name="${esc(g.name)}">
@@ -175,6 +176,7 @@ async function loadGenres() {
   });
   // put back whatever was open before
   for (const g of list) if (openGenres.has(g.name)) showSeriesOf(g.name, true);
+  applyGenreDrag($('#genres ul'));
 }
 
 async function selectGenre(genre, li) {

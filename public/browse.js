@@ -567,3 +567,77 @@ const tickOf = (id) => document.querySelector(`.card .listened input[onchange*="
 // signed in, since neither means anything before that.
 window.wireAsking = wireAsking;
 window.sayWhatHappened = sayWhatHappened;
+
+// --- genre list drag-and-drop reordering ----------------------------------
+// Saved order: an array of genre folder names in the user's chosen sequence.
+// New genres (not in the saved list) sort after the saved ones, alphabetically.
+const genreOrderKey = 'genreOrder';
+
+function sortedByOrder(list) {
+  const saved = JSON.parse(localStorage[genreOrderKey] || 'null');
+  if (!saved) return list;
+  return [...list].sort((a, b) => {
+    const ia = saved.indexOf(a.name), ib = saved.indexOf(b.name);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
+// Collects the genre li and all its series children as one moveable group.
+function genreGroup(ul, name) {
+  const main = ul.querySelector(`li[data-name="${CSS.escape(name)}"]`);
+  const series = [...ul.querySelectorAll(`li[data-genre="${CSS.escape(name)}"]`)];
+  return main ? [main, ...series] : series;
+}
+
+function applyGenreDrag(ul) {
+  let dragging = null;
+
+  ul.querySelectorAll('li[data-name]').forEach((li) => {
+    li.draggable = true;
+    li.addEventListener('dragstart', (e) => {
+      dragging = li.dataset.name;
+      e.dataTransfer.effectAllowed = 'move';
+      li.classList.add('genre-dragging');
+    });
+    li.addEventListener('dragend', () => {
+      if (dragging) ul.querySelector(`li[data-name="${CSS.escape(dragging)}"]`)?.classList.remove('genre-dragging');
+      ul.querySelectorAll('li.genre-drag-over').forEach((el) => el.classList.remove('genre-drag-over'));
+      dragging = null;
+    });
+  });
+
+  ul.addEventListener('dragover', (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.target.closest('li[data-name]');
+    if (!target || target.dataset.name === dragging) return;
+    ul.querySelectorAll('li.genre-drag-over').forEach((el) => el.classList.remove('genre-drag-over'));
+    target.classList.add('genre-drag-over');
+  });
+
+  ul.addEventListener('dragleave', (e) => {
+    if (!e.relatedTarget || !ul.contains(e.relatedTarget)) {
+      ul.querySelectorAll('li.genre-drag-over').forEach((el) => el.classList.remove('genre-drag-over'));
+    }
+  });
+
+  ul.addEventListener('drop', (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const target = e.target.closest('li[data-name]');
+    if (!target || target.dataset.name === dragging) return;
+    target.classList.remove('genre-drag-over');
+
+    const group = genreGroup(ul, dragging);
+    const targetGroup = genreGroup(ul, target.dataset.name);
+    // Insert the dragged group after the last row of the target group.
+    targetGroup[targetGroup.length - 1].after(...group);
+
+    const newOrder = [...ul.querySelectorAll('li[data-name]')].map((l) => l.dataset.name);
+    localStorage[genreOrderKey] = JSON.stringify(newOrder);
+  });
+}
