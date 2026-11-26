@@ -103,7 +103,7 @@ async function loadGenres() {
 
 async function promptGenreRename(folder) {
   const current = $('#genres ul').querySelector(`li[data-name="${CSS.escape(folder)}"] .who`)?.textContent?.trim() || folder;
-  const label = prompt(`Display name for "${folder}" (leave empty to reset to folder name):`, current === folder ? '' : current);
+  const label = prompt(`Display name for "${folder}" (leave empty to reset to folder name):`, current);
   if (label === null) return;
   await post(`/api/genres/${encodeURIComponent(folder)}/rename`, { label: label.trim() });
   loadGenres();
